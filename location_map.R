@@ -247,5 +247,3 @@ for (i in seq(length(lat_end))) {
 } 
 map5
 
-
-#testing to see if Viktor can see what I've written
