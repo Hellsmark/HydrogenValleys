@@ -247,4 +247,3 @@ for (i in seq(length(lat_end))) {
 } 
 map5
 
-
