@@ -14,7 +14,7 @@ library(digest)
 library(openssl)
 library(base64enc)
 
-#### end ####
+
 
 #### Preparations to use Google-saved files ####
 
@@ -65,7 +65,7 @@ colnames(new_for_clean_se) <- c("ID","Title", "Company","Location","Description"
 # Add to total of new data
 new_data <- rbind(new_data,new_for_clean_se)
 
-#### end ####
+
 
 #### Norwegian data ####
 finn_Latest_scrape <- read.csv("finn_no_h2.csv")
@@ -99,10 +99,10 @@ colnames(new_for_clean_no) <- c("ID","Title", "Company","Location","Description"
 # Add to total of new data
 new_data <- rbind(new_data,new_for_clean_no)
 
-#### end ####
+
 
 #### Danish data ####
-dk_Latest_scrape <- as.data.frame(readRDS("/Users/viktorrosenberg/Documents/Jobb/Chalmers/dk_h2.rds")) #%>% select(!all_text)
+dk_Latest_scrape <- as.data.frame(readRDS("dk_h2.rds")) #%>% select(!all_text)
 
 # We have an issue with the danish file. It is the "all_text" column which contains cells containing more than 50k characters (which is the limit of google sheet)
 # Define a function to compress a string
@@ -143,12 +143,14 @@ colnames(new_for_clean_dk) <- c("ID","Title", "Company","Location","Description"
 # Add to total of new data
 new_data <- rbind(new_data,new_for_clean_dk)
 
-#### end ####
 
 
-# Now we will to add unique ID-numbers to each add
+#### Clean & rename companies ####
 
+comp_names <- read_sheet(sheet, "company_names")
 
+data_new_names <- new_data %>% mutate(Company = case_when(tolower(Company) %in% tolower(comp_names$Old_name) ~ 
+                                                            comp_names$New_name[match(Company, comp_names$Old_name)], TRUE ~ Company))
 
 
 
