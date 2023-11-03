@@ -13,6 +13,7 @@ library(zlib)
 library(digest)
 library(openssl)
 library(base64enc)
+library(stringr)
 
 
 
@@ -30,11 +31,10 @@ folder <- drive_get("WP3-H2")
 sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
 
 
-#### end ####
+#### Prepare for new data ####
 
 # Here one will load the latest scrape as a dataframe which then can be used for updating the Main datafile
 # Also the previous uploading of data will be loaded, in order for a comparison of what is new
-# We will count the number of adds already upploaded to the Main google sheet and begin the new ideas from there
 
 new_data <- data.frame( ID = numeric(0), Title = numeric(0), Company = numeric(0), 
                         Location = numeric(0), Description = numeric(0), Scrape_date = numeric(0))
@@ -147,13 +147,17 @@ new_data <- rbind(new_data,new_for_clean_dk)
 
 #### Clean & rename companies ####
 
+#get the worksheet with old and new names
 comp_names <- read_sheet(sheet, "company_names")
 
-data_new_names <- new_data %>% mutate(Company = case_when(tolower(Company) %in% tolower(comp_names$Old_name) ~ 
-                                                            comp_names$New_name[match(Company, comp_names$Old_name)], TRUE ~ Company))
+#Replaces the names of the companies in new_data with the new names from the worksheet, if there is no match it will be named !!!NEW_COMPANY!!!
+#we will fix both !!!NEW_COMPANY!!! and the rows with !!!UNKNOWN_COMPANY!!! in a seperate script
+data_new_names <- new_data %>% mutate(Company = case_when(tolower(str_trim(Company)) %in% tolower(comp_names$Old_name) ~ 
+                                                            comp_names$New_name[match(tolower(str_trim(Company)), tolower(comp_names$Old_name))],
+                                                          TRUE ~ "!!!NEW_COMPANY!!!"))
 
 
-
+#### Clean & rename locations ####
 
 
 
