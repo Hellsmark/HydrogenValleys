@@ -86,7 +86,7 @@ for (i in seq_len(nrow(new_no))) {
 
 new_no <- cbind(IDcol,new_no)
 
-new_for_clean_no <- new_no %>% select(IDcol,first_title,arbetsgivare,sted,add_text,id)
+new_for_clean_no <- new_no %>% select(IDcol,stillingstittel,arbetsgivare,sted,add_text,id)
 
 # We want the date for the scrape to be in year-month-day
 
