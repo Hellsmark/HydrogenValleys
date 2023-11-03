@@ -24,7 +24,7 @@ drive_auth()
 gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
 
 # Get the shared folder by its name
-folder <- drive_get("WP3-H2")
+#folder <- drive_get("WP3-H2")
 
 # Get the Google Sheet by its name within the shared folder
 sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
