@@ -25,7 +25,7 @@ drive_auth()
 gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
 
 # Get the shared folder by its name
-folder <- drive_get("WP3-H2")
+#folder <- drive_get("WP3-H2")
 
 # Get the Google Sheet by its name within the shared folder
 sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
@@ -86,7 +86,7 @@ for (i in seq_len(nrow(new_no))) {
 
 new_no <- cbind(IDcol,new_no)
 
-new_for_clean_no <- new_no %>% select(IDcol,first_title,arbetsgivare,sted,add_text,id)
+new_for_clean_no <- new_no %>% select(IDcol,stillingstittel,arbetsgivare,sted,add_text,id)
 
 # We want the date for the scrape to be in year-month-day
 
@@ -158,8 +158,6 @@ data_new_names <- new_data %>% mutate(Company = case_when(tolower(str_trim(Compa
 
 
 #### Clean & rename locations ####
-
-
 
 
 # When the new_data df has been cleaned with good names for location and company the df should be uploaded to the google sheet in the work sheet "main"
