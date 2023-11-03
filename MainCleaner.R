@@ -155,8 +155,6 @@ data_new_names <- new_data %>% mutate(Company = case_when(tolower(Company) %in% 
 
 
 
-#hello world
-
 
 # When the new_data df has been cleaned with good names for location and company the df should be uploaded to the google sheet in the work sheet "main"
 # then should also the new_se/no/dk files also be uploaded and appended to their sepserate scrape sheets in the google sheet
