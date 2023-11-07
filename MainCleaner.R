@@ -15,8 +15,6 @@ library(openssl)
 library(base64enc)
 library(stringr)
 
-
-
 #### Preparations to use Google-saved files ####
 
 # Authorize googlesheets4 and googledrive to access your Google Sheets and Drive
@@ -58,7 +56,7 @@ for (i in seq_len(nrow(new_se))) {
 
 new_se <- cbind(IDcol,new_se)
 
-new_for_clean_se <- new_se %>% select(IDcol,headline,company,location,description,scrape_date)
+new_for_clean_se <- new_se %>% select(IDcol,job_role,company,location,description,scrape_date)
 
 colnames(new_for_clean_se) <- c("ID","Title", "Company","Location","Description","Scrape_date")
 
@@ -104,15 +102,7 @@ new_data <- rbind(new_data,new_for_clean_no)
 #### Danish data ####
 dk_Latest_scrape <- as.data.frame(readRDS("dk_h2.rds")) #%>% select(!all_text)
 
-# We have an issue with the danish file. It is the "all_text" column which contains cells containing more than 50k characters (which is the limit of google sheet)
-# Define a function to compress a string
-compress_string <- function(x) {
-  compressed <- memCompress(charToRaw(x), type = "gzip")
-  base64encode(compressed)
-}
 
-# Apply the function to the column in dataframe
-dk_Latest_scrape$all_text <- lapply(dk_Latest_scrape$all_text, compress_string)
 
 # Get the specific worksheet
 dk_Old <- read_sheet(sheet, "dk_scrape")
@@ -129,6 +119,29 @@ for (i in seq_len(nrow(new_dk))) {
 }
 
 new_dk <- cbind(IDcol,new_dk)
+
+# We have an issue with the danish file. It is the "all_text" column which contains cells containing more than 50k characters (which is the limit of google sheet)
+# Define a function to compress a string
+compress_string <- function(x) {
+  compressed <- memCompress(charToRaw(x), type = "gzip")
+  base64encode(compressed)
+}
+
+# Apply the function to the column in dataframe
+new_dk$all_text <- lapply(new_dk$all_text, compress_string)
+
+# Some tsrings are still too long in all_text, we will split them in three
+split_string <- function(x) {
+  n <- nchar(x)
+  c1 <- substr(x, 1, min(50000, n))
+  c2 <- ifelse(n > 50000, substr(x, 50001, min(100000, n)), "")
+  c3 <- ifelse(n > 100000, substr(x, 100001, n), "")
+  return(c(c1, c2, c3))
+}
+
+# Apply the function to dataframe
+new_dk[c("all_text1", "all_text2", "all_text3")] <- t(apply(new_dk["all_text"], 1, split_string))
+new_dk <- subset(new_dk, select = -all_text )
 
 new_for_clean_dk <- new_dk %>% select(IDcol,title,company,location,text,id)
 
@@ -159,12 +172,57 @@ data_new_names <- new_data %>% mutate(Company = case_when(tolower(str_trim(Compa
 
 #### Clean & rename locations ####
 
+# The locations we have already gathered information about is loaded from our google sheet. The information there has been gathered previously with the help of the ggmap package
+locations <- read_sheet(sheet, "locations_coord")
+
+# Function to check if string is in the other strings
+for (i in seq_len(nrow(new_data))) {
+  nr_matching <- 0
+  for (j in seq_len(nrow(locations))) {
+    if (grepl(locations$Name[j], new_data$Location[i], ignore.case = TRUE)) {
+      #if true
+      match <- locations$Name[j] # save matching location name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  if (nr_matching == 0) {
+    # if no matches were found must the locations list be updated to include more locations
+    data_new_names$Location[i] <- "!!!NEW_LOCATION!!!"
+  } else if (nr_matching > 1) {
+    # if more than 1 match was found will the location choice have to be made manually
+    data_new_names$Location[i] <- "!!!MULTIPLE_LOCATIONS!!!"
+  } else {
+    # when nr of matches is not 0 nor more than 1 will the found match be assigned to the add
+    data_new_names$Location[i] <- match 
+  }
+}
+
+
+
+
+
+#### End session: Upload to Google Sheet ####
 
 # When the new_data df has been cleaned with good names for location and company the df should be uploaded to the google sheet in the work sheet "main"
-# then should also the new_se/no/dk files also be uploaded and appended to their sepserate scrape sheets in the google sheet
+# then should also the new_se/no/dk files also be uploaded and appended to their sepserate scrape sheets in the google sheet - maybe this should be done at seperate "cells"
 
+# Adds the new data to the google sheet - in worksheet "MAIN"
+sheet_append(sheet, data_new_names, sheet = 'Main')
 
-#########
+#### Swedish scrape update ####
+
+sheet_append(sheet, new_se, sheet = 'se_scrape')
+
+#### Norwegian scrape update ####
+
+sheet_append(sheet, new_no, sheet = 'no_scrape')
+
+#### Danish scrape update ####
+
+sheet_append(sheet, new_dk, sheet = 'dk_scrape')
+
+#### Other notes (including decompressing) ####
+
 
 # How to de-compress
 
