@@ -59,6 +59,7 @@ for (i in seq_len(nrow(missingNames))) {
       #if true
       match <- compNames$Old_name[j] # save matching company name name
       nr_matching <- nr_matching+1 # document how many matches we get
+      break
     } 
   }
   if (nr_matching == 0) {
