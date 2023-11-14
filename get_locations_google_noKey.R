@@ -29,20 +29,20 @@ sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZu
 
 locations <- read_sheet(sheet, "locations_coord")
 
-missing_coord <- locations[is.na(locations$Longitude) | is.na(locations$Latitude), "Name"]
+missing_coord <- locations[is.na(locations$Longitude) | is.na(locations$Latitude), "Name2"]
 
 #### Use our function to get the missing coordinates. !!! IMPORTANT !!! --> ggmap may fail to find some of the locations, for these may the country have to be specified and then added manually ###
 
-new_coord <- get_coordinates(missing_coord[["Name"]])
+new_coord <- get_coordinates(missing_coord[["Name2"]])
 
 new_locations <- cbind(missing_coord,new_coord)
 
-colnames(new_locations) <- c("Name","Longitude", "Latitude")
+colnames(new_locations) <- c("Name2","Longitude", "Latitude")
 
 #### Add new coordinates to existing dataframe and upload to google sheet ####
 
 locations <- locations %>%
-  left_join(new_locations, by = "Name") %>%
+  left_join(new_locations, by = "Name2") %>%
   mutate(
     Longitude = coalesce(Longitude.x, Longitude.y),
     Latitude = coalesce(Latitude.x, Latitude.y)

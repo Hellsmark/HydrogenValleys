@@ -181,7 +181,7 @@ for (i in seq_len(nrow(new_data))) {
   for (j in seq_len(nrow(locations))) {
     if (grepl(locations$Name[j], new_data$Location[i], ignore.case = TRUE)) {
       #if true
-      match <- locations$Name[j] # save matching location name
+      match <- locations$Name2[j] # save matching location name
       nr_matching <- nr_matching+1 # document how many matches we get
     } 
   }
