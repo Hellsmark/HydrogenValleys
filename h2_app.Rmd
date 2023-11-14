@@ -1,0 +1,214 @@
+---
+title: "Nordic Hydrogen Valleys"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme:
+      version: 4
+      bootswatch: flatly
+runtime: shiny
+---
+
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(googlesheets4)
+library(shiny)
+library(shinyWidgets)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+library(plotly)
+library(ggthemes)
+library(leaflet)
+
+```
+
+
+```{r}
+# read data
+
+
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+df_main_raw <- read_sheet(ss, sheet = "Main")
+geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:E")
+
+geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2)
+jobs <- df_main_raw %>% 
+  left_join(geo, by = "Location") %>%
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "No",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%
+  filter(!is.na(Longitude)|!is.na(Latitude))
+
+companies <- jobs %>% group_by(Company, Country) %>% 
+  summarise(n = n()) %>% arrange(desc(n)) %>% 
+  ungroup() %>%
+  filter(Company != "!!!NEW_COMPANY!!!")
+
+
+#centrera kartan
+lon_med <- (max(geo$Longitude)-min(geo$Longitude))/2 +min(geo$Longitude)
+lat_med <- (max(geo$Latitude)-min(geo$Latitude))/2 +min(geo$Latitude)
+
+
+
+```
+
+
+```{r}
+
+#create custom pallet 
+#industry_colors <- c(
+#  "Iron and steel" = "#7D7D7D",
+#  "Pulp and paper" = "#33A02C",
+#  "Food" = "#B2DF8A",
+#  "Heat and power" = "#FF7F00",
+#  "Chemicals" = "#CAB2D6",
+#  "Cement and minerals" = "#FB9A99",
+#  "Other" = "#A6CEE3",
+#  "Metals" = "#FDBF6F",
+#  "Refinery" = "#7570B3"
+#)
+
+# custom theme
+cust_theme <- theme_fivethirtyeight()+
+  theme(legend.position = "none",
+        axis.title.x=element_text(face="bold", colour="#666666"),
+        axis.title.y=element_text(face="bold", colour="#666666")
+        )
+
+```
+
+
+
+
+Sidebar {.sidebar}
+=========================================
+>Välj nedan vilka du vill inkludera. Notera att ditt val påverkar alla sidor.
+
+```{r}
+hr()
+
+pickerInput("Company", "Organisations", choices = unique(companies$Company), multiple = TRUE, 
+            selected = unique(companies$Company), options = list(`actions-box` = TRUE))
+pickerInput("Country", "Country", choices = unique(companies$Country), multiple = TRUE, 
+            selected = unique(companies$Country),options = list(`actions-box` = TRUE))
+
+numericInput("max_companies", "Top Organisations", value = nrow(companies), min = 0, max = nrow(companies), step = 1)
+
+#Option to make slideinputs 
+#sliderInput("biogena", "Biogena", min = 0, max = ceiling(max(max$bio_ktCO2)/1000)*1000, value = c(0, ceiling(max(max$bio_ktCO2)/1000)*1000), round = T, step = 10)
+
+hr()
+
+#Note the use of input$... in the reactive component. 
+react_companies <- reactive({
+  companies %>% 
+    filter(Company %in% input$Company) %>%
+    filter(Country %in% input$Country) %>%
+    slice_head(n = input$max_companies)
+})
+
+
+react_map <- reactive({
+  jobs %>% 
+    filter(Company %in% input$Company) %>%
+    filter(Country %in% input$Country)
+
+})
+
+```
+
+
+
+
+Organisations
+======================================
+
+
+Column { .tabset}
+-----------------------------------------------------------------------
+
+### Main requiters
+```{r}
+
+renderPlotly({
+h2_org <- req(react_companies())
+
+
+p_Org <- h2_org %>% 
+  ggplot(aes(x= n, 
+             y = reorder(Company,n), 
+             fill = Country)) + 
+  geom_col(alpha = 0.65) +
+  cust_theme+
+  facet_wrap(~Country)+
+  labs(x= "Nr of new jobs", y = " ")
+
+ggplotly(p_Org, tooltip = "text")
+  
+}
+)
+
+```
+> Skriv en förklarande text. 
+
+
+### Data Table
+```{r}
+DT::renderDataTable({
+  h2_org <- req(react_companies())
+  DT::datatable(h2_org, extensions = 'Buttons', options = list(
+    dom = 'Bfrtip',
+    buttons = c('csv'))
+    ) 
+  })
+```
+
+
+H2 Map
+=====================================================
+```{r}
+
+renderLeaflet(
+  {
+who_where <- req(react_map())
+
+df <- who_where %>% 
+  select(Company, Location, Description, Longitude, Latitude)
+
+leaflet(df) %>% 
+  addTiles() %>% 
+  #setView(lng = lon_med, lat = lat_med, zoom = 4.5) %>% # center the map and decide on zoom-level
+  addMarkers(lng = ~Longitude, lat = ~Latitude, 
+             clusterOptions = markerClusterOptions(),
+             popup = ~paste0(Company, "<br>", Location, "<br>", Description)
+               )
+
+  }
+)
+
+
+```
+
+> Beskrivande text
+
+Om
+==============================
+
+```{r}
+hr()
+
+```
+
+Syftet med den här sidan är att ..
+
+```{r}
+hr()
+```
+
+
