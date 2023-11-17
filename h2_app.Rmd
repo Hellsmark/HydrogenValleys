@@ -28,7 +28,7 @@ library(leaflet)
 
 ```{r}
 # read data
-
+googlesheets4::gs4_auth()
 
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 df_main_raw <- read_sheet(ss, sheet = "Main")
