@@ -24,7 +24,19 @@ sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZu
 #### Finding the ads with "new" companies ####
 main <- read_sheet(sheet, "Main")
 new_comp <- main %>% filter(Company == "!!!NEW_COMPANY!!!") %>% select(ID,Company)
-#From new_comp you get the IDs for the ads with "new" companies and can manually add these
+
+se_comp <- read_sheet(sheet, "se_scrape") %>% select(IDcol,company)
+colnames(se_comp) <- c("ID","Company")
+
+no_comp <- read_sheet(sheet, "no_scrape") %>% select(IDcol,arbetsgivare)
+colnames(no_comp) <- c("ID","Company")
+
+dk_comp <- read_sheet(sheet, "dk_scrape") %>% select(IDcol,company)
+colnames(dk_comp) <- c("ID","Company")
+
+names_of_missing <- rbind(merge(se_comp, new_comp["ID"], by = "ID"),merge(no_comp, new_comp["ID"], by = "ID"),merge(dk_comp, new_comp["ID"], by = "ID"))
+
+#From names_of_missing you get the IDs and names for companies for the ads with "new" companies and can manually add these
 #to the company_names sheet in the google file
 
 #After manually adding the new companies the Main sheet needs to be updated with the new names 
