@@ -35,16 +35,18 @@ df_main_raw <- read_sheet(ss, sheet = "Main")
 geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:E")
 
 geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2)
+
 jobs <- df_main_raw %>% 
   left_join(geo, by = "Location") %>%
   mutate(Country = case_when(
     str_detect(ID, pattern ="^1") ~ "SE", 
-    str_detect(ID, pattern ="^2") ~ "No",
+    str_detect(ID, pattern ="^2") ~ "NO",
     str_detect(ID, pattern ="^3") ~ "DK"
   )) %>%
   filter(!is.na(Longitude)|!is.na(Latitude))
 
-companies <- jobs %>% group_by(Company, Country) %>% 
+companies <- jobs %>% 
+  group_by(Company, Country) %>% 
   summarise(n = n()) %>% arrange(desc(n)) %>% 
   ungroup() %>%
   filter(Company != "!!!NEW_COMPANY!!!")
@@ -98,7 +100,7 @@ pickerInput("Company", "Organisations", choices = unique(companies$Company), mul
 pickerInput("Country", "Country", choices = unique(companies$Country), multiple = TRUE, 
             selected = unique(companies$Country),options = list(`actions-box` = TRUE))
 
-numericInput("max_companies", "Top Organisations", value = nrow(companies), min = 0, max = nrow(companies), step = 1)
+numericInput("max_companies", "Top Organisations", value = 20, min = 0, max = nrow(companies), step = 1)
 
 #Option to make slideinputs 
 #sliderInput("biogena", "Biogena", min = 0, max = ceiling(max(max$bio_ktCO2)/1000)*1000, value = c(0, ceiling(max(max$bio_ktCO2)/1000)*1000), round = T, step = 10)
@@ -155,7 +157,31 @@ ggplotly(p_Org, tooltip = "text")
 )
 
 ```
-> Skriv en förklarande text. 
+> Main reqruiters based on on total number of job adds in all countries.
+
+### Main locations
+```{r}
+renderPlotly({
+  df_locations <- react_map()
+
+p_loc <- df_locations %>% 
+  group_by(Location, Country) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>%
+  slice_head(n = input$max_companies) %>% ggplot(aes(x= n, 
+             y = reorder(Location,n), 
+             fill = Country)) + 
+  geom_col(alpha = 0.65) +
+  cust_theme+
+  facet_wrap(~Country)+
+  labs(x= "Nr of new jobs", y = " ")
+
+ggplotly(p_loc, tooltip = "text")
+})
+
+
+
+```
 
 
 ### Data Table
@@ -179,14 +205,14 @@ renderLeaflet(
 who_where <- req(react_map())
 
 df <- who_where %>% 
-  select(Company, Location, Description, Longitude, Latitude)
+  select(Company, Location, Title, Longitude, Latitude)
 
 leaflet(df) %>% 
   addTiles() %>% 
   #setView(lng = lon_med, lat = lat_med, zoom = 4.5) %>% # center the map and decide on zoom-level
   addMarkers(lng = ~Longitude, lat = ~Latitude, 
              clusterOptions = markerClusterOptions(),
-             popup = ~paste0(Company, "<br>", Location, "<br>", Description)
+             popup = ~paste0(Company, "<br>", Location, "<br>", Title)
                )
 
   }
@@ -210,5 +236,3 @@ Syftet med den här sidan är att ..
 ```{r}
 hr()
 ```
-
-
