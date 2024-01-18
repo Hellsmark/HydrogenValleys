@@ -242,9 +242,7 @@ ads <- df_main_raw %>%
     Month = floor_date(Scrape_date, "month")) %>% 
   filter(Month >= start_month) %>% 
   group_by(Month, Country) %>% 
-  summarise(n = n()) %>% 
-  arrange(desc(n)) %>% 
-  ungroup() %>% 
+  summarise(n = n()) %>%
   select(Country, Month, n)
 
 p_Ads <- ads %>%
