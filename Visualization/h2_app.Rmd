@@ -223,6 +223,40 @@ leaflet(df) %>%
 
 > Beskrivande text
 
+
+Time Series
+=====================================================
+
+```{r}
+library(lubridate)
+
+# Define the starting month
+start_month <- as.Date("2023-01-01") 
+
+ads <- df_main_raw %>% 
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"),
+    Scrape_date = as.Date(Scrape_date, format = "%Y-%m-%d"), 
+    Month = floor_date(Scrape_date, "month")) %>% 
+  filter(Month >= start_month) %>% 
+  group_by(Month, Country) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n)) %>% 
+  ungroup() %>% 
+  select(Country, Month, n)
+
+p_Ads <- ads %>%
+  ggplot(aes(x = Month, y = n, color = Country)) +
+  geom_line() +
+  labs(x = "Month", y = "Nr of new jobs") +
+  theme_minimal()
+
+ggplotly(p_Ads, tooltip = "text")
+
+```
+
 Om
 ==============================
 
