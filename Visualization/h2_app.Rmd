@@ -22,6 +22,7 @@ library(lubridate)
 library(plotly)
 library(ggthemes)
 library(leaflet)
+library(visNetwork)
 
 ```
 
@@ -34,7 +35,7 @@ ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx
 df_main_raw <- read_sheet(ss, sheet = "Main")
 geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:E")
 
-geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2)
+geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2) %>% unique()
 
 jobs <- df_main_raw %>% 
   left_join(geo, by = "Location") %>%
@@ -47,9 +48,20 @@ jobs <- df_main_raw %>%
 
 companies <- jobs %>% 
   group_by(Company, Country) %>% 
-  summarise(n = n()) %>% arrange(desc(n)) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n)) %>% 
   ungroup() %>%
   filter(Company != "!!!NEW_COMPANY!!!")
+
+countries <- jobs %>% 
+  select(Company, Location, Country) %>%
+  pivot_longer(Company:Location, names_to = "type", values_to = "id") %>%
+  select(-type) %>%
+  unique() %>%
+  group_by(id) %>%
+  summarise(group = paste(unique(Country), collapse = ", "))
+
+country_combinations <- countries %>% pull(group) %>% unique()
 
 
 #centrera kartan
@@ -76,6 +88,13 @@ lat_med <- (max(geo$Latitude)-min(geo$Latitude))/2 +min(geo$Latitude)
 #  "Refinery" = "#7570B3"
 #)
 
+country_p <- viridis::plasma(length(country_combinations))
+network_colors <- tibble(combinations = country_combinations, colors = country_p)
+names(country_p) <- country_combinations
+
+
+
+
 # custom theme
 cust_theme <- theme_fivethirtyeight()+
   theme(legend.position = "none",
@@ -87,68 +106,46 @@ cust_theme <- theme_fivethirtyeight()+
 
 
 
+Organisations
+======================================
 
 Sidebar {.sidebar}
-=========================================
->Välj nedan vilka du vill inkludera. Notera att ditt val påverkar alla sidor.
+-------------------------------------
 
 ```{r}
 hr()
 
-pickerInput("Company", "Organisations", choices = unique(companies$Company), multiple = TRUE, 
-            selected = unique(companies$Company), options = list(`actions-box` = TRUE))
-pickerInput("Country", "Country", choices = unique(companies$Country), multiple = TRUE, 
-            selected = unique(companies$Country),options = list(`actions-box` = TRUE))
-
-numericInput("max_companies", "Top Organisations", value = 20, min = 0, max = nrow(companies), step = 1)
-
-#Option to make slideinputs 
-#sliderInput("biogena", "Biogena", min = 0, max = ceiling(max(max$bio_ktCO2)/1000)*1000, value = c(0, ceiling(max(max$bio_ktCO2)/1000)*1000), round = T, step = 10)
+numericInput("max_org_loc", "Top Organisations/Locations", value = 20, min = 0, max = nrow(companies), step = 1)
 
 hr()
 
-#Note the use of input$... in the reactive component. 
 react_companies <- reactive({
   companies %>% 
-    filter(Company %in% input$Company) %>%
-    filter(Country %in% input$Country) %>%
-    slice_head(n = input$max_companies)
+    slice_max(n = input$max_org_loc, order_by = n)
 })
 
-
-react_map <- reactive({
-  jobs %>% 
-    filter(Company %in% input$Company) %>%
-    filter(Country %in% input$Country)
-
-})
 
 ```
 
 
 
-
-Organisations
-======================================
-
-
 Column { .tabset}
 -----------------------------------------------------------------------
 
-### Main requiters
+### Main Recruiters
 ```{r}
 
 renderPlotly({
-h2_org <- req(react_companies())
-
-
-p_Org <- h2_org %>% 
+  comp <- react_companies()
+  
+  p_Org <- comp %>% 
   ggplot(aes(x= n, 
              y = reorder(Company,n), 
-             fill = Country)) + 
+             fill = Country, 
+             text = paste(Country, ":", n))) + 
   geom_col(alpha = 0.65) +
+  scale_fill_manual(values =country_p)+
   cust_theme+
-  facet_wrap(~Country)+
   labs(x= "Nr of new jobs", y = " ")
 
 ggplotly(p_Org, tooltip = "text")
@@ -157,28 +154,29 @@ ggplotly(p_Org, tooltip = "text")
 )
 
 ```
-> Main reqruiters based on on total number of job adds in all countries.
+> Main recruiters based on on total number of job adds in all countries.
 
 ### Main locations
 ```{r}
 renderPlotly({
-  df_locations <- react_map()
 
-p_loc <- df_locations %>% 
+p_loc <- jobs %>% 
   group_by(Location, Country) %>% 
   summarise(n = n()) %>% 
   ungroup() %>%
-  slice_head(n = input$max_companies) %>% ggplot(aes(x= n, 
+  arrange(desc(n)) %>%
+  slice_max(n = input$max_org_loc, order_by = n) %>% 
+  ggplot(aes(x= n, 
              y = reorder(Location,n), 
-             fill = Country)) + 
+             fill = Country, 
+             text = paste(Country, ":", n))) +
   geom_col(alpha = 0.65) +
+  scale_fill_manual(values =country_p)+
   cust_theme+
-  facet_wrap(~Country)+
   labs(x= "Nr of new jobs", y = " ")
 
 ggplotly(p_loc, tooltip = "text")
 })
-
 
 
 ```
@@ -196,15 +194,72 @@ DT::renderDataTable({
 ```
 
 
+
+Network (2-mode)
+=============================================
+
+```{r}
+
+numericInput("nr_jobs", "Min. recruitments per organisation", value = 5, min = 0, max = max(companies$n), step = 1)
+
+
+renderVisNetwork({
+
+n1 <- jobs %>% count(Company) %>% 
+  mutate(type = "Org") %>% 
+  rename(id = Company)
+
+n2 <- jobs %>% count(Location) %>% 
+  mutate(type = "Locations") %>% 
+  rename(id = Location)
+
+
+nodes <- bind_rows(n1, n2) %>%
+  mutate(size = round(scales::rescale(n, to = c(1, 10)))) %>%
+  mutate(size = round(sqrt(n) +10)) %>%
+  mutate(title = paste0(id, "<br> Jobs: ", n),
+         shape = ifelse(type == "Org", "dot", "square"),
+         opacity = 1) %>%
+  filter(n >= input$nr_jobs) %>%
+  left_join(geo, by =c("id" = "Location")) %>%
+  left_join(countries)
+  
+count(nodes, id) %>% filter(n>1)
+
+
+edges <- jobs %>% 
+  count(Company, Location) %>% 
+  rename(from = Company, to = Location) %>%
+  mutate(width = round(log(n)+1)) %>%
+  mutate(title = paste("Jobs:", n))
+
+network_plot <- visNetwork(nodes, edges)
+
+for(i in 1:length(network_colors$combinations)) {
+  network_plot <- network_plot %>% 
+    visGroups(groupname = network_colors$combinations[i], 
+              color = list(background = network_colors$colors[i], border = network_colors$colors[i]))
+}
+
+network_plot %>%
+  visOptions(
+    highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE), 
+    selectedBy = "group")
+
+})
+
+
+```
+>Mode 2 network, connecting recruiters to places. Please wait for the network to load. It takes looong..
+
 H2 Map
 =====================================================
 ```{r}
 
 renderLeaflet(
   {
-who_where <- req(react_map())
 
-df <- who_where %>% 
+df <- jobs %>% 
   select(Company, Location, Title, Longitude, Latitude)
 
 leaflet(df) %>% 
@@ -221,14 +276,12 @@ leaflet(df) %>%
 
 ```
 
-> Beskrivande text
 
 
 Time Series
 =====================================================
 
 ```{r}
-library(lubridate)
 
 # Define the starting month
 start_month <- as.Date("2023-01-01") 
