@@ -44,14 +44,22 @@ jobs <- df_main_raw %>%
     str_detect(ID, pattern ="^2") ~ "NO",
     str_detect(ID, pattern ="^3") ~ "DK"
   )) %>%
-  filter(!is.na(Longitude)|!is.na(Latitude))
+  filter(!is.na(Longitude)|!is.na(Latitude)) %>%
+  filter(Scrape_date >= "2023-08-20")
 
+
+tot_jobs <- jobs %>% 
+  filter(Company != "!!!NEW_COMPANY!!!") %>%
+  count(Company, name = "total") %>%
+  arrange(desc(total))
+  
 companies <- jobs %>% 
   group_by(Company, Country) %>% 
-  summarise(n = n()) %>% 
+  summarise(n = n()) %>%
   arrange(desc(n)) %>% 
-  ungroup() %>%
-  filter(Company != "!!!NEW_COMPANY!!!")
+  left_join(tot_jobs) %>%
+  ungroup()
+  
 
 countries <- jobs %>% 
   select(Company, Location, Country) %>%
@@ -120,8 +128,8 @@ numericInput("max_org_loc", "Top Organisations/Locations", value = 20, min = 0, 
 hr()
 
 react_companies <- reactive({
-  companies %>% 
-    slice_max(n = input$max_org_loc, order_by = n)
+  tot_jobs %>% 
+    slice_head(n = input$max_org_loc)
 })
 
 
@@ -137,10 +145,13 @@ Column { .tabset}
 
 renderPlotly({
   comp <- react_companies()
+
+  top_comp <- comp %>% pull(Company)
   
-  p_Org <- comp %>% 
+  p_Org <- companies %>%
+    filter(Company %in% top_comp) %>%
   ggplot(aes(x= n, 
-             y = reorder(Company,n), 
+             y = reorder(Company, total), 
              fill = Country, 
              text = paste(Country, ":", n))) + 
   geom_col(alpha = 0.65) +
