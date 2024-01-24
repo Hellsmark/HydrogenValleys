@@ -1,6 +1,6 @@
 ---
 title: "Nordic Hydrogen Valleys"
-output: 
+output:
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
@@ -8,6 +8,8 @@ output:
       version: 4
       bootswatch: flatly
 runtime: shiny
+resource_files:
+- .secrets/7a6077d23f6776ccc63f8f70bc12b214_hans91347@gmail.com
 ---
 
 
@@ -29,12 +31,12 @@ library(visNetwork)
 
 ```{r}
 # read data
-googlesheets4::gs4_auth()
 
+gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 df_main_raw <- read_sheet(ss, sheet = "Main")
+gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:E")
-
 geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2) %>% unique()
 
 jobs <- df_main_raw %>% 
@@ -196,7 +198,8 @@ ggplotly(p_loc, tooltip = "text")
 ### Data Table
 ```{r}
 DT::renderDataTable({
-  h2_org <- req(react_companies())
+  h2_org <- companies
+  
   DT::datatable(h2_org, extensions = 'Buttons', options = list(
     dom = 'Bfrtip',
     buttons = c('csv'))
