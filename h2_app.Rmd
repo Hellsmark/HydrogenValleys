@@ -1,6 +1,6 @@
 ---
 title: "Nordic Hydrogen Valleys"
-output: 
+output:
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
@@ -8,6 +8,8 @@ output:
       version: 4
       bootswatch: flatly
 runtime: shiny
+resource_files:
+- .secrets/7a6077d23f6776ccc63f8f70bc12b214_hans91347@gmail.com
 ---
 
 
@@ -29,12 +31,12 @@ library(visNetwork)
 
 ```{r}
 # read data
-googlesheets4::gs4_auth()
 
+gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 df_main_raw <- read_sheet(ss, sheet = "Main")
+gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:E")
-
 geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2) %>% unique()
 
 jobs <- df_main_raw %>% 
@@ -44,14 +46,22 @@ jobs <- df_main_raw %>%
     str_detect(ID, pattern ="^2") ~ "NO",
     str_detect(ID, pattern ="^3") ~ "DK"
   )) %>%
-  filter(!is.na(Longitude)|!is.na(Latitude))
+  filter(!is.na(Longitude)|!is.na(Latitude)) %>%
+  filter(Scrape_date >= "2023-08-20")
 
+
+tot_jobs <- jobs %>% 
+  filter(Company != "!!!NEW_COMPANY!!!") %>%
+  count(Company, name = "total") %>%
+  arrange(desc(total))
+  
 companies <- jobs %>% 
   group_by(Company, Country) %>% 
-  summarise(n = n()) %>% 
+  summarise(n = n()) %>%
   arrange(desc(n)) %>% 
-  ungroup() %>%
-  filter(Company != "!!!NEW_COMPANY!!!")
+  left_join(tot_jobs) %>%
+  ungroup()
+  
 
 countries <- jobs %>% 
   select(Company, Location, Country) %>%
@@ -120,8 +130,8 @@ numericInput("max_org_loc", "Top Organisations/Locations", value = 20, min = 0, 
 hr()
 
 react_companies <- reactive({
-  companies %>% 
-    slice_max(n = input$max_org_loc, order_by = n)
+  tot_jobs %>% 
+    slice_head(n = input$max_org_loc)
 })
 
 
@@ -137,10 +147,13 @@ Column { .tabset}
 
 renderPlotly({
   comp <- react_companies()
+
+  top_comp <- comp %>% pull(Company)
   
-  p_Org <- comp %>% 
+  p_Org <- companies %>%
+    filter(Company %in% top_comp) %>%
   ggplot(aes(x= n, 
-             y = reorder(Company,n), 
+             y = reorder(Company, total), 
              fill = Country, 
              text = paste(Country, ":", n))) + 
   geom_col(alpha = 0.65) +
@@ -185,7 +198,8 @@ ggplotly(p_loc, tooltip = "text")
 ### Data Table
 ```{r}
 DT::renderDataTable({
-  h2_org <- req(react_companies())
+  h2_org <- companies
+  
   DT::datatable(h2_org, extensions = 'Buttons', options = list(
     dom = 'Bfrtip',
     buttons = c('csv'))
