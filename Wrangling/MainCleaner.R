@@ -6,8 +6,6 @@
 library(data.table)
 library(dplyr)
 library(tidyr)
-library(dplyr)
-library(googledrive)
 library(googlesheets4)
 library(zlib)
 library(digest)
@@ -19,7 +17,6 @@ library(stringr)
 
 # Authorize googlesheets4 and googledrive to access your Google Sheets and Drive
 # Please note that you need to have a Google account and be signed in to it in your web browser for it to work
-drive_auth()
 gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
 
 # Get the shared folder by its name
