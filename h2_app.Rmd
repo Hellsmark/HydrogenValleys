@@ -8,8 +8,8 @@ output:
       version: 4
       bootswatch: flatly
 runtime: shiny
-resource_files:
-- .secrets/7a6077d23f6776ccc63f8f70bc12b214_hans91347@gmail.com
+#resource_files:
+#- .secrets/7a6077d23f6776ccc63f8f70bc12b214_hans91347@gmail.com
 ---
 
 
@@ -32,10 +32,12 @@ library(visNetwork)
 ```{r}
 # read data
 
-gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
+#gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
+googlesheets4::gs4_auth()
+
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 df_main_raw <- read_sheet(ss, sheet = "Main")
-gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
+#gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:F")
 geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2) %>% unique()
 
@@ -295,25 +297,23 @@ leaflet(df) %>%
 Time Series
 =====================================================
 
+Column { .tabset}
+-----------------------------------------------------------------------
+### Per month
 ```{r}
 
-# Define the starting month
-start_month <- as.Date("2023-01-01") 
-
-ads <- df_main_raw %>% 
-  mutate(Country = case_when(
-    str_detect(ID, pattern ="^1") ~ "SE", 
-    str_detect(ID, pattern ="^2") ~ "NO",
-    str_detect(ID, pattern ="^3") ~ "DK"),
-    Scrape_date = as.Date(Scrape_date, format = "%Y-%m-%d"), 
-    Month = floor_date(Scrape_date, "month")) %>% 
-  filter(Month >= start_month) %>% 
-  group_by(Month, Country) %>% 
+ads <- jobs %>% 
+  mutate(Scrape_date = as.Date(Scrape_date, format = "%Y-%m-%d"), 
+         Month = floor_date(Scrape_date, "month")) %>% 
+  group_by(Month, Nation) %>% 
   summarise(n = n()) %>%
-  select(Country, Month, n)
+  group_by(Nation) %>%
+  mutate(cumulative_n = cumsum(n)) %>%
+  filter(Nation %in% c('SE','NO','DK')) %>%
+  select(Nation, Month, n, cumulative_n)
 
 p_Ads <- ads %>%
-  ggplot(aes(x = Month, y = n, color = Country)) +
+  ggplot(aes(x = Month, y = n, color = Nation)) +
   geom_line() +
   labs(x = "Month", y = "Nr of new jobs") +
   theme_minimal()
@@ -321,7 +321,18 @@ p_Ads <- ads %>%
 ggplotly(p_Ads, tooltip = "text")
 
 ```
+### Cumulative
+```{r}
 
+p_Ads_cumulative <- ads %>%
+  ggplot(aes(x = Month, y = cumulative_n, color = Nation)) +
+  geom_line() +
+  labs(x = "Month", y = "Nr of new jobs") +
+  theme_minimal()
+
+ggplotly(p_Ads_cumulative, tooltip = "text")
+
+```
 Om
 ==============================
 
