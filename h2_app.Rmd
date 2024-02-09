@@ -8,8 +8,8 @@ output:
       version: 4
       bootswatch: flatly
 runtime: shiny
-#resource_files:
-#- .secrets/7a6077d23f6776ccc63f8f70bc12b214_hans91347@gmail.com
+resource_files:
+- .secrets/7a6077d23f6776ccc63f8f70bc12b214_hans91347@gmail.com
 ---
 
 
@@ -32,12 +32,12 @@ library(visNetwork)
 ```{r}
 # read data
 
-#gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
-googlesheets4::gs4_auth()
+gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
+#googlesheets4::gs4_auth()
 
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 df_main_raw <- read_sheet(ss, sheet = "Main")
-#gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
+gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:F")
 geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2) %>% unique()
 
