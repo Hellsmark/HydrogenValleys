@@ -57,7 +57,7 @@ for (i in seq_len(nrow(missingNames))) {
   for (j in seq_len(nrow(compNames))) {
     if (grepl(paste0("\\b",compNames$Old_name[j],"\\b"), desc)) {
       #if true
-      match <- compNames$Old_name[j] # save matching company name name
+      match <- compNames$New_name[j] # save matching company name name
       nr_matching <- nr_matching+1 # document how many matches we get
       break
     } 
