@@ -143,9 +143,7 @@ merged_df <- left_join(CompanyAnalysis, company_analysis, by = "Name")
 
 merged_df$Organisation_type <- ifelse(is.na(merged_df$Organisation_type.y), merged_df$Organisation_type.x, merged_df$Organisation_type.y)
 merged_df$Ownership_type <- ifelse(is.na(merged_df$Ownership_type.y), merged_df$Ownership_type.x, merged_df$Ownership_type.y)
-merged_df$Actor_type <- ifelse(is.na(merged_df$Actor_type.y), merged_df$Actor_type.x, merged_df$Actor_type.y)
 merged_df$Industry_Sector <- ifelse(is.na(merged_df$Industry_Sector.y), merged_df$Industry_Sector.x, merged_df$Industry_Sector.y)
-merged_df$Value_chain_position <- ifelse(is.na(merged_df$Value_chain_position.y), merged_df$Value_chain_position.x, merged_df$Value_chain_position.y)
 merged_df$Nationality <- ifelse(is.na(merged_df$Nationality.y), merged_df$Nationality.x, merged_df$Nationality.y)
 
 CompanyAnalysis <- merged_df %>%
