@@ -11,6 +11,7 @@ This script is used to re-categorise the companies in the company list. It is no
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
 ```
 
 ```{r, include = FALSE}
