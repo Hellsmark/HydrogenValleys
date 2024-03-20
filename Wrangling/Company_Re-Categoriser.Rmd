@@ -1,0 +1,190 @@
+---
+title: "Company_Re-categoriser"
+author: "Viktor"
+date: "2024-03-06"
+output: html_document
+---
+## Introduction
+This script is used to re-categorise the companies in the company list. It is not meant to be run as a whole, but contains the bits and pieces needed to make the changes to the google sheet.
+
+## Initiation
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(googlesheets4)
+library(dplyr)
+```
+
+```{python}
+from openai import OpenAI
+import os
+import pandas as pd
+import ast
+```
+
+## Collect data from google
+
+```{r, include = FALSE}
+gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
+
+sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
+
+CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
+```
+
+## Gather unique industry sectors
+```{r, include = FALSE}
+sectors <- CompanyAnalysis %>% select(Industry_Sector) %>% unique()
+
+sectors_sorted <- sectors[order(sectors$Industry_Sector),,drop=FALSE]
+
+companies <- CompanyAnalysis %>% select(Name) %>% slice(-1)
+py$df <- companies
+```
+
+## Industry categoriser
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def industry(text):
+  cath3 = 'Industry sector, describes what sector the company operates in. This can be any of but only one of the following: "Energy", "Transport", "Oil/Gas/Refinery", "Chemicals", "Iron/Steel/Mining", "Manufacturing (Equipment/Machinery/Electronics)", "IT", "Legal/HR/Economics", "Government/Public sector", "Research/Education", "Consulting" or "Other" (if none of the previous categories fit)'
+
+  prompt = f"Classify the following companies: '{text}'"
+  response = client.chat.completions.create(
+    model="gpt-3.5-turbo-0125",
+    messages=[{"role": "system", 
+                   "content": "You are a helpful assistent that when provided the name of an organisation finds out in what industry sector organisations work. For your understanding is industry sector is defined as: "+cath3+". You respond with the name of of the industry sector that the organisation works in, as one of the twelve categories provided in the definition (no other category is valid). Your response is in the form of a python list where each organisation has its own list. Here is an example of how an answer can look like for three organisations: [['Vattenfall', 'Energy'], ['Air Liquide','Chemicals'], ['Alm. Brand Group','Legal/HR/Economics'], ['Strandmøllen','Other']]"},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=100,
+    temperature=0.7
+  )
+  return response.choices[0].message.content.strip()
+
+```
+
+## Running categorisation and dataframe wrangling
+
+```{python}
+companies = list(df['Name'])
+Result = []
+
+for text in companies:
+  answer = industry(text)
+  Result.append(answer)
+  print(text,answer)
+
+df['Industry_Sector'] = Result
+```
+
+```{python}
+col1 = []
+col2 = []
+
+for string in df['Industry_Sector']:
+    strlist = ast.literal_eval(string)
+    col1.append(strlist[0][0])
+    col2.append(strlist[0][1])
+
+dict_df = {'Name': col1, 'Industry_Sector': col2}
+
+df2 = pd.DataFrame.from_dict(dict_df)
+
+```
+
+```{r}
+org_n_industry <- py$df2
+
+df1_mod <- CompanyAnalysis[-1, ]
+
+merged_df <- merge(df1_mod, org_n_industry, by = "Name", all.x = TRUE)
+
+merged_df$Industry_Sector <- ifelse(is.na(merged_df$Industry_Sector.y), merged_df$Industry_Sector.x, merged_df$Industry_Sector.y)
+
+merged_df <- merged_df[, !(names(merged_df) %in% c("Industry_Sector.x", "Industry_Sector.y"))]
+
+df3 <- rbind(CompanyAnalysis[1, ], merged_df)
+```
+
+```{r}
+write_sheet(df3, ss = sheet, sheet = "CompanyAnalysis")
+```
+
+## Hydrogen relevance
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def relevance(text):
+  cat1 = "Direct; the organisations works with either directly producing or consuming hydrogen in their business, or the organisation either develops/research or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input. If the organisation does this in combination of other services, should the hydrogen related service be their main service."
+  cat2 = "Partly; the organisations works with either directly producing or consuming hydrogen in their business, or the organisation either develops/research or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input. If the organisation does this in combination of other services, is the hydrogen related service not their main service."
+  cat3 = "Indirect; the organisation provides services or goods which could be relevant for the hydrogen economy or the general use of hydrogen, but hydrogen is in no way their main focus and their services can just as well be used for purposes unrelated to hydrogen."
+  cat4 = "None; the organisation has no service related to hydrogen."
+  content = "You are a helpful assistent that when provided the name of an organisation finds out whether they are related to the hydrogen economy in the nordics or not. This can be one out of the four following categories: 'Direct', 'Partly', 'Indirect' or 'None'. The categories are defined as: 1. "+cat1+" 2. "+cat2+" 3. "+cat3+" 4. "+cat4+" You respond with one out of the four categories. Your response is in the form of a python list where each organisation has its own list."
+  prompt = f"Classify the following companies: '{text}'"
+  
+  response = client.chat.completions.create(
+    model="gpt-3.5-turbo-0125",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=100,
+    temperature=0.7
+  )
+  return response.choices[0].message.content.strip()
+```
+
+```{r, include = FALSE}
+companies <- CompanyAnalysis %>% select(Name) %>% slice(-1)
+py$df <- companies
+```
+
+```{python}
+companies = list(df['Name'])
+Result = []
+
+for text in companies:
+  answer = relevance(text)
+  Result.append(answer)
+  print(text,answer)
+
+df['Hydrogen_relevance'] = Result
+```
+
+```{python}
+col1 = []
+col2 = []
+
+for string in df['Hydrogen_relevance']:
+    strlist = ast.literal_eval(string)
+    col1.append(strlist[0][0])
+    col2.append(strlist[0][1])
+
+dict_df = {'Name': col1, 'Hydrogen_relevance': col2}
+
+df2 = pd.DataFrame.from_dict(dict_df)
+
+```
+
+```{r}
+org_relevance <- py$df2
+
+df1_mod <- CompanyAnalysis[-1, ]
+
+merged_df <- merge(df1_mod, org_relevance, by = "Name", all.x = TRUE)
+
+merged_df$Hydrogen_relevance <- ifelse(is.na(merged_df$Hydrogen_relevance.y), merged_df$Hydrogen_relevance.x, merged_df$Hydrogen_relevance.y)
+
+merged_df <- merged_df[, !(names(merged_df) %in% c("Hydrogen_relevance.x", "Hydrogen_relevance.y"))]
+
+df3 <- rbind(CompanyAnalysis[1, ], merged_df)
+```
+
+```{r}
+write_sheet(df3, ss = sheet, sheet = "CompanyAnalysis")
+```
