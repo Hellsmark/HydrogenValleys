@@ -158,15 +158,14 @@ df['Hydrogen_relevance'] = Result
 ```
 
 ```{python}
-col1 = []
 col2 = []
 
 for string in df['Hydrogen_relevance']:
-    strlist = ast.literal_eval(string)
-    col1.append(strlist[0][0])
-    col2.append(strlist[0][1])
+    new_string = string[2:]
+    new_string = new_string[:-2]
+    col2.append(new_string)
 
-dict_df = {'Name': col1, 'Hydrogen_relevance': col2}
+dict_df = {'Name': df['Name'], 'Hydrogen_relevance': col2}
 
 df2 = pd.DataFrame.from_dict(dict_df)
 
