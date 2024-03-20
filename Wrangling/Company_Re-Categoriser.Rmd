@@ -121,15 +121,15 @@ app_key = os.environ.get("OPENAI_API_KEY")
 client = OpenAI(api_key=app_key)
 
 def relevance(text):
-  cat1 = "Direct; the organisations works with either directly producing or consuming hydrogen in their business, or the organisation either develops/research or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input. If the organisation does this in combination of other services, should the hydrogen related service be their main service."
+  cat1 = "Direct; the organisations works with either directly producing or consuming hydrogen in their business, or the organisation either develops/research or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input. If the organisation does this in combination of other services, should the hydrogen related service be their primary service, while all other services are few or minor in relation."
   cat2 = "Partly; the organisations works with either directly producing or consuming hydrogen in their business, or the organisation either develops/research or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input. If the organisation does this in combination of other services, is the hydrogen related service not their main service."
   cat3 = "Indirect; the organisation provides services or goods which could be relevant for the hydrogen economy or the general use of hydrogen, but hydrogen is in no way their main focus and their services can just as well be used for purposes unrelated to hydrogen."
   cat4 = "None; the organisation has no service related to hydrogen."
-  content = "You are a helpful assistent that when provided the name of an organisation finds out whether they are related to the hydrogen economy in the nordics or not. This can be one out of the four following categories: 'Direct', 'Partly', 'Indirect' or 'None'. The categories are defined as: 1. "+cat1+" 2. "+cat2+" 3. "+cat3+" 4. "+cat4+" You respond with one out of the four categories. Your response is in the form of a python list where each organisation has its own list."
+  content = "You are a helpful assistent that when provided the name of an organisation finds out whether they are related to the hydrogen economy in the nordics or not. This can be one out of the four following categories: 'Direct', 'Partly', 'Indirect' or 'None'. The categories are defined as: 1. "+cat1+" 2. "+cat2+" 3. "+cat3+" 4. "+cat4+" You choose the category which you find to be most fitting. You respond with one out of the four categories, no explaination should be provided, only the category. Your response is in the form of a python list where each organisation has its own list."
   prompt = f"Classify the following companies: '{text}'"
   
   response = client.chat.completions.create(
-    model="gpt-3.5-turbo-0125",
+    model="gpt-4-0125-preview",
     messages=[{"role": "system", 
                    "content": content},
                   {"role":"user",
