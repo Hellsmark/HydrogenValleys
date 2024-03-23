@@ -56,7 +56,7 @@ def industry(text):
 
   prompt = f"Classify the following companies: '{text}'"
   response = client.chat.completions.create(
-    model="gpt-3.5-turbo-0125",
+    model="gpt-4-0125-preview",
     messages=[{"role": "system", 
                    "content": "You are a helpful assistent that when provided the name of an organisation finds out in what industry sector organisations work. For your understanding is industry sector is defined as: "+cath3+". You respond with the name of of the industry sector that the organisation works in, as one of the twelve categories provided in the definition (no other category is valid). Your response is in the form of a python list where each organisation has its own list. Here is an example of how an answer can look like for three organisations: [['Vattenfall', 'Energy'], ['Air Liquide','Chemicals'], ['Alm. Brand Group','Legal/HR/Economics'], ['Strandmøllen','Other']]"},
                   {"role":"user",

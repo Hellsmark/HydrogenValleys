@@ -148,7 +148,7 @@ merged_df$Nationality <- ifelse(is.na(merged_df$Nationality.y), merged_df$Nation
 
 CompanyAnalysis <- merged_df %>%
   select(-Organisation_type.x, -Organisation_type.y, -Ownership_type.x, -Ownership_type.y,
-         -Actor_type.x,-Actor_type.y,-Industry_Sector.x,-Industry_Sector.y,
-         -Value_chain_position.x,-Value_chain_position.y,-Nationality.x,-Nationality.y)
+         ,-Industry_Sector.x,-Industry_Sector.y,
+         ,-Nationality.x,-Nationality.y)
 
 write_sheet(CompanyAnalysis, ss = sheet, sheet = "CompanyAnalysis")
