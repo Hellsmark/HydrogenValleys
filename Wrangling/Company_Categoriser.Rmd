@@ -5,19 +5,19 @@ date: "2024-03-23"
 output: html_document
 ---
 ## Introduction
-This script is for categorising the companies. It uses open AI soft- and hardware via API in order to do so. The script should not overwrite previous saved entries but only add new for newly added companies.
+This script is for categorising the companies. It uses open AI soft- and hardware via API in order to do so. 
 
 ## Initiation
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(reticulate)
 ```
-
+### R-libraries
 ```{r, include = FALSE}
 library(googlesheets4)
 library(dplyr)
 ```
-
+### Python packages
 ```{python}
 from openai import OpenAI
 import os
@@ -54,22 +54,82 @@ def categoriser(text):
 
     example = "[['Company1','Firm','Private','Energy Utility','Yes','Norway'], ['CompanyB','Firm','Mix','Iron/steel/mining','Yes','Sweden'], ['CompanyC','Municipality','Public','Research/Education','No','Denmark']]"
 
-    content = "You are a helpful assistant that cathegorises companies depending on the following topics: 1."+cat1+' 2.'+cat2+' 3.'+cat3+' 4.'+cat4+' 5.'+cat5+'. You respond to each topic with one of the options given respecitively for each topic, always choose the option that fits that topic best and no explanation of the choice should be provided. You do not make up any new options than those provided. Your response should be in the form of a python list where each company has its own list with the answer to the different topics as items in the list. Start each companylist with the name of the company. Here are is an example of how a answer can look like for three companies: '+example
+    content = "You are a helpful assistant that when provided a list of companies categorises them depending on the following topics: 1."+cat1+' 2.'+cat2+' 3.'+cat3+' 4.'+cat4+' 5.'+cat5+'. You respond to each topic with one of the options given respecitively for each topic, always choose the option that fits that topic best and no explanation of the choice should be provided. You do not make up any new options than those provided. Your response should be in the form of a python list where each company has its own list with the answer to the different topics as items in the list. Start each companylist with the name of the company. Here is an example of how a response can look like for three companies: '+example
     
     prompt = f"Classify the following companies: '{text}'"
     
     response = client.chat.completions.create(
-        model="gpt-4-0125-preview	",
+        model="gpt-4-0125-preview",
         messages=[{"role": "system", 
                    "content": content},
                   {"role":"user",
                    "content":prompt}],
-        max_tokens=100,
+        max_tokens= 4096,
         temperature=0.9
     )
     return response.choices[0].message.content.strip()
-
 ```
 
 ## Running categorisation
+### Preprocess of data
+```{r}
+py$CompanyAnalysis_py <- CompanyAnalysis
+```
 
+```{python}
+df_done_py = CompanyAnalysis_py.head(1)
+df_companies_py = CompanyAnalysis_py.iloc[1:len(CompanyAnalysis_py)]
+```
+The dataframe may be too large for the AI-model to be able to provide a response for each company
+Therefor should the following section be run multiple times with 100 companies each time until we have added it all to the df_done_py dataframe.
+### Categorising all the companies
+```{python}
+i = 0
+j = 0
+while i < len(df_companies_py):
+  df_to_run_py = df_companies_py.iloc[i:i+100]
+  companies_py = str(list(df_to_run_py['Name']))
+  
+  result_py = categoriser(companies_py)
+  
+  try:
+    list_of_lists_py = ast.literal_eval(result_py)
+
+    df_result_py = pd.DataFrame(list_of_lists_py, columns=['Name', 'Organisation_type', 'Ownership_type', 'Industry_Sector', 'Hydrogen_relevance', 'Nationality'])
+  
+    df_done_py = pd.concat([df_done_py, df_result_py], ignore_index=True)
+    
+    i += 100
+    j = 0
+  except:
+    print('AI responded incorrectly, i= '+str(i))
+    j += 1
+    if j == 3:
+      print('AI failed after 3 attempts')
+      break
+```
+### Process result
+```{python}
+df_done_py.drop(columns=['Number_of_adds', 'Location_of_jobs'], inplace=True)
+```
+
+```{r}
+new_info <- py$df_done_py
+
+merged_df <- left_join(CompanyAnalysis, new_info, by = "Name")
+
+merged_df$Organisation_type <- ifelse(is.na(merged_df$Organisation_type.y), merged_df$Organisation_type.x, merged_df$Organisation_type.y)
+merged_df$Ownership_type <- ifelse(is.na(merged_df$Ownership_type.y), merged_df$Ownership_type.x, merged_df$Ownership_type.y)
+merged_df$Industry_Sector <- ifelse(is.na(merged_df$Industry_Sector.y), merged_df$Industry_Sector.x, merged_df$Industry_Sector.y)
+merged_df$Hydrogen_relevance <- ifelse(is.na(merged_df$Hydrogen_relevance.y), merged_df$Hydrogen_relevance.x, merged_df$Hydrogen_relevance.y)
+merged_df$Nationality <- ifelse(is.na(merged_df$Nationality.y), merged_df$Nationality.x, merged_df$Nationality.y)
+
+CompanyAnalysis2 <- merged_df %>%
+  select(-Organisation_type.x, -Organisation_type.y, -Ownership_type.x, -Ownership_type.y,
+         ,-Industry_Sector.x,-Industry_Sector.y, -Hydrogen_relevance.x, -Hydrogen_relevance.y,
+         ,-Nationality.x,-Nationality.y)
+```
+## Upload to google
+```{r}
+write_sheet(CompanyAnalysis2, ss = sheet, sheet = "CompanyAnalysis")
+```
