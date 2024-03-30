@@ -1,0 +1,135 @@
+---
+title: "Company_Categoriser"
+author: "Viktor"
+date: "2024-03-23"
+output: html_document
+---
+## Introduction
+This script is for categorising the companies. It uses open AI soft- and hardware via API in order to do so. 
+
+## Initiation
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+```
+### R-libraries
+```{r, include = FALSE}
+library(googlesheets4)
+library(dplyr)
+```
+### Python packages
+```{python}
+from openai import OpenAI
+import os
+import pandas as pd
+import ast
+
+app_key = os.environ.get("OPENAI_API_KEY")
+```
+
+## Collect data from google
+```{r, include = FALSE}
+gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
+
+sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
+
+CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
+```
+
+## Categoriser-function
+```{python}
+client = OpenAI(api_key=app_key)
+
+def categoriser(text):
+
+    cat1 = 'Organisation type, which describes what kind of company it is, this can be one of the following: "Government" (including government agencies), "Municipality", "Firm" (includes both privately and state owned), "University" (and similar educational organisations), "Research institute" (non-unievrsities that perform research without providing education), "NGO" (for non-government organisations, typically nonprofit entities). If none of these categories fit in any way you can categorise them as "NaN".'
+    
+    cat2 = 'Ownership type, which describes what kind of owner the company has, that is either publically owned by some state or municipality (that is tax-payed institution) or privately owned, as either "Private", "Public" or "Mix" (if there is both public and private owners of the company).'
+    
+    cat3 = 'Industry sector, which describes what sector the company operates in. This can be any of but only one of the following 13: "Hydrogen technology manufacturer" (that is manufactiurer of technology, machinery and equipment specifically used for production, storage, distribution or consumption/usage of hydrogen gas/liquid), "Energy Utility" (a producer and provider of electricity either by renewable energy, nuclear power or fossil sources, this category also includes energy storage, transmission system operation or heating provider), "Energy technology manufacturer" (a producer/constructer of energy technology used for energy utility, this can be construction of different kinds of powerplants, carbon capture technology or other technology used in energy utility), "Oil/gas/refinery" (including extraction of fossil oil/gas as well as refining of such materials, for example in production of fuels), "Chemicals" (that is producer of chemicals, including the chemical industry as well as areas such plastics, pharmaceutics and more), "Iron/steel/mining" (including metallurgy as well as extraction of iron and production of steel), "Transport" (including flight, marine and land transport), "Other manufacturing" (not including hydrogen or energy technology but including other kinds of machinery, equipment, electronics, components and instruments), "Research/Education", "Government/Public sector" (including regulatory agencies and other governmental organisations and public sector services), "Legal/HR/Economics" (a broad category including legal services, economic services as well as human resources and other services on the borderland of theese three), "Consulting" (that is organisations that provide consulting in a wide range of subjects) or "Other" (which is used as category when none of the previous twelve categories fit).'
+    
+    cat4 = 'Hydrogen relevance, which states whether the organisation is related to the hydrogen economy in the nordics or not, this can be either "Yes" (if the organisations works with either directly producing or consuming hydrogen in their business, or the organisation either develops/research or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input or if the organisation provides services or goods which could be relevant for the hydrogen economy or the general use of hydrogen, even if hydrogen is in no way their main focus) or "No" (if the organisation has no service related to hydrogen).'
+    
+    cat5 = 'Nationality, which is from what country the company has its origin.'
+
+    example = "[['Company1','Firm','Private','Energy Utility','Yes','Norway'], ['CompanyB','Firm','Mix','Iron/steel/mining','Yes','Sweden'], ['CompanyC','Municipality','Public','Research/Education','No','Denmark']]"
+
+    content = "You are a helpful assistant that when provided a list of companies categorises them depending on the following topics: 1."+cat1+' 2.'+cat2+' 3.'+cat3+' 4.'+cat4+' 5.'+cat5+'. You respond to each topic with one of the options given respecitively for each topic, always choose the option that fits that topic best and no explanation of the choice should be provided. You do not make up any new options than those provided. Your response should be in the form of a python list where each company has its own list with the answer to the different topics as items in the list. Start each companylist with the name of the company. Here is an example of how a response can look like for three companies: '+example
+    
+    prompt = f"Classify the following companies: '{text}'"
+    
+    response = client.chat.completions.create(
+        model="gpt-4-0125-preview",
+        messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+        max_tokens= 4096,
+        temperature=0.9
+    )
+    return response.choices[0].message.content.strip()
+```
+
+## Running categorisation
+### Preprocess of data
+```{r}
+py$CompanyAnalysis_py <- CompanyAnalysis
+```
+
+```{python}
+df_done_py = CompanyAnalysis_py.head(1)
+df_companies_py = CompanyAnalysis_py.iloc[1:len(CompanyAnalysis_py)]
+```
+The dataframe may be too large for the AI-model to be able to provide a response for each company
+Therefor should the following section be run multiple times with 100 companies each time until we have added it all to the df_done_py dataframe.
+### Categorising all the companies
+```{python}
+i = 0
+j = 0
+while i < len(df_companies_py):
+  df_to_run_py = df_companies_py.iloc[i:i+100]
+  companies_py = str(list(df_to_run_py['Name']))
+  
+  result_py = categoriser(companies_py)
+  
+  try:
+    list_of_lists_py = ast.literal_eval(result_py)
+
+    df_result_py = pd.DataFrame(list_of_lists_py, columns=['Name', 'Organisation_type', 'Ownership_type', 'Industry_Sector', 'Hydrogen_relevance', 'Nationality'])
+  
+    df_done_py = pd.concat([df_done_py, df_result_py], ignore_index=True)
+    
+    i += 100
+    j = 0
+  except:
+    print('AI responded incorrectly, i= '+str(i))
+    j += 1
+    if j == 3:
+      print('AI failed after 3 attempts')
+      break
+```
+### Process result
+```{python}
+df_done_py.drop(columns=['Number_of_adds', 'Location_of_jobs'], inplace=True)
+```
+
+```{r}
+new_info <- py$df_done_py
+
+merged_df <- left_join(CompanyAnalysis, new_info, by = "Name")
+
+merged_df$Organisation_type <- ifelse(is.na(merged_df$Organisation_type.y), merged_df$Organisation_type.x, merged_df$Organisation_type.y)
+merged_df$Ownership_type <- ifelse(is.na(merged_df$Ownership_type.y), merged_df$Ownership_type.x, merged_df$Ownership_type.y)
+merged_df$Industry_Sector <- ifelse(is.na(merged_df$Industry_Sector.y), merged_df$Industry_Sector.x, merged_df$Industry_Sector.y)
+merged_df$Hydrogen_relevance <- ifelse(is.na(merged_df$Hydrogen_relevance.y), merged_df$Hydrogen_relevance.x, merged_df$Hydrogen_relevance.y)
+merged_df$Nationality <- ifelse(is.na(merged_df$Nationality.y), merged_df$Nationality.x, merged_df$Nationality.y)
+
+CompanyAnalysis2 <- merged_df %>%
+  select(-Organisation_type.x, -Organisation_type.y, -Ownership_type.x, -Ownership_type.y,
+         ,-Industry_Sector.x,-Industry_Sector.y, -Hydrogen_relevance.x, -Hydrogen_relevance.y,
+         ,-Nationality.x,-Nationality.y)
+```
+## Upload to google
+```{r}
+write_sheet(CompanyAnalysis2, ss = sheet, sheet = "CompanyAnalysis")
+```

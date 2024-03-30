@@ -1,4 +1,7 @@
 # This script is for the collection of the different companies that are prevalent in the adds.
+# There are different sections for different parts of the cathegorisation of the companies.
+# DO NOT run the script as a whole
+
 
 #### Packages ####
 library(googlesheets4)
@@ -114,3 +117,38 @@ CompanyAnalysis <- CompanyAnalysis[-1,]
 sheet_append(sheet, CompanyAnalysis, sheet = 'CompanyAnalysis')
 
 
+
+
+#### Section barrier ####
+# Nothing here
+
+#### Create csv of companies not yet cathegorised from the google sheet ####
+gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
+
+sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
+
+CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
+
+not_cathegorised <- CompanyAnalysis %>% filter(is.na(Organisation_type)) %>% select(Name)
+
+write.csv(not_cathegorised, "companies_for_AI_cathegorisation.csv")
+
+#### After the python API-code has been run can this section be used ####
+
+#### Adds categories of the companies to the google sheet ####
+
+company_analysis <- read.csv("companies_for_AI_cathegorisation.csv")
+
+merged_df <- left_join(CompanyAnalysis, company_analysis, by = "Name")
+
+merged_df$Organisation_type <- ifelse(is.na(merged_df$Organisation_type.y), merged_df$Organisation_type.x, merged_df$Organisation_type.y)
+merged_df$Ownership_type <- ifelse(is.na(merged_df$Ownership_type.y), merged_df$Ownership_type.x, merged_df$Ownership_type.y)
+merged_df$Industry_Sector <- ifelse(is.na(merged_df$Industry_Sector.y), merged_df$Industry_Sector.x, merged_df$Industry_Sector.y)
+merged_df$Nationality <- ifelse(is.na(merged_df$Nationality.y), merged_df$Nationality.x, merged_df$Nationality.y)
+
+CompanyAnalysis <- merged_df %>%
+  select(-Organisation_type.x, -Organisation_type.y, -Ownership_type.x, -Ownership_type.y,
+         ,-Industry_Sector.x,-Industry_Sector.y,
+         ,-Nationality.x,-Nationality.y)
+
+write_sheet(CompanyAnalysis, ss = sheet, sheet = "CompanyAnalysis")
