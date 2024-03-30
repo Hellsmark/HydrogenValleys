@@ -32,21 +32,17 @@ library(visNetwork)
 ```{r}
 # read data
 
-<<<<<<< HEAD
-=======
+
 gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 #googlesheets4::gs4_auth()
->>>>>>> 4575853d9c792ff365564b407f3255ad82063ee0
+
 
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 df_main_raw <- read_sheet(ss, sheet = "Main")
 gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
 geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:F")
-<<<<<<< HEAD
-gs4_auth(cache = ".secrets", email = "hans91347@gmail.com")
-=======
->>>>>>> 4575853d9c792ff365564b407f3255ad82063ee0
+
 geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2) %>% unique()
 
 jobs <- df_main_raw %>% 
