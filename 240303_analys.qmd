@@ -1,0 +1,147 @@
+---
+title: "Analysis"
+format: html
+editor: visual
+---
+
+# Libraries
+```{r}
+library(tidyverse)
+library(ggthemes)
+library(tidygraph)
+library(ggraph)
+library(googlesheets4)
+library(gt)
+
+```
+
+# Data
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+df_main_raw <- read_sheet(ss, sheet = "Main")
+geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:F")
+
+df_companies <- read_sheet(ss, sheet = "CompanyAnalysis")
+
+```
+
+
+# Wrangel
+```{r}
+geo <- geo_locations_raw %>% select(-Comment) %>% rename(Location = Name2) %>% unique()
+
+jobs <- df_main_raw %>% 
+  left_join(geo, by = "Location") %>%
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%
+  filter(!is.na(Longitude)|!is.na(Latitude)) %>%
+  filter(Scrape_date >= "2023-08-20")
+
+```
+
+# Descriptives on jobs
+## Overview
+```{r}
+jobs %>% group_by(Country) %>% 
+  summarise(Jobs = n()) %>%
+  bind_rows(summarise(., Country = "Total", Jobs = sum(Jobs))) %>%
+  gt() %>%
+  gtsave("tables/countries_jobs.png")
+
+```
+
+## Companies
+```{r}
+jobs %>% group_by(Company, Country) %>% 
+  summarise(Jobs = n()) %>% 
+  arrange(desc(Jobs)) %>%
+  ungroup() %>%
+  slice_max(Jobs, n = 20) %>%
+  gt() %>% 
+  gtsave("tables/companies_countries_jobs.png")
+
+```
+
+# Bipartitie - Companies Countries
+```{r}
+
+df_gs <- jobs %>% count(Company, Country, name = "weight") %>% 
+  filter(!Company == "!!!NEW_COMPANY!!!")
+
+
+nr_jobs_comp <- jobs %>% count(Company, name = "jobs") %>% 
+  filter(!Company == "!!!NEW_COMPANY!!!") %>% rename(name = Company)
+nr_jobs_country <- jobs %>% 
+  count(Country, name = "jobs") %>% 
+  rename(name = Country)
+node_data <- bind_rows(nr_jobs_comp, nr_jobs_country)
+
+gs <- df_gs %>% as_tbl_graph(directed = FALSE) %N>%
+  mutate(type = ifelse(name %in% df_gs$Company, "actor", "country")) %>%
+  mutate(ctrl = centrality_degree()) %>%
+  left_join(node_data)
+  
+
+nodes <- gs %N>% as_tibble()
+edges <- gs %E>% as_tibble()
+
+
+```
+
+## Plot
+```{r}
+# Plotting with ggraph
+
+set.seed(123)
+ggraph(gs, layout = "stress") +
+  geom_edge_link(aes(edge_width = weight), edge_alpha =0.3, edge_color = "lightgrey", show.legend = FALSE) + # Adjust alpha or width based on MSEK_EM if needed
+  geom_node_point(aes(color = type, shape = type, size = jobs), show.legend = FALSE) +
+  geom_node_text(aes(label = ifelse(jobs >5 | ctrl >1, name, ""),
+                     size = ctrl), 
+                 repel = TRUE, hjust = 0.5, vjust = 0, show.legend = FALSE) +
+  theme_graph() +
+  scale_color_manual(values = c("actor" = "lightblue", "country" = "orange")) +
+  scale_size(range = c(2,10))+
+  scale_edge_width(range = c(2, 4))+
+  ggtitle("")
+ggsave("figs/two_mode_countries.png", dpi = 600)
+```
+
+
+# Jobs per sector
+```{r}
+
+sector <- jobs %>%
+  inner_join(df_companies %>% 
+               select(Name, Industry_Sector), by = c("Company"="Name")) %>%
+  count(Industry_Sector, Country)
+  
+
+sector %>% 
+  ggplot(aes(n, Industry_Sector, fill= Country)) + 
+  geom_col(position = "fill")+
+  theme_fivethirtyeight()+
+  scale_fill_fivethirtyeight()+
+  labs(x = "", y = "Proportion")
+ggsave("figs/sector_focus.png")
+
+```
+
+```{r}
+
+sector %>% ggplot(aes(n, Industry_Sector, fill = Country)) + 
+  geom_col() + 
+  facet_wrap(~Country, scales = "fixed") +
+  theme_fivethirtyeight()+
+  scale_fill_fivethirtyeight()
+
+ggsave("figs/sector_focus2.png", width = 14, height = 8)
+
+
+```
+
+
