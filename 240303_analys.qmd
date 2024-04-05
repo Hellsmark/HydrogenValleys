@@ -69,7 +69,8 @@ jobs %>% group_by(Company, Country) %>%
 # Bipartitie - Companies Countries
 ```{r}
 
-df_gs <- jobs %>% count(Company, Country, name = "weight") %>% 
+df_gs <- jobs %>% 
+  count(Company, Country, name = "weight") %>% 
   filter(!Company == "!!!NEW_COMPANY!!!")
 
 
