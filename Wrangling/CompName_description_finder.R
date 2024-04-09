@@ -70,7 +70,14 @@ for (i in seq_len(nrow(missingNames))) {
     missingNames$Company[i] <- match 
   }
 }
+#### DOUBLE CHECK #### 
+#The following companies have (more than once) been given to the wrong ads:
 
+#e.on (should have been Econ instead)
+#Falbygdens energi (should have been Nordion Energi)
+#KTH
+#DNV
+#Aalborg Universitet
 
 #### Data upload ####
 
