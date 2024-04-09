@@ -1,0 +1,90 @@
+---
+title: "categorise_ads"
+output: html_document
+date: "2024-03-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(reticulate)
+library(tidyverse)
+library(googlesheets4)
+```
+
+## Importing data from the google sheet
+
+```{r, include=FALSE}
+sheet <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(sheet)
+df <- main %>% filter(Scrape_date >= "2023-08-20") %>% filter(ID < 30000) %>% filter(is.na(Hydrogen_relevance))
+#filtering out the danish ads, will be removed when we have fixed so that the main-file contains the "real" description
+
+smpl_20 <- df %>% slice_sample(n = 20)
+
+```
+
+## Defining function
+
+```{python}
+from openai import OpenAI
+import os
+
+key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key = key)
+
+def ai_chat(system_behaviour, user_prompt):
+  
+  response = client.chat.completions.create(
+  model="gpt-4-0125-preview",
+  temperature = 0.9,
+  max_tokens = 1000,
+  messages=[
+      {"role": "system", "content": system_behaviour},
+      {"role": "user", "content": user_prompt}
+      ]
+      )
+  return(response.choices[0].message.content)
+
+```
+
+## Running the function
+
+```{r}
+sys_beh <- c('You are a helpful assistant that classifies different job ads as "Yes" or "No" depending on if the job described in the ad is related to hydrogen or not. The ad should be classified as "Yes" if it for example states that the position involves usage or production of hydrogen. It is also a "Yes" if the position is related to manufacturing parts that are used in production/usage of hydrogen or if the position involves working in projects related to hydrogen. The ad should be classified "No" if the position has nothing to do with hydrogen. The word ‘hydrogen’ or its variations will appear in all ads, but be cautious it might be used as a buzzword.')
+
+#You are an assistant tasked with classifying job ads as either ‘Yes’ or ‘No’ based on their relevance to hydrogen. The word ‘hydrogen’ or its variations will appear in all ads, but be cautious—it might be used as a buzzword. Here are the guidelines:
+
+#Classify as ‘Yes’ if the job is directly related to hydrogen. For example if it involves producing or consuming hydrogen, relates to developing, researching, or manufacturing machines or components specifically designed for hydrogen production or utilization or if it provides services or goods relevant to the hydrogen economy.
+
+#Also classify as ‘Yes’ if the job involves working on projects where some are related to hydrogen.
+
+#Classify as ‘No’ if the job has no connection to hydrogen.
+
+#You are a helpful assistant that classifies different job ads as "Yes" or "No" depending on if the job described in the ad has anything to do with hydrogen or not. The word hydrogen or some form/translation of it will be found in all ads so do not let that fool you, in some cases it is only used as a buzzword. Also provide a short explaination to why you classified it as you did, please.
+
+#You should classify the ad as "Yes" if the job is related to hydrogen, this could for example be if the job is related to producing or consuming hydrogen, if it is related to developing/researching or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input or if the job is related to providing services or goods which can be relevant to the hydrogen economy. You should also classify the ad as "Yes" if the job is related to working in projects where some of the projects are related to hydrogen. If the job has nothing to do with hydrogen you should classify it as "No".
+
+
+result1 <- data.frame(id = numeric(), h2 = character())
+
+for (row in 1:nrow(sampl_10)) {
+  prompt <- paste("Please classify this job ad:",sampl_10$Description[row])
+  ans <- py$ai_chat(sys_beh, prompt)
+  result1 <- rbind(result, data.frame(id = sampl_10$ID[row], h2 = ans))
+}
+
+```
+
+## Saving the result
+
+```{r}
+# Update the 'ID' and 'Hydrogen_relevance' columns in the 'Main' worksheet
+main <- main %>%
+  mutate(Hydrogen_relevance = ifelse(ID %in% result$id, result$h2[match(ID, result$id)], Hydrogen_relevance))
+
+# Write the updated dataframe back to the 'Main' worksheet
+write_sheet(main, ss = sheet, sheet = "Main")
+
+```
