@@ -138,9 +138,50 @@ split_string <- function(x) {
 
 # Apply the function to dataframe
 new_dk[c("all_text1", "all_text2", "all_text3")] <- t(apply(new_dk["all_text"], 1, split_string))
+
+# Make a short_text column with "cleaned" text
+remove_lines_with_pattern <- function(text, pattern) {
+  # Pattern to match an entire line containing the specified pattern
+  line_pattern <- paste0(".*", pattern, ".*\n?")
+  str_replace_all(text, line_pattern, "")
+}
+
+pattern <-c("Cookiebot|DOMAINS|HTTP|www|/privacy|HTML|Thumbnails|Zoom|Cookie|cookie|ID|CONSENT|Samtykke|domains|consent|window|button|Expiry|SessionType:|/\|\\{|\\}")
+
+
+ddk <- new_dk %>% 
+  select(IDcol, all_text) %>%
+  mutate(nr_breaks = str_count(all_text, pattern = "\n")) %>%
+  mutate(nr_dots = str_count(all_text, pattern = "\\.")) %>%
+  mutate(all_text_chr = str_length(all_text))
+
+ddk_clean_breaks <- ddk %>%
+  mutate(clean_breaks = map_chr(all_text, ~remove_lines_with_pattern(., pattern), .progress = T)) %>%
+  mutate(clean_chr = str_length(clean_breaks))
+
+df_short <- ddk_clean_breaks %>% select(IDcol, short_text = clean_breaks) %>% unique() 
+
+dk_short <- new_dk %>% 
+  left_join(df_short) %>%
+  mutate(all_text_chr = str_length(all_text),
+         short_text_chr = str_length(short_text)) 
+
+
+new_dk$short_text <- dk_short$short_text
+
+# Remove all_text
 new_dk <- subset(new_dk, select = -all_text )
 
-new_for_clean_dk <- new_dk %>% select(IDcol,title,company,location,text,id)
+#
+new_for_clean_dk <- new_dk %>% select(IDcol,title,company,location,short_text,id)
+
+# Before the text is added we must check if any string still is too long - if so it cannot be uploaded 
+for (i in seq_len(nrow(dk_short))) {
+  if (dk_short$short_text_chr[i] > 50000) {
+    new_dk$short_text[i] <- "UNSHORTABLE"
+    new_for_clean_dk$short_text[i] <- paste("UNSHORTABLE -", new_dk$text[i], sep=" ")
+  }
+}
 
 # We want the date for the scrape to be in year-month-day
 
