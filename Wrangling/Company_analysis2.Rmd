@@ -1,0 +1,126 @@
+---
+title: "Company_analysis_2"
+author: "Viktor"
+date: "2024-03-27"
+output: html_document
+---
+
+## Introduction
+test_viktor 
+
+## Initiation - Delete python?
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+
+```
+### R-libraries
+```{r, include = FALSE}
+library(googlesheets4)
+library(dplyr)
+```
+### Python packages 
+```{python}
+from openai import OpenAI
+import os
+import pandas as pd
+import ast
+
+app_key = os.environ.get("OPENAI_API_KEY")
+
+df = pd.DataFrame()
+```
+
+## Google get
+```{r}
+gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
+
+sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
+
+CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
+
+hydro <- CompanyAnalysis %>% select(Name,Hydrogen_relevance) %>% slice(-1)
+
+to_upload <- data.frame()
+```
+
+
+## Function
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def relevance(text):
+  example = "[['Company1','Yes','They produce electrolysers which are used to produce hydrogen'],['CompanyB','No','This is a municipality, they do not work with hydrogen'],['CompanyC','Yes','They have a project where they produce e-methanol by using hydrogen as one of their inputs']]"
+  content = "You are a helpful assistent that when provided a list of names of organisations finds out whether they are related to the hydrogen economy in the nordics or not. This can be either 'Yes' (if the organisations works with either directly producing or consuming hydrogen in their business, or the organisation either develops/research or manufacture either machines or components specifically made to be used to either produce or make use of hydrogen as input or if the organisation provides services or goods which could be relevant for the hydrogen economy or the general use of hydrogen, even if hydrogen is in no way their main focus), or 'No' (if the organisation has no service related to hydrogen, or the relation to the hydrogen economy is unclear). You choose the category which you find to be most fitting. You respond with one out of the two categories as well as a short motivation of why the company is cathegorised as hydrogen relevant or not. Your response should be in the form of a python list where each company has its own list with the Yes/No answer as one item in the list and the motivation as a second item in the list. Start each companylist with the name of the company. Do not add any text or characters outside of the list and it should be able to be read as a python list. Here is an example: "+example
+  prompt = f"Classify the following companies: '{text}'"
+  
+  response = client.chat.completions.create(
+    model="gpt-4-0125-preview",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=4096,
+    temperature=0.5
+  )
+  return response.choices[0].message.content.strip()
+```
+
+# Running and sorting
+```{python}
+df = r['hydro']
+companies = list(df['Name'])
+comp1 = str(companies[0:50])
+comp2 = str(companies[50:100])
+comp3 = str(companies[100:150])
+comp4 = str(companies[150:200])
+comp5 = str(companies[200:250])
+comp6 = str(companies[250:300])
+
+result1 = relevance(comp1)
+result2 = relevance(comp2)
+result3 = relevance(comp3)
+result4 = relevance(comp4)
+result5 = relevance(comp5)
+result6 = relevance(comp6)
+
+------
+print(result6)
+
+list_of_lists_1 = ast.literal_eval(result1)
+list_of_lists_2 = ast.literal_eval(result2)
+list_of_lists_3 = ast.literal_eval(result3)
+list_of_lists_4 = ast.literal_eval(result4)
+list_of_lists_5 = ast.literal_eval(result5)
+list_of_lists_6 = ast.literal_eval(result6)
+
+list_of_lists_5 = [['Prevas', 'Yes', 'They offer solutions for industrial IT and automation, which can include projects related to the hydrogen economy.'],['PRO&CO', 'No', 'The relation to the hydrogen economy is unclear as they primarily focus on recruitment and consulting without a clear link to hydrogen.'],['Prysmian Group', 'Yes', 'They manufacture cables and systems for energy and telecommunications, which can include solutions for the hydrogen economy in terms of infrastructure.'],['PurCity', 'Yes', 'They focus on improving air quality and could potentially be involved in projects that relate to hydrogen as a clean energy source.'],['PwC', 'Yes', 'As a global consultancy, they offer services that could include advising on the hydrogen economy, sustainability, and energy transition projects.'],['PWS', 'No', 'The relation to the hydrogen economy is unclear without specific information on their involvement in hydrogen-related projects.'],['Rabbalshede Kraft', 'Yes', 'They are involved in renewable energy which could include hydrogen production through electrolysis powered by renewable sources.'],['Ramboll', 'Yes', 'As an engineering, design, and consultancy company, they work on projects that can include the development of hydrogen infrastructure.'],['RDT Engineers', 'No', 'Without clear information on their involvement in hydrogen-related projects, their relation to the hydrogen economy is unclear.'],['Regaco', 'No', 'The relation to the hydrogen economy is unclear without specific information on their involvement in hydrogen-related projects.'],['Regeringskansliet', 'No', 'This is the government offices of Sweden, and while they may influence policy related to hydrogen, they do not directly work with hydrogen.'],['Region Gotland', 'No', 'As a regional authority, their direct involvement in the hydrogen economy is not clear unless they have specific projects related to hydrogen.'],['Region Västernorrland', 'No', 'As a regional authority, their direct involvement in the hydrogen economy is not clear unless they have specific projects related to hydrogen.'],['Region Örebro Län', 'No', 'As a regional authority, their direct involvement in the hydrogen economy is not clear unless they have specific projects related to hydrogen.'],['Rekryteringsföretag', 'No', 'This term refers to recruitment companies in general, which would not directly work with hydrogen unless specifically focused on that sector.'],['RES', 'Yes', 'They focus on renewable energy solutions which could include hydrogen production or projects related to the hydrogen economy.'],['RISE', 'Yes', 'As a research institute, they engage in various projects, including those related to energy technologies and potentially hydrogen.'],['RiskPoint', 'No', 'As an insurance provider, their direct involvement in the hydrogen economy is not clear unless they offer products specifically for hydrogen projects.'],['RWE', 'Yes', 'As an energy company, they are involved in power generation, including renewable energy sources that can be linked to hydrogen production.'],['Sandvik', 'Yes', 'They produce materials technology that can be relevant for hydrogen production and storage solutions.'],['Scatec', 'Yes', 'They are a renewable energy company, which may include involvement in hydrogen production or projects.'],['Schibsted', 'No', 'A media group´s involvement in the hydrogen economy is not clear unless they have specific projects or publications related to hydrogen.'],['Schneider Electric', 'Yes', 'They provide energy management and automation solutions, which can include technology for the hydrogen economy.'],['Selfa Arctic', 'No', 'Without specific information on their involvement in hydrogen-related projects, their relation to the hydrogen economy is unclear.'],['Semco Maritime', 'Yes', 'They provide engineering solutions to the energy sector, which can include projects related to hydrogen.'],['Shell', 'Yes', 'As a global energy company, they are involved in various aspects of the hydrogen economy, including production and distribution.'],['SICK', 'Yes', 'They provide sensors and solutions for industrial applications, which can include monitoring and control systems for hydrogen production and use.'],['Siemens Energy', 'Yes', 'They are involved in energy technology, including solutions for the production, storage, and utilization of hydrogen.'],['Sigma', 'No', 'The relation to the hydrogen economy is unclear without specific information on their involvement in hydrogen-related projects.'],['SINTEF', 'Yes', 'As one of Europe’s largest independent research organizations, they conduct research in technology, natural sciences, and social sciences, which likely includes hydrogen-related projects.'],['Sjællandske Medier', 'No', 'As a media company, their involvement in the hydrogen economy is not direct unless they have specific projects related to hydrogen.'],['Skellefteå Kraft', 'Yes', 'They are involved in energy production, including renewable energy sources that can be linked to hydrogen production or use.'],['Skyborn', 'No', 'Without specific information on their involvement in hydrogen-related projects, their relation to the hydrogen economy is unclear.'],['SLB', 'Yes', 'As a leading provider of technology and services to the energy industry, they may be involved in projects related to hydrogen production or utilization.'],['SLU', 'No', 'As a university focused on agricultural sciences and related fields, their direct involvement in the hydrogen economy is not clear unless they have specific research projects related to hydrogen.'],['Small Step Media', 'No', 'As a media company, their involvement in the hydrogen economy is not direct unless they have specific projects related to hydrogen.'],['Soft & Teknik', 'No', 'The relation to the hydrogen economy is unclear without specific information on their involvement in hydrogen-related projects.'],['Sogn og Fjordane Energi', 'Yes', 'They are involved in energy production, which could include renewable energy sources linked to hydrogen production or use.'],['Spectro Inlets', 'Yes', 'They produce electrochemical sensors, which could be used in monitoring hydrogen production or storage.'],['St. Jørgen Holding', 'No', 'Without specific information on their involvement in hydrogen-related projects, their relation to the hydrogen economy is unclear.'],['Standard Norge', 'No', 'As a standards organization, their direct involvement in the hydrogen economy is not clear unless they develop standards specifically for hydrogen technologies.'],['Statkraft', 'Yes', 'As Europe’s largest generator of renewable energy, they may be involved in hydrogen production or projects related to the hydrogen economy.'],['Stiesdal', 'Yes', 'They are involved in developing technologies for the renewable energy sector, which could include hydrogen-related technologies.'],['Stixon', 'No', 'The relation to the hydrogen economy is unclear without specific information on their involvement in hydrogen-related projects.'],['Strandmøllen', 'Yes', 'They produce and supply gases, including hydrogen, for various applications.'],['STRYVO', 'No', 'Without specific information on their involvement in hydrogen-related projects, their relation to the hydrogen economy is unclear.'],['SulfiLogger', 'No', 'Without specific information on their involvement in hydrogen-related projects, their relation to the hydrogen economy is unclear.'],['Svenska Rotor Maskiner', 'Yes', 'They specialize in rotary machines, which could include technology relevant to hydrogen production or compression.'],['Svevind', 'Yes', 'They develop wind power projects, which could include the production of green hydrogen through electrolysis.'],['Swagelok', 'Yes', 'They provide fluid system products, assemblies, and services, which can include solutions for hydrogen storage and distribution.']]
+
+list_of_lists_6 = [['Sweco', 'Yes', 'Provides engineering consultancy services that could include projects related to the hydrogen economy.'],['Swerim', 'Yes', 'Involved in research and development in materials technology, potentially including those relevant to hydrogen production or usage.'],['Syddansk Universitet', 'Yes', 'Conducts research that could encompass hydrogen technology or its applications.'],['Södra skogsägarna', 'No', 'Primarily a forest owners´ cooperative focusing on wood and forestry products, not directly linked to the hydrogen economy.'],['TechnipFMC', 'Yes', 'Provides technology and services to the energy sector, potentially including hydrogen production and infrastructure.'],['Techouse', 'Yes', 'Specializes in technology solutions possibly including those for the hydrogen economy.'],['Tekniska verken i Linköping', 'Yes', 'Involved in energy and environmental technology, which may include hydrogen-related activities.'],['Topsoe', 'Yes', 'Specializes in catalysts and surface science, including technologies for producing hydrogen.'],['TRBC', 'No', 'The relationship to the hydrogen economy is unclear without further context on what TRBC refers to.'],['Trelleborgs Energi', 'Yes', 'A utility company that could be involved in energy projects including hydrogen.'],['Trøndelag fylkeskommune', 'Yes', 'Regional government likely involved in infrastructure projects, potentially including those related to hydrogen.'],['TSG', 'No', 'The relationship to the hydrogen economy is unclear without further context on what TSG refers to.'],['UAC', 'No', 'The relationship to the hydrogen economy is unclear without further context on what UAC refers to.'],['UCH', 'No', 'The relationship to the hydrogen economy is unclear without further context on what UCH refers to.'],['Umeå universitet', 'Yes', 'Conducts research that could include hydrogen technology or applications.'],['Uniper', 'Yes', 'An energy company that is likely involved in hydrogen projects or energy transition initiatives.'],['Unisense', 'Yes', 'Specializes in sensors and measurement tools, which could be used in hydrogen production or application contexts.'],['Universitetet i Bergen', 'Yes', 'Conducts research that may include hydrogen technology or its applications.'],['Universitetet i Oslo', 'Yes', 'Conducts research, potentially including hydrogen and related technologies.'],['Universitetet i Stavanger', 'Yes', 'Conducts research, potentially including hydrogen and related technologies.'],['University of Copenhagen', 'Yes', 'Conducts research that may include hydrogen technology or its applications.'],['Uppsala universitet', 'Yes', 'Conducts research, potentially including hydrogen and related technologies.'],['Vattenfall', 'Yes', 'An energy company likely involved in hydrogen production, storage, or utilization projects.'],['Vestland fylkeskommune', 'Yes', 'Regional government likely involved in infrastructure projects, potentially including those related to hydrogen.'],['Viken Hydrogen', 'Yes', 'The name suggests involvement in the hydrogen sector, likely focusing on hydrogen production or infrastructure.'],['Volvo', 'Yes', 'Involved in manufacturing vehicles, including potential development of hydrogen fuel cell vehicles.'],['Västra Götalandsregionen', 'Yes', 'Regional government that could be involved in supporting hydrogen economy initiatives.'],['Welltec', 'No', 'Primarily provides technology and services for the oil and gas industry, unclear direct involvement with hydrogen.'],['Wood', 'Yes', 'Provides consulting and engineering services, potentially including projects related to the hydrogen economy.'],['Worley', 'Yes', 'Provides professional services to the energy, chemicals, and resources sectors, potentially including hydrogen.'],['WSP', 'Yes', 'Provides engineering and professional services that could include hydrogen economy projects.'],['Yara', 'Yes', 'Involved in agriculture, but also in energy solutions including hydrogen for clean ammonia production.'],['ZEG', 'Yes', 'The name suggests involvement in the zero-emission or hydrogen sector.'],['Å Energi', 'Yes', 'An energy company that could be involved in renewable energy projects, including hydrogen.'],['Ørsted', 'Yes', 'Focuses on renewable energy, including wind power which can be linked to hydrogen production through electrolysis.']]
+
+total = list_of_lists_1+list_of_lists_2+list_of_lists_3+list_of_lists_4+list_of_lists_5+list_of_lists_6
+
+print(total)
+
+dfffff = pd.DataFrame(total, columns=['Name', 'Hydrogen_relevance', 'Hydrogen_relevance_motivation'])
+
+r['to_upload'] = dfffff
+````
+
+```{python}
+df_result_py1 = pd.DataFrame(list_of_lists_py, columns=['Name', 'Hydrogen_relevance'])
+```
+
+```{r}
+q <- hydro
+new_df <- new_df %>% select(Name,Hydrogen_relevance) %>% cbind( hydro_rel3 = py$dfffff$Hydrogen_relevance)
+
+hyrdoye <- new_df %>% filter(Hydrogen_relevance == 'Yes')
+hydronye2 <- new_df %>% filter(hydro_rel3 == 'Yes')
+
+write_sheet(to_upload, ss = sheet, sheet = "test_viktor")
+
+```
+
+

@@ -131,5 +131,6 @@ CompanyAnalysis2 <- merged_df %>%
 ```
 ## Upload to google
 ```{r}
-write_sheet(CompanyAnalysis2, ss = sheet, sheet = "CompanyAnalysis")
+#write_sheet(CompanyAnalysis2, ss = sheet, sheet = "CompanyAnalysis")
+#May consider using sheet_append
 ```
