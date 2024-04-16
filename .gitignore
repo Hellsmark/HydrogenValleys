@@ -3,7 +3,5 @@
 .RData
 .Ruserdata
 .secrets
-<<<<<<< HEAD
 /rsconnect
-=======
->>>>>>> a0fc2d83498f3e0058a14c581f8554d3ead17683
+/temp_files
