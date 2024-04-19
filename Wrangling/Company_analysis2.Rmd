@@ -45,7 +45,7 @@ to_upload <- data.frame()
 ```
 
 
-## Function
+## Function for hydrogen relevance
 ```{python}
 app_key = os.environ.get("OPENAI_API_KEY")
 client = OpenAI(api_key=app_key)
@@ -67,7 +67,7 @@ def relevance(text):
   return response.choices[0].message.content.strip()
 ```
 
-# Running and sorting
+## Running and sorting
 ```{python}
 df = r['hydro']
 companies = list(df['Name'])
@@ -124,3 +124,74 @@ write_sheet(to_upload, ss = sheet, sheet = "test_viktor")
 ```
 
 
+
+
+## Function for company description
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def description(text):
+  example = "[['Company_A','Short description'],['CompanyB','Short description'],['CompanyC','Short description']]"
+  content = "You are a helpful assistent that when provided a list of names of organisations. You respond with a short description, two scentences (no more, no less), about the organisation and what they do. Your response should be in the form of a python list where each company has its own list with the description as an item in the list. Start each companylist with the name of the company. Do not add any text or characters outside of the list and it should be able to be read as a python list. Here is an example: "+example
+  prompt = f"Describe the following companies: '{text}'"
+  
+  response = client.chat.completions.create(
+    model="gpt-4-0125-preview",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=4096,
+    temperature=0.5
+  )
+  return response.choices[0].message.content.strip()
+```
+
+````{python}
+df = r['hydro']
+companies = list(df['Name'])
+comp1 = str(companies[0:50])
+comp2 = str(companies[50:100])
+comp3 = str(companies[100:150])
+comp4 = str(companies[150:200])
+comp5 = str(companies[200:250])
+comp6 = str(companies[250:300])
+
+result1 = description(comp1)
+result2 = description(comp2)
+result3 = description(comp3)
+result4 = description(comp4)
+result5 = description(comp5)
+result6 = description(comp6)
+
+------
+print(result6)
+
+list_of_lists_1 = ast.literal_eval(result1)
+list_of_lists_2 = ast.literal_eval(result2)
+list_of_lists_3 = ast.literal_eval(result3)
+list_of_lists_4 = ast.literal_eval(result4)
+list_of_lists_5 = ast.literal_eval(result5)
+list_of_lists_6 = ast.literal_eval(result6)
+
+list_of_lists_5 = [['Prevas', 'Prevas is a Swedish IT and engineering company providing solutions for product development, embedded systems, and industrial IT.'],['PRO&CO', 'PRO&CO is a Danish recruitment agency specializing in matching candidates with companies in engineering, construction, and technology sectors.'],['Prysmian Group', 'Prysmian Group is a global leader in the energy and telecom cable systems industry, offering a wide range of products and services.'],['PurCity', 'PurCity is a Danish company focused on improving air quality through innovative solutions for capturing and converting air pollution into usable products.'],['PwC', 'PwC (PricewaterhouseCoopers) is a global network of firms delivering world-class assurance, tax, and consulting services for businesses.'],['PWS', 'PWS is a company that specializes in water treatment solutions, offering services and technologies to improve water quality and sustainability.'],['Rabbalshede Kraft', 'Rabbalshede Kraft is a Swedish company involved in the development, construction, and operation of wind farms for renewable energy production.'],['Ramboll', 'Ramboll is a global engineering, architecture, and consultancy company based in Denmark, focusing on sustainable solutions.'],['RDT Engineers', 'RDT Engineers is a company offering engineering services and solutions across various industries, including aerospace, automotive, and energy.'],['Regaco', 'Regaco is a company specializing in regulatory compliance and quality assurance services for the healthcare and pharmaceutical industries.'],['Regeringskansliet', 'Regeringskansliet refers to the Government Offices of Sweden, responsible for implementing political decisions and coordinating the work of the government.'],['Region Gotland', 'Region Gotland is the local government authority for Gotland, Sweden, responsible for regional development, education, and healthcare services.'],['Region Västernorrland', 'Region Västernorrland is a county council in Sweden, providing healthcare, public transport, and regional development.'],['Region Örebro Län', 'Region Örebro Län is a regional council in Sweden, responsible for healthcare, dental care, and regional growth and development.'],['Rekryteringsföretag', 'Rekryteringsföretag refers to recruitment companies in general, specializing in sourcing and placing candidates in various industries.'],['RES', 'RES is a global renewable energy company, focusing on the development, construction, and operation of wind, solar, and storage projects.'],['RISE', 'RISE (Research Institutes of Sweden) is a Swedish research institute collaborating with academia, industry, and society towards innovation and sustainable solutions.'],['RiskPoint', 'RiskPoint is an insurance company offering specialized risk management solutions and insurance products to businesses and professionals.'],['RWE', 'RWE is one of the  leading renewable energy companies in the world, focusing on wind and solar power, as well as energy storage technologies.'],['Sandvik', 'Sandvik is a high-technology, engineering group with advanced products and services in metal cutting, mining, and construction industries.'],['Scatec', 'Scatec is a Norwegian renewable energy company specializing in solar power, developing, building, and operating solar plants worldwide.'],['Schibsted', 'Schibsted is a Norwegian media group operating in digital media, marketplaces, and newspapers in Scandinavia and internationally.'],['Schneider Electric', 'Schneider Electric is a global company specializing in energy management and automation solutions, for efficiency and sustainability.'],['Selfa Arctic', 'Selfa Arctic is a Norwegian company specializing in the construction of electric fishing boats, promoting sustainable marine operations.'],['Semco Maritime', 'Semco Maritime is an international engineering and contracting company specializing in projects in the energy sector, including oil, gas, and wind power.'],['Shell', 'Shell is a global group of energy and petrochemical companies, focusing on oil and gas exploration, production, and refining.'],['SICK', 'SICK is a German-based global manufacturer of sensors and sensor solutions for industrial automation applications.'],['Siemens Energy', 'Siemens Energy is a global energy company focusing on technology and services for the energy sector, including power generation and transmission.'],['Sigma', 'Sigma is a Swedish-based consultancy group offering technology and management solutions across various sectors, including IT and engineering.'],['SINTEF', 'SINTEF is one of Europe’s largest independent research organizations, based in Norway, focusing on technology, natural sciences, and social sciences.'],['Sjællandske Medier', 'Sjællandske Medier is a Danish media company operating newspapers and digital media platforms primarily in the Zealand region.'],['Skellefteå Kraft', 'Skellefteå Kraft is a Swedish municipal energy company focusing on producing and distributing electricity from renewable sources.'],['Skyborn', 'Skyborn is a company that provides advanced technology solutions and services, though specific details and industry focus are not widely publicized.'],['SLB', 'SLB (formerly Schlumberger) is a leading provider of technology and services to the global energy industry, focusing on oilfield services and equipment.'],['SLU', 'SLU (Swedish University of Agricultural Sciences) specializes in education and research for sustainable land, forest, and water management.'],['Small Step Media', 'Small Step Media is a digital marketing and advertising agency, offering creative solutions to enhance online presence and engagement.'],['Soft & Teknik', 'Soft & Teknik is likely a company focused on software and technology solutions, though specific details about its operations are not widely known.'],['Sogn og Fjordane Energi', 'Sogn og Fjordane Energi is a Norwegian energy company focusing on the production and distribution of renewable energy, primarily hydroelectric power.'],['Spectro Inlets', 'Spectro Inlets is a technology company specializing in electrochemical sensors and analysis equipment for research and industrial applications.'],['St. Jørgen Holding', 'St. Jørgen Holding is a holding company involved in various investments, though specific details about its focus and portfolio are not widely known.'],['Standard Norge', 'Standard Norge is the Norwegian standards organization responsible for developing and publishing standards in various sectors.'],['Statkraft', 'Statkraft is a leading company in hydropower internationally and Europe’s largest generator of renewable energy, focusing on hydro, wind, and solar power.'],['Stiesdal', 'Stiesdal is a Danish company focused on developing innovative technologies for the renewable energy sector, including wind power and carbon capture.'],['Stixon', 'Stixon is a company that seems to specialize in technology or products, though specific details about its operations are not widely known.'],['Strandmøllen', 'Strandmøllen is a Danish company specializing in the production and supply of gases for industrial and medical use.'],['STRYVO', 'STRYVO is a company that offers engineering and manufacturing services, likely within the metalworking and machinery sectors.'],['SulfiLogger', 'SulfiLogger is a company specializing in sensor technology for detecting hydrogen sulfide in various applications, including wastewater treatment.'],['Svenska Rotor Maskiner', 'Svenska Rotor Maskiner (SRM) is a Swedish company specializing in rotor machines, including compressors and expanders for various industrial applications.'],['Svevind', 'Svevind is a Swedish company focusing on the development, planning, and operation of large-scale wind power projects.'],['Swagelok', 'Swagelok is a global provider of fluid system solutions, including products, assemblies, and services for multiple industries.']]
+
+list_of_lists_6 = [['Sweco', 'Sweco is an engineering and architecture company offering project design and consulting services for construction projects. They focus on sustainable building design, urban planning, and environmental engineering.'],['Swerim', 'Swerim is a research institute specializing in metals research, focusing on improving metal production processes and developing new metal-based materials.'],['Syddansk Universitet', 'Syddansk Universitet, or University of Southern Denmark, offers a wide range of undergraduate and graduate programs, with a strong focus on research and interdisciplinary studies.'],['Södra skogsägarna', 'Södra skogsägarna is a cooperative of forest owners in Sweden that provides its members with forestry services and processes wood into various products.'],['TechnipFMC', 'TechnipFMC is a global leader in oil and gas projects, technologies, systems, and services, offering solutions for subsea, onshore/offshore, and surface projects.'],['Techouse', 'Techouse provides technology solutions and services for the processing and management of waste and water, focusing on environmental and energy efficiency.'],['Tekniska verken i Linköping', 'Tekniska verken i Linköping is a utility company in Sweden, providing services in electricity, heating, water, broadband, and waste management.'],['Topsoe', 'Topsoe is a global leader in catalysis and surface science, specializing in the production of catalysts and technologies for the chemical and refining industries.'],['TRBC', 'TRBC, or Thomson Reuters Business Classification, provides detailed and comprehensive industry classification of global companies for financial analysis.'],['Trelleborgs Energi', 'Trelleborgs Energi is a local utility company in Trelleborg, Sweden, offering services in electricity, district heating, water, and broadband.'],['Trøndelag fylkeskommune', 'Trøndelag fylkeskommune is the county municipality of Trøndelag, Norway, responsible for regional development, education, public transport, and cultural affairs.'],['TSG', 'TSG offers solutions and services for fuel retail and mobility, including installation, maintenance, and management of energy distribution infrastructures.'],['UAC', 'UAC is a global provider of aerospace and defense products, specializing in the design, manufacture, and support of composite structural components.'],['UCH', 'NO DESCRIPTION - SCHOOL IN DENMARK.'],['Umeå universitet', 'Umeå universitet, or Umeå University, is a Swedish university known for its research in medicine, biosciences, and environmental science, offering a wide range of academic disciplines.'],['Uniper', 'Uniper is an international energy company providing electricity, gas, and heat, focusing on secure energy supply and transitioning to a sustainable energy future.'],['Unisense', 'Unisense is a manufacturer of microsensors and instrumentation for microscale measurement, catering to research within environmental sciences, biotechnology, and medicine.'],['Universitetet i Bergen', 'Universitetet i Bergen, or the University of Bergen, is a research university in Norway, known for its strong marine and environmental research programs.'],['Universitetet i Oslo', 'Universitetet i Oslo, or the University of Oslo, is the oldest university in Norway, offering a wide range of academic disciplines and known for its research contributions.'],['Universitetet i Stavanger', 'Universitetet i Stavanger, or the University of Stavanger, is a Norwegian university focusing on science and technology, social sciences, and arts and education.'],['University of Copenhagen', 'The University of Copenhagen is one of the largest institutions of research and education in Denmark, known for its comprehensive range of disciplines.'],['Uppsala universitet', 'Uppsala universitet, or Uppsala University, is a prestigious university in Sweden, known for its research in science and humanities as well as a rich historical heritage.'],['Vattenfall', 'Vattenfall is one of the largest producers of electricity and heat in Europe, focusing on generating power from renewable sources.'],['Vestland fylkeskommune', 'Vestland fylkeskommune is the county municipality of Vestland, Norway, responsible for regional development, including education, transportation, and economic development.'],['Viken Hydrogen', 'Viken Hydrogen is focused on developing hydrogen production facilities and infrastructure, aiming to accelerate the transition to clean energy in the Viken region.'],['Volvo', 'Volvo is a leading global manufacturer of trucks, buses, construction equipment, and marine and industrial engines, with a focus on innovative and sustainable solutions.'],['Västra Götalandsregionen', 'Västra Götalandsregionen is a county council in Sweden, responsible for healthcare, public transport, and regional development in the Västra Götaland region.'],['Welltec', 'Welltec develops and provides well technology and solutions for the oil and gas industry, focusing on increasing the efficiency and recovery rate of existing wells.'],['Wood', 'Wood is a global leader in consulting and engineering across energy and the built environment, aiming to unlock solutions to critical challenges in water, infrastructure, and environmental projects.'],['Worley', 'Worley is a global provider of professional project and asset services in the energy, chemicals, and resources sectors, focusing on delivering sustainable solutions.'],['WSP', 'WSP is one of the leading engineering professional services firms in the world, providing management and consultancy services to the built and natural environment.'],['Yara', 'Yara is a global leader in agricultural products and environmental solutions, focusing on the efficient use of resources to produce food and improve sustainability.'],['ZEG', 'ZEG specializes in zero-emission energy solutions, focusing on hydrogen production and related technologies to support clean energy transitions.'],['Å Energi', 'Å Energi is a Norwegian company involved in hydroelectric power production, focusing on renewable energy sources to provide clean electricity.'],['Ørsted', 'Ørsted is a multinational power company specializing in renewable energy, particularly offshore wind farms, aiming to create a world that runs entirely on green energy.']]
+
+total = list_of_lists_1+list_of_lists_2+list_of_lists_3+list_of_lists_4+list_of_lists_5+list_of_lists_6
+
+print(total)
+
+dfffff = pd.DataFrame(total, columns=['Name', 'Description'])
+
+r['to_upload'] = dfffff
+````
+
+
+```{r}
+
+
+write_sheet(to_upload, ss = sheet, sheet = "test_viktor")
+
+```
