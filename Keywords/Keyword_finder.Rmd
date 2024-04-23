@@ -13,7 +13,13 @@ library(reticulate)
 ### R-libraries
 ```{r, include = FALSE}
 library(googlesheets4)
+library(tidytext)
+library(ggplot2)
+library(forcats)
 library(dplyr)
+library(quanteda)
+library(tm)
+library(stringr)
 ```
 ### Python packages - Delete?
 ```{python}
@@ -32,6 +38,198 @@ gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www
 sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
 
 CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
+Main <- read_sheet(sheet, "Main")
 ```
 
-## Categoriser-function
+## Investigate and choose sector
+```{r}
+companies_hydro <- CompanyAnalysis %>% select(Name,Industry_Sector,Hydrogen_relevance) %>% filter(Hydrogen_relevance == "Yes")
+
+sectors <- companies_hydro %>% select(Industry_Sector) %>% table()
+
+Hydrogen_technology_manufacturer <- companies_hydro %>% filter(Industry_Sector == "Hydrogen technology manufacturer") %>% select(Name)
+
+
+chosen_companies <- Hydrogen_technology_manufacturer
+```
+
+## Get add descriptions of chosen companies
+```{r}
+chosen_ads <- data_frame()
+# Make dataframe with all english translations of ad, only Swedish and Norwegian
+all_ads <- Main %>% filter(ID<30000) %>% select(ID,Company,translatedText) 
+
+# Loop for gathering add descriptions
+for (i in seq_len(nrow(chosen_companies))){
+  company <- chosen_companies$Name[i]
+  new_ads <- all_ads %>% filter(Company == company) %>% select(ID,translatedText)
+  chosen_ads <- rbind(chosen_ads,new_ads)
+}
+```
+
+## Finding keywords
+### From Elin
+```{r}
+#calculating the frequency of the words used in the ads
+words <- chosen_ads %>% unnest_tokens(word,translatedText) %>% count(ID,word, sort = TRUE)
+#Calculating the total number of words used by companies in their ads 
+total_words <- words %>% group_by(ID) %>% summarize(total = sum(n))
+#joining to one tibble
+words <- as_tibble(left_join(words, total_words))
+
+#calculating the tf-idf and arranging the table so that the words with high tf-idf
+#are at the top
+ad_tf_idf <- words %>%
+  bind_tf_idf(word, ID, n) %>%
+  select(-total) %>%
+  arrange(desc(tf_idf))
+
+#plotting the words with the highest tf-idf
+ad_tf_idf %>%
+  group_by(ID) %>%
+  slice_max(tf_idf, n = 15) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = ID)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ID, ncol = 2, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+
+#adding tank and term frequency
+freq_by_rank <- words %>% 
+  group_by(ID) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+#calculating the exponent of the power law for the middle section
+rank_subset <- freq_by_rank %>% filter(rank < 100, rank > 10)
+```
+### New finding
+#### First try
+```{r}
+# Convert text to lowercase and remove punctuation
+df <- chosen_ads
+colnames(df) <- c("ID","Text")
+df$Text <- tolower(df$Text)
+df$Text <- gsub("[[:punct:]]", "", df$Text)
+
+# Define custom stopwords
+custom_stopwords <- c("will","work","good","nel","zeg","friday","company","working","position","ability","within")
+# Add custom stopwords to the default English stopwords
+custom_stopwords <- c(stopwords("en"), custom_stopwords)
+
+# Tokenization
+corpus <- Corpus(VectorSource(df$Text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, custom_stopwords)
+
+# Stemming - does not work very well
+#corpus <- tm_map(corpus, stemDocument)
+
+# Create Document Term Matrix
+dtm <- DocumentTermMatrix(corpus)
+
+# Convert DTM to dataframe
+dtm_df <- as.data.frame(as.matrix(dtm))
+colnames(dtm_df) <- make.names(colnames(dtm_df))
+
+# Calculate word frequencies
+word_freq <- colSums(dtm_df)
+
+# Sort words by frequency
+sorted_words <- sort(word_freq, decreasing = TRUE)
+
+# Extract top keywords (e.g., top 10)
+top_keywords <- head(sorted_words, 20)
+
+print(top_keywords)
+
+# Calculate TF-IDF
+tfidf <- weightTfIdf(dtm)
+
+# Convert TF-IDF matrix to dataframe
+tfidf_df <- as.data.frame(as.matrix(tfidf))
+colnames(tfidf_df) <- make.names(colnames(tfidf_df))
+
+# Calculate TF-IDF scores for each word
+tfidf_scores <- colMeans(tfidf_df)
+
+# Sort words by TF-IDF score
+sorted_keywords2 <- sort(tfidf_scores, decreasing = TRUE)
+
+# Extract top keywords (e.g., top 10)
+top_keywords2 <- head(sorted_keywords2, 20)
+
+# Print or store the top keywords
+print(top_keywords2)
+
+```
+#### Refined attempt
+```{r}
+# Convert text to lowercase and remove punctuation
+df <- chosen_ads
+colnames(df) <- c("ID","Text")
+df$Text <- tolower(df$Text)
+df$Text <- gsub("[[:punct:]]", "", df$Text)
+
+# Define custom stopwords
+custom_stopwords <- c("will","work","good","nel","zeg","friday","company","working","position","ability","within","role","opportunity","skills")
+# Add custom stopwords to the default English stopwords
+custom_stopwords <- c(stopwords("en"), custom_stopwords)
+
+# Tokenization
+corpus <- Corpus(VectorSource(df$Text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, custom_stopwords)
+
+# Create Document Term Matrix
+dtm <- DocumentTermMatrix(corpus)
+
+# Calculate TF
+tf <- colSums(as.matrix(dtm))
+
+# Calculate IDF
+idf <- log2(nDocs(dtm) / colSums(as.matrix(dtm > 0)))
+
+# Calculate TF-IDF
+tfidf <- weightTfIdf(dtm)
+
+# Convert TF-IDF matrix to dataframe
+tfidf_df <- data.frame(as.matrix(tfidf))
+colnames(tfidf_df) <- make.names(colnames(tfidf_df))
+
+# Convert TF and IDF to dataframe
+tf_df <- data.frame(TF = tf)
+idf_df <- data.frame(IDF = idf)
+
+# Calculate mean TF-IDF score for each word
+mean_tfidf <- data.frame(colMeans(as.matrix(tfidf_df)))
+colnames(mean_tfidf) <- c("TF-IDF")
+
+# Combine mean TF-IDF scores with word frequencies
+result_df <- cbind(Word = rownames(mean_tfidf), mean_tfidf, tf_df, idf_df)
+result_df$Total_Frequency <- colSums(as.matrix(dtm))
+
+
+
+ordered_result_df <- result_df[order(-result_df$Total_Frequency), ]
+top_20_df <- head(ordered_result_df,20)
+print(top_20_df$Word)
+```
+#### Choose keywords
+```{r}
+#hard_words_df <- result_df %>% filter(Word == "hydrogen")
+new_word <-  result_df %>% filter(Word == "global")
+
+hard_words_df <- rbind(hard_words_df,new_word)
+soft_words_df <- rbind(soft_words_df,new_word)
+unclear_words_df <- rbind(unclear_words_df,new_word)
+
+
+write_sheet(unclear_words_df, ss = sheet, sheet = "test_viktor")
+
+```
