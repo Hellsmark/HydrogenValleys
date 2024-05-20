@@ -1,0 +1,386 @@
+---
+title: "city_population"
+format: html
+editor: visual
+---
+
+### Read me
+
+- The purpose of the script is to find data on population of all locations that we have identified. It didn't work perfectly so I had to manually work with the output and create a new csv file. 
+- The estimates for each location appears to be correct, but perhaps we should double check. 
+- Each location is also assigned to a region in respective country
+- The data is then uploaded to the "location_coord" sheet
+
+```{r}
+library(reticulate)
+use_python("/opt/homebrew/Caskroom/miniforge/base/envs/ai_env/bin/python", required = T)
+py_config()
+```
+
+```{r}
+library(googlesheets4)
+library(tidyverse)
+```
+
+# Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:F")
+
+df_main_raw <- read_sheet(ss, sheet = "Main")
+
+```
+
+## Wrangle
+
+```{r}
+data <- geo_locations_raw %>% 
+  filter(Nation %in% c("DK", "NO", "SE")) %>%
+  select(Name2, Nation) %>% 
+  unite(new, c(Name2, Nation), sep = "-", remove = T) %>%
+  unique()
+
+jobs <- df_main_raw %>% 
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%  
+  mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
+  filter(Scrape_date >= "2023-08-20")
+
+regions <- tribble(
+  ~Country, ~Region,
+  "Norway", "Agder", 
+  "Norway", "Innlandet", 
+  "Norway", "Møre og Romsdal", 
+  "Norway", "Nordland", 
+  "Norway", "Oslo", 
+  "Norway", "Rogaland", 
+  "Norway", "Troms og Finnmark", 
+  "Norway", "Trøndelag",  
+  "Norway", "Vestfold og Telemark", 
+  "Norway", "Vestland", 
+  "Norway", "Viken", 
+  "Denmark", "Hovedstaden",  
+  "Denmark", "Midtjylland", 
+  "Denmark", "Nordjylland", 
+  "Denmark", "Sjælland", 
+  "Denmark", "Syddanmark", 
+  "Sweden", "Stockholm", 
+  "Sweden", "Uppsala", 
+  "Sweden", "Södermanland", 
+  "Sweden", "Östergötland", 
+  "Sweden", "Jönköping", 
+  "Sweden", "Kronoberg", 
+  "Sweden", "Kalmar", 
+  "Sweden", "Gotland", 
+  "Sweden", "Blekinge", 
+  "Sweden", "Skåne", 
+  "Sweden", "Halland", 
+  "Sweden", "Västra Götaland", 
+  "Sweden", "Värmland", 
+  "Sweden", "Örebro", 
+  "Sweden", "Västmanland", 
+  "Sweden", "Dalarna", 
+  "Sweden", "Gävleborg", 
+  "Sweden", "Västernorrland", 
+  "Sweden", "Jämtland", 
+  "Sweden", "Västerbotten", 
+  "Sweden", "Norrbotten")
+```
+
+# OpenAI - locations
+
+```{python}
+
+from openai import OpenAI
+import os
+
+app_key = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=app_key)
+
+def ai_chat(text):
+  response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[
+      {
+        "role": "system",
+        "content": """You will be provided with locations in Sweden (SE), Norway (NO) and Denmark (DK). Your task is to provide an estimate of the population of each location. Return location and population in a CSV format. Use "location" and "population" as column names."""
+        },
+        {
+          "role": "user",
+          "content": text
+          },
+          {
+            "role": "assistant",
+            "content": "location,population\nAabenraa-DK,16000\nAalborg-DK,215000\nAalestrup-DK,3000\nAarhus-DK,345000\nAllerød-DK,25000\nKarmøy-NO,36000\nArjeplog-SE,3000\nAsker-SE,60000\nBallerup-DK,50000\nBergen-NO,283000"
+    }
+  ],
+            temperature=1,
+            max_tokens=256
+            )
+  return(response.choices[0].message.content)
+
+```
+
+## testing the function
+
+```{r}
+
+test <- data %>% slice_sample(n = 10) %>% pull() %>% paste(., collapse = ", ")
+test_resp <- py$ai_chat(test)
+df <- read_csv(test_resp)
+
+```
+
+## running the function
+
+```{r}
+
+# Set the chunk size
+chunk_size <- 10
+
+# Initialize the starting index
+start_index <- 1
+
+df_all <- tibble()
+
+# Loop through the data frame in chunks
+while (start_index <= nrow(data)) {
+  # Calculate the end index for the current chunk
+  end_index <- min(start_index + chunk_size - 1, nrow(data))
+  
+  # Extract the chunk
+  chunk <- data[start_index:end_index, ]
+  
+  # Process the chunk (example: print it)
+  chunk_string <- chunk %>% pull() %>% paste(., collapse = ", ")
+  chunk_pop <- py$ai_chat(chunk_string)
+  df_temp <- read_csv(chunk_pop)
+  df_all <- bind_rows(df_all, df_temp)
+  print(df_temp)
+
+  # Update the start index for the next chunk
+  start_index <- end_index + 1
+  Sys.sleep(2.5)
+}
+
+write_excel_csv(df_all, file = "data/ai_cities_raw.csv")
+
+
+```
+
+# OpenAI function to find regions for each location
+
+```{python}
+from openai import OpenAI
+import os
+
+app_key = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=app_key)
+
+def ai_region(question, system_role = system_role, template_answer=template_answer):
+  from openai import OpenAI
+  client = OpenAI()
+  response = client.chat.completions.create(
+    model="gpt-3.5-turbo-0125",
+    messages=[
+      {
+        "role": "system",
+        "content": system_role
+        },
+        {
+          "role": "user",
+          "content": question
+          },
+          {
+            "role": "assistant",
+            "content": template_answer
+              }
+              ],
+              temperature=0,
+              max_tokens=256,
+              )
+  return(response.choices[0].message.content)
+
+```
+
+## Role descriptions
+
+```{python}
+system_role = """You are a helpful assistant. You will be provided with locations in Sweden (SE), Norway (NO) and Denmark (DK). Your task is to return the name of the region each location belongs to. For Norway, choose between the following regions: Agder, Innlandet, Møre og Romsdal, Nordland, Oslo. Rogaland, Troms og Finnmark, Trøndelag. Vestfold og Telemark, Vestland and Viken. For Denmark choose between the following regions: Hovedstaden,  Midtjylland, Nordjylland, Sjælland, and Syddanmark. For Sweden choose between: Stockholm, Uppsala, Södermanland, Östergötland, Jönköping, Kronoberg, Kalmar, Gotland, Blekinge, Skåne, Halland, Västra Götaland, Värmland, Örebro, Västmanland, Dalarna, Gävleborg, Västernorrland, Jämtland, Västerbotten and Norrbotten. Return your answer in a csv-format. Use "location" and "region"  as column names."""
+
+template_answer = """location,region
+Gentofte-DK,Hovedstaden
+Mariestad-SE,Västra Götaland
+Vennesla-NO,Agder
+Odense-DK,Sjælland
+Surahammar-SE,Västmanland
+Landskrona-SE,Skåne
+Silkeborg-DK,Midtjylland
+Svendborg-DK,Syddanmark
+Nesttun-NO,Vestland
+Ulsteinvik-NO,Møre og Romsdal"""
+```
+
+## Testing
+
+```{r}
+smpl <- data %>% 
+  slice_sample(n= 10) %>% pull() %>% paste(. , collapse = ", ")
+
+question <- py$ai_region(smpl)
+df_test <- read_csv(question)
+df_test
+
+```
+
+## Running the function to locate locations in regions
+
+```{r}
+
+# Set the chunk size
+chunk_size <- 10
+
+# Initialize the starting index
+start_index <- 1
+
+df_all <- tibble()
+
+# Loop through the data frame in chunks
+while (start_index <= nrow(data)) {
+  # Calculate the end index for the current chunk
+  end_index <- min(start_index + chunk_size - 1, nrow(data))
+  
+  # Extract the chunk
+  chunk <- data[start_index:end_index, ]
+  
+  # Process the chunk (example: print it)
+  chunk_string <- chunk %>% pull() %>% paste(., collapse = ", ")
+  chunk_pop <- py$ai_region(chunk_string)
+  df_temp <- read_csv(chunk_pop)
+  df_all <- bind_rows(df_all, df_temp)
+  print(df_temp)
+
+  # Update the start index for the next chunk
+  start_index <- end_index + 1
+  Sys.sleep(2.5)
+}
+
+write_excel_csv2(df_all, file = "locations_regions.csv")
+
+```
+
+## Return population for each region
+
+```{python}
+
+system_role = """You will be provided with regions in Sweden, Norway and Denmark. Your task is to provide the exact population of each region as of 2022. Return your answer in a csv-format. Use "region" and "population"  as column names"""
+
+template_answer = """region,population
+Uppsala (Sweden),383713
+Midtjylland (Denmark),1378975
+Norrbotten (Sweden),250497
+Møre og Romsdal (Norway),  265758
+Dalarna (Sweden), 287795
+Örebro (Sweden), 304805
+Halland (Sweden), 333848
+Innlandet (Norway), 365758
+Västmanland (Sweden), 275853
+Agder (Norway),  336067"""
+```
+
+```{r}
+test_regions <- regions %>% 
+  select(Region, Country) %>%
+  slice_sample(n=10) %>%
+  mutate(reg = paste0(Region, " (", Country, ")")) %>%
+  pull() %>% paste(., collapse = ", ")
+
+reg_pop <- py$ai_region(test_regions)
+
+```
+
+## Running the function to find populations in regions
+
+```{r}
+
+data <- regions %>% 
+  select(Region, Country) %>%
+  mutate(reg = paste0(Region, " (", Country, ")")) %>%
+  select(reg)
+
+# Set the chunk size
+chunk_size <- 10
+
+# Initialize the starting index
+start_index <- 1
+
+df_reg_pop <- tibble()
+
+# Loop through the data frame in chunks
+while (start_index <= nrow(data)) {
+  # Calculate the end index for the current chunk
+  end_index <- min(start_index + chunk_size - 1, nrow(data))
+  print(start_index)
+  # Extract the chunk
+  chunk <- data[start_index:end_index, ]
+  
+  # Process the chunk (example: print it)
+  chunk_string <- chunk %>% pull() %>% paste(., collapse = ", ")
+  chunk_pop <- py$ai_region(chunk_string)
+  df_temp <- read_csv(chunk_pop)
+  df_reg_pop <- bind_rows(df_reg_pop, df_temp)
+  df_temp
+
+  # Update the start index for the next chunk
+  start_index <- end_index + 1
+  Sys.sleep(2.5)
+}
+
+write_excel_csv2(df_reg_pop, file = "regions_population.csv")
+
+```
+
+## Read and upload to google sheet
+```{r}
+df_geo_location <- read_sheet(ss, sheet = "locations_coord")
+
+cities <- read_csv2("ai_cities_cleaned.csv") # Needs to be checked
+regions_raw <- read_csv2("locations_regions.csv")
+regions_pop_raw <- read_csv2("regions_population.csv")
+
+regions <- regions_raw %>% 
+  separate(location, into = c("location", "country"), sep = "-") %>% select(-country) # not all country are correct
+
+region_pop <- regions_pop_raw %>% 
+  separate(region, into = c("region", "country"), sep = "\\(") %>%
+  mutate(country = str_remove_all(country, "\\)"), 
+         region = str_squish(region))
+
+
+location_region_pop <- cities %>% 
+  separate(location, into = c("location", "country"), sep = "-") %>%
+  select(-country) %>%
+  left_join(regions) %>%
+  rename(loc_pop = population) %>%
+  mutate(region = ifelse(region == "Telemark", 
+                         str_replace(region, "Telemark", "Vestfold og Telemark"),
+                         region)) %>%
+  left_join(region_pop, by = "region") %>%
+  rename(reg_pop = population)
+
+to_sheet <- df_geo_location %>% 
+  left_join(location_region_pop, by =c("Name2"="location")) %>%
+  relocate(-Comment)
+
+write_sheet(to_sheet, ss, sheet = "locations_coord")
+
+```
+
+

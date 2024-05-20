@@ -1,0 +1,243 @@
+---
+title: "ai_keywords"
+format: html
+editor: visual
+---
+
+# Read me
+- Role of script is to find keywords for each add
+- Translate the keywords to english 
+- Upload all keywords to the google sheet.
+
+
+#libraries
+```{r}
+library(reticulate)
+use_python("/opt/homebrew/Caskroom/miniforge/base/envs/ai_env/bin/python", required = T)
+py_config()
+
+```
+
+```{r}
+library(googlesheets4)
+library(tidyverse)
+library(googleLanguageR) # for translating
+```
+
+
+- Translation key - a json file stored locally on your computer to authorize on google
+
+```{r}
+gl_auth("~/Documents/google_key/h2hubs-bca4542db820.json")
+```
+
+
+# Loading the data
+```{r}
+
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+df_main_raw <- read_sheet(ss, sheet = "Main")
+
+```
+# Wrangle data 
+```{r}
+jobs <- df_main_raw %>% 
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%  
+  mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
+  filter(Scrape_date >= "2023-08-20")
+```
+
+
+# OpenAI function
+
+## Role description
+
+```{python}
+system_role = """You will be provided with a block of text related to a job ad. The text may also contain words that are unrelated to the job ad.  Your task is to extract all keywords that relate to the job ad.   Return a character vector where each keyword is separated with a comma. Do not add any comments. Make sure each keyword has a significant and real meaning. Do not include company names. Do not include person names."""
+
+template_answer = """generation, oil & gas market, energy technology, renewable energy, trainee program, product development, simulation tools, technical expertise, steel structures, Swedish, English, problem-solving skills, collaborative skills."""
+
+```
+
+
+
+## API call
+
+```{python}
+from openai import OpenAI
+import os
+
+app_key = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=app_key)
+
+def api_keywords(question, system_role = system_role, template_answer=template_answer):
+  from openai import OpenAI
+  client = OpenAI()
+  response = client.chat.completions.create(
+    model="gpt-3.5-turbo-0125",
+    messages=[
+      {
+        "role": "system",
+        "content": system_role
+        },
+        {
+          "role": "user",
+          "content": question
+          },
+          {
+            "role": "assistant",
+            "content": template_answer
+              }
+              ],
+              temperature=0,
+              max_tokens=256,
+              )
+  return(response.choices[0].message.content)
+
+```
+
+## testing api_key
+```{r}
+smpl <- jobs %>% slice_sample(n=1) %>% pull(Description)
+py$api_keywords(smpl)
+
+```
+
+
+
+# Function to count keywords
+
+```{python}
+
+from transformers import GPT2Tokenizer
+
+def count_tokens(text):
+    # Load the tokenizer
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    
+    # Encode the text
+    encoded_text = tokenizer.encode(text)
+    
+    # Return the number of tokens
+    return len(encoded_text)
+
+```
+
+## testing keyword count
+```{r}
+py$count_tokens("Hello, how are you?")
+```
+
+
+
+# Keywords in adds
+
+- selecting the data and counting tokens
+```{r}
+keywords <- jobs %>%
+  select(ID, Country, Description) %>%
+  mutate(tokens = map(Description, ~py$count_tokens(.)))
+
+sys_tokens <- py$count_tokens("You will be provided with a block of text related to a job ad. The text may also contain words that are unrelated to the job ad.  Your task is to extract all keywords that relate to the job ad.   Return a character vector where each keyword is separated with a comma. Do not add any comments. Make sure each keyword has a significant and real meaning. Do not include company names. Do not include person names.")
+
+max_tokens = 16000
+right_size_keywords <- keywords %>% filter(unlist(tokens) < (max_tokens- sys_tokens -256)) ## All keywords within limit
+
+tot_cost_dollars <- sum(unlist(keywords$tokens))/1e6*1.5
+
+
+```
+
+## Running through all ads
+
+```{r}
+
+df_keywords <- tibble()
+i = 1
+for (i in 1:nrow(keywords)) {
+  print(i)
+  text_df <- keywords[i, ]
+  text <- keywords$Description[i]
+  ai_keys <- tryCatch({
+    py$api_keywords(text)
+  }, error = function(e){
+    NA_character_
+  })
+  
+  temp_df <- text_df %>% mutate(keywords = ai_keys) 
+  df_keywords <- bind_rows(df_keywords, temp_df)
+  Sys.sleep(2.5)
+  print(ai_keys)
+  }
+
+save(df_keywords, file = "../temp_files/all_keywords.rda")
+
+
+```
+
+
+# Wrangle keywords
+
+## cleaning up some obvious stuff
+```{r}
+
+load("../temp_files/all_keywords.rda")
+
+cleaned_keywords <- df_keywords %>% 
+  select(ID, keywords) %>% 
+  separate_rows(keywords, sep = ",") %>%
+  mutate(keywords = str_squish(keywords)) %>%
+  filter(!keywords == "") %>%
+  filter(!str_detect(keywords, "^_")) %>%
+  mutate(keywords = str_to_lower(keywords)) %>%
+  mutate(keywords = str_remove_all(keywords, "\\.|'"))
+  
+
+# next step : translate keywords and merge words that are similar in meaning. 
+
+```
+
+
+#Checking so that I haven't removed any ads by mistake
+```{r}
+ads_with_keys <- cleaned_keywords %>% 
+  select(ID) %>% unique() %>% pull()
+
+missing <- jobs %>% filter(!ID %in% ads_with_keys)
+
+```
+
+
+## putting the keyword strings back togheter
+```{r}
+keywords_long <- cleaned_keywords %>% group_by(ID) %>%
+  summarise(keywords = paste(keywords, collapse = ", "))
+
+```
+
+#Translating
+```{r}
+
+keys <- keywords_long
+
+translate <- keys %>%
+  mutate(text = map(keywords, ~gl_translate(.x, target = "en"))) %>% unnest(text)
+
+save(translate, file = "../data/keywords_translated.rda")
+
+
+```
+
+
+# Uploading to google sheet
+```{r}
+
+write_sheet(translate, ss, sheet = "Keywords")
+
+```
+

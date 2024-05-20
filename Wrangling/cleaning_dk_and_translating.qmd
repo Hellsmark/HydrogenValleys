@@ -4,32 +4,47 @@ format: html
 editor: visual
 ---
 
+# Readme
+
+- In this script all the NO and SE ads are translated.
+- I tried to use AI to reduce the size of DK ads, but that failed.
+- so only the first part of the script is used.
+
+# Libraries
+
+```{r}
+library(reticulate)
+use_python("/opt/homebrew/Caskroom/miniforge/base/envs/ai_env/bin/python", required = T)
+py_config()
+```
+
 ```{r}
 library(googleLanguageR)
-library(reticulate)
 library(dplyr)
 library(readr)
 library(tidyr)
 library(purrr)
 library(stringr)
 library(googlesheets4)
+library(tictoc)
 ```
 
-# Translation key - a json file stored locally on your computer to authorize on google
+-   Translation key - a json file stored locally on your computer to authorize on google
+
 ```{r}
-gl_auth("~/Documents/google_key/h2hubs-bca4542db820.json")
+#gl_auth("~/Documents/google_key/h2hubs-bca4542db820.json")
 ```
 
+# Data
 
-
-# reading the data
 ```{r}
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 df <- read_sheet(ss, sheet = "Main")
 ```
 
-#Translate SE & NO
+# Translate SE & NO
+
 ```{r}
 
 se_no_nested <- df %>% select(ID, Description) %>%
@@ -42,50 +57,119 @@ write_csv2(se_no_unnested, file = "../temp_files/se_no_unnested.csv")
 
 ```
 
-
-
 ```{r}
 df_updated <- df %>% left_join(se_no_unnested)
 
-write_sheet(df_updated, ss = ss, sheet = "Main")
+#write_sheet(df_updated, ss = ss, sheet = "Main")
 
 ```
 
+######### Denmark - FROM HERE == USELESS STUFF ################
 
+-   Have to work on Denmark a bit more before translating.
+- 
 
-#### Have to work on Denmark a bit more before translating. ####
+## Python function
 
+```{python}
 
-# Denmark
+from openai import OpenAI
+import os
+
+app_key = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=app_key)
+
+def ai_cleaner(question):
+  from openai import OpenAI
+  client = OpenAI()
+  response = client.chat.completions.create(
+    model="gpt-4-32k-0613",
+    messages=[
+      {
+        "role": "system",
+        "content": "You will be provided with a block of text.  Remove all text that is not directly associated with the job ad that is included in the text. "
+        },
+        {
+          "role": "user",
+          "content": question
+          },
+          ],
+          temperature=0,
+          max_tokens=8191,
+          top_p=1,
+          frequency_penalty=0,
+          presence_penalty=0
+          )
+  return(response.choices[0].message.content)
+
+```
+
+## sample data
+
 ```{r}
 dk <- df %>% 
   filter(str_detect(ID, "^3")) %>% 
   mutate(str_length = str_length(Description)) %>%
   filter(!is.na(Description) | Description == "UNSHORTABLE")
 
+test_text <- dk %>% slice_sample(n = 10)
+
+
+```
+
+```{r}
+
+dk_clean <- tibble()
+i= 1
+
+for (i in 1:nrow(test_text)) {
+  temp <- test_text[1,]
+  text <- temp$Description
+  cleaned_text <- py$ai_cleaner(text)
+    
+}
+
+q <- test_text$Description
+
+res <- py$ai_cleaner(q)
+res
+
 ```
 
 # Ollama
+
 ```{python}
 import ollama
 
 def ollama_generate(text):
-  promp = """<s>[INST] <<SYS>> You are a helpfull assistant that extract all information related to a job ad from messy text data containing information that is unrelated to the job ad. Return only content related to the job add without adding any comments, interpretations of the content. Try to keep the text as close to the original text as possible. Do not summarise, do not change the wording and do not change thelanguage of the job ad.<</SYS>> Extract all information related to the follwing job ad: {BODY}""".format(BODY=text)
-  x = ollama.generate(model = "llama2", prompt = promp)
+  promp = """<s>[INST] <<SYS>> "You will be provided with a block of text.  Remove all text that is not directly associated with the job ad that is included in the text.<</SYS>> {BODY}""".format(BODY=text)
+  x = ollama.generate(model = "llama3", prompt = promp)
+  return(x['response'])
+
+```
+
+# Ollama
+
+```{python}
+import ollama
+
+def ollama_gen(text):
+  sys = "You are an invisable assistant that extract all information related to a job ad from messy text data containing information that is unrelated to the job ad. Return all content related to the job ad. Do not change or summarise the text related to the job ad."
+  x = ollama.generate(model = "llama3", prompt = text, system = sys)
   return(x['response'])
 
 ```
 
 ```{r}
-dk_llama2 <- dk %>%
+dk_llama2 <- test_text %>%
   select(ID, Dirty_Description = Description) %>%
-  mutate(Description = map(Dirty_Description, ~py$ollama_generate(.), .progress = TRUE))
+  mutate(Description = map(Dirty_Description, ~py$ollama_gen(.), .progress = TRUE))
 
 ```
 
-
-
 #testing llama2
+
 ```{r}
 
 dk_long <- dk %>% slice_max(str_length, n = 1)
@@ -97,6 +181,7 @@ test <- py$ollama_generate(question)
 ```
 
 #Open AI
+
 ```{python}
 from openai import OpenAI
 import os
@@ -109,7 +194,7 @@ def ai_chat(question):
   response = client.chat.completions.create(
   model="gpt-4-turbo",
   temperature = 0,
-  max_tokens = 4096,
+  max_tokens = 8096,
   messages=[
       {"role": "system", "content": "Extract all information related to a job ad from messy text data containing information unrelated to the job ad. You return the cleaned content that only concerns the job add without adding any comments."},
       {"role": "user", "content": question}
@@ -121,14 +206,18 @@ def ai_chat(question):
 ```
 
 ```{r}
+test <- dk %>% select(ID, Dirty_Description = Description) %>% 
+  slice_sample(n = 1) %>% pull(Dirty_Description)
+
+clean <- py$ai_talk(test)
+
+```
+
+```{r}
 dk_cleaned_nested <- dk %>% 
   select(ID, Dirty_Description = Description) %>%
   mutate(Description = map(Dirty_Description, ~py$ai_chat(.), .progress = TRUE))
 
 ```
-
-
-# Translate
-
 
 
