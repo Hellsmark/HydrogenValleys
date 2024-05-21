@@ -1,0 +1,961 @@
+---
+title: "Untitled"
+author: "Viktor"
+date: "2024-04-19"
+output: html_document
+---
+
+## Initiation
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+```
+### R-libraries
+```{r, include = FALSE}
+library(googlesheets4)
+library(tidytext)
+library(ggplot2)
+library(forcats)
+library(dplyr)
+library(quanteda)
+library(tm)
+library(stringr)
+library(wordcloud)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(Matrix)
+library(SnowballC)
+```
+### Python packages - Delete?
+```{python}
+from openai import OpenAI
+import os
+import pandas as pd
+import ast
+
+app_key = os.environ.get("OPENAI_API_KEY")
+```
+
+## Collect data from google
+```{r, include = FALSE}
+gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
+
+sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
+
+CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
+Main <- read_sheet(sheet, "Main")
+```
+
+## Choose relevant calumns
+### All ads
+```{r}
+all_company_ads <- Main %>% filter(ID<30000) %>% select(ID,translatedText,) 
+```
+### Investigate and choose sector
+```{r}
+companies_hydro <- CompanyAnalysis %>% select(Name,Industry_Sector,Hydrogen_relevance) %>% filter(Hydrogen_relevance == "Yes")
+
+sectors <- companies_hydro %>% select(Industry_Sector) %>% table()
+
+Hydrogen_technology_manufacturer <- companies_hydro %>% filter(Industry_Sector == "Hydrogen technology manufacturer") %>% select(Name)
+
+
+chosen_companies <- Hydrogen_technology_manufacturer
+```
+
+### Get add descriptions of chosen companies
+```{r}
+chosen_ads <- data_frame()
+# Make dataframe with all english translations of ad, only Swedish and Norwegian
+all_ads <- Main %>% filter(ID<30000) %>% select(ID,Company,translatedText) 
+
+# Loop for gathering add descriptions
+for (i in seq_len(nrow(chosen_companies))){
+  company <- chosen_companies$Name[i]
+  new_ads <- all_ads %>% filter(Company == company) %>% select(ID,translatedText)
+  chosen_ads <- rbind(chosen_ads,new_ads)
+}
+```
+
+## Finding keywords
+### From Elin
+```{r}
+#calculating the frequency of the words used in the ads
+words <- chosen_ads %>% unnest_tokens(word,translatedText) %>% count(ID,word, sort = TRUE)
+#Calculating the total number of words used by companies in their ads 
+total_words <- words %>% group_by(ID) %>% summarize(total = sum(n))
+#joining to one tibble
+words <- as_tibble(left_join(words, total_words))
+
+#calculating the tf-idf and arranging the table so that the words with high tf-idf
+#are at the top
+ad_tf_idf <- words %>%
+  bind_tf_idf(word, ID, n) %>%
+  select(-total) %>%
+  arrange(desc(tf_idf))
+
+#plotting the words with the highest tf-idf
+ad_tf_idf %>%
+  group_by(ID) %>%
+  slice_max(tf_idf, n = 15) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = ID)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ID, ncol = 2, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+
+#adding tank and term frequency
+freq_by_rank <- words %>% 
+  group_by(ID) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+#calculating the exponent of the power law for the middle section
+rank_subset <- freq_by_rank %>% filter(rank < 100, rank > 10)
+```
+### New work by Viktor
+#### First try
+```{r}
+# Convert text to lowercase and remove punctuation
+df <- chosen_ads
+colnames(df) <- c("ID","Text")
+df$Text <- tolower(df$Text)
+df$Text <- gsub("[[:punct:]]", "", df$Text)
+
+# Define custom stopwords
+custom_stopwords <- c("will","work","good","nel","zeg","friday","company","working","position","ability","within","role","opportunity","skills")
+# Add custom stopwords to the default English stopwords
+custom_stopwords <- c(stopwords("en"), custom_stopwords)
+
+# Tokenization
+corpus <- Corpus(VectorSource(df$Text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, custom_stopwords)
+
+# Stemming - does not work very well
+#corpus <- tm_map(corpus, stemDocument)
+
+# Create Document Term Matrix
+dtm <- DocumentTermMatrix(corpus)
+
+# Convert DTM to dataframe
+dtm_df <- as.data.frame(as.matrix(dtm))
+colnames(dtm_df) <- make.names(colnames(dtm_df))
+
+# Calculate word frequencies
+word_freq <- colSums(dtm_df)
+
+# Sort words by frequency
+sorted_words <- sort(word_freq, decreasing = TRUE)
+
+# Extract top keywords (e.g., top 10)
+top_keywords <- head(sorted_words, 20)
+
+print(top_keywords)
+
+# Calculate TF-IDF
+tfidf <- weightTfIdf(dtm)
+
+# Convert TF-IDF matrix to dataframe
+tfidf_df <- as.data.frame(as.matrix(tfidf))
+colnames(tfidf_df) <- make.names(colnames(tfidf_df))
+
+# Calculate TF-IDF scores for each word
+tfidf_scores <- colMeans(tfidf_df)
+
+# Sort words by TF-IDF score
+sorted_keywords2 <- sort(tfidf_scores, decreasing = TRUE)
+
+# Extract top keywords (e.g., top 10)
+top_keywords2 <- head(sorted_keywords2, 20)
+
+# Print or store the top keywords
+print(top_keywords2)
+
+```
+#### Refined attempt
+```{r}
+# Convert text to lowercase and remove punctuation
+df <- chosen_ads
+colnames(df) <- c("ID","Text")
+df$Text <- tolower(df$Text)
+df$Text <- gsub("[[:punct:]]", "", df$Text)
+
+# Define custom stopwords
+custom_stopwords <- c("will","work","good","nel","zeg","friday","company","working","position","ability","within","role","opportunity","skills","applications","employment","commercial","cell","hystar","related","summer","status","protected")
+# Add custom stopwords to the default English stopwords
+custom_stopwords <- c(stopwords("en"), custom_stopwords)
+
+# Tokenization
+corpus <- Corpus(VectorSource(df$Text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, custom_stopwords)
+
+# Stemming - does not work very well
+corpus <- tm_map(corpus, stemDocument)
+
+# Create Document Term Matrix
+dtm <- DocumentTermMatrix(corpus)
+
+# Calculate TF
+tf <- colSums(as.matrix(dtm))
+
+# Calculate IDF
+idf <- log2(nDocs(dtm) / colSums(as.matrix(dtm > 0)))
+
+# Calculate TF-IDF
+tfidf <- weightTfIdf(dtm)
+
+# Convert TF-IDF matrix to dataframe
+tfidf_df <- data.frame(as.matrix(tfidf))
+colnames(tfidf_df) <- make.names(colnames(tfidf_df))
+
+# Convert TF and IDF to dataframe
+tf_df <- data.frame(TF = tf)
+idf_df <- data.frame(IDF = idf)
+
+# Calculate mean TF-IDF score for each word
+mean_tfidf <- data.frame(colMeans(as.matrix(tfidf_df)))
+colnames(mean_tfidf) <- c("TF-IDF")
+
+# Combine mean TF-IDF scores with word frequencies
+result_df <- cbind(Word = rownames(mean_tfidf), mean_tfidf, tf_df, idf_df)
+result_df$Total_Frequency <- colSums(as.matrix(dtm))
+
+
+
+ordered_result_df <- result_df[order(-result_df$`TF-IDF`), ]
+top_20_df <- head(ordered_result_df,20)
+print(top_20_df$Word)
+```
+#### Learning book method
+```{r}
+text_df <- all_company_ads %>% select(translatedText)
+colnames(text_df) <- c('text')
+
+tidy_texts <- text_df %>% unnest_tokens(word, text)
+
+data(stop_words)
+tidy_texts2 <- tidy_texts %>% anti_join(stop_words)
+
+
+
+tidy_texts2 %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 600) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+
+tidy_texts2 %>%
+  count(word, sort = TRUE) 
+
+tidy_texts2 %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+
+# Whole sentences
+p_and_p_sentences <- text_df %>% 
+  unnest_tokens(sentence, text, token = "sentences")
+
+
+# TFIDF?
+
+df <- mutate(all_company_ads, ID = case_when(
+                    ID >= 10000 & ID < 20000 ~ "sw",
+                    ID >= 20000 & ID < 30000 ~ "no",
+                    ID >= 30000 & ID < 40000 ~ "dk",
+                    TRUE ~ as.character(ID)  # If none of the conditions are met, keep the original ID
+                 ))
+colnames(df) <- c('ID','text')
+tidy_texts_w_ID <- text_df %>% unnest_tokens(word, text)
+tidy_texts_w_ID2 <- tidy_texts_w_ID %>% anti_join(stop_words)
+
+text_words <- df %>%
+  unnest_tokens(word, text) %>%
+  count(ID, word, sort = TRUE)
+
+total_words <- text_words %>% 
+  group_by(ID) %>% 
+  summarize(total = sum(n))
+
+text_words <- left_join(text_words, total_words)
+
+ggplot(text_words, aes(n/total, fill = ID)) +
+  geom_histogram(show.legend = FALSE) +
+  xlim(NA, 0.0009) +
+  facet_wrap(~ID, ncol = 2, scales = "free_y")
+
+freq_by_rank <- text_words %>% 
+  group_by(ID) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+freq_by_rank %>% 
+  ggplot(aes(rank, term_frequency, color = ID)) + 
+  geom_line(linewidth = 1.1, alpha = 0.8, show.legend = FALSE) + 
+  scale_x_log10() +
+  scale_y_log10()
+
+rank_subset <- freq_by_rank %>% 
+  filter(rank < 500,
+         rank > 10)
+
+lm(log10(term_frequency) ~ log10(rank), data = rank_subset)
+
+freq_by_rank %>% 
+  ggplot(aes(rank, term_frequency, color = ID)) + 
+  geom_abline(intercept = -1.0554, slope = -0.9083, 
+              color = "gray50", linetype = 2) +
+  geom_line(linewidth = 1.1, alpha = 0.8, show.legend = FALSE) + 
+  scale_x_log10() +
+  scale_y_log10()
+
+
+text_tf_idf <- text_words %>%
+  bind_tf_idf(word, ID, n)
+# IDF -> low value = words appear in both sw and no
+#TF-idf -> low (near zero) for words that occur in many of the documents in a collection
+
+library(forcats)
+
+text_tf_idf %>%
+  group_by(ID) %>%
+  slice_max(tf_idf, n = 15) %>%
+  ungroup() %>%
+  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = ID)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ID, ncol = 2, scales = "free") +
+  labs(x = "tf-idf", y = NULL)
+
+#mystopwords <- tibble(word = c("my stopwords"))
+
+#text_words <- anti_join(text_words, mystopwords, 
+                           #by = "word")
+
+# Chapter 4 - Investigate multiple consecutive words
+df_texts2 <- all_company_ads 
+colnames(df_texts2) <- c('ID','text')
+
+text_bigrams <- df_texts2 %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  filter(!is.na(bigram))
+
+text_bigrams %>%
+  count(bigram, sort = TRUE)
+
+bigrams_separated <- text_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+# new bigram counts:
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigrams_united <- bigrams_filtered %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigrams_united
+
+# trigrams
+df_texts2 %>%
+  unnest_tokens(trigram, text, token = "ngrams", n = 3) %>%
+  filter(!is.na(trigram)) %>%
+  separate(trigram, c("word1", "word2", "word3"), sep = " ") %>%
+  filter(!word1 %in% stop_words$word,
+         !word2 %in% stop_words$word,
+         !word3 %in% stop_words$word) %>%
+  count(word1, word2, word3, sort = TRUE)
+
+# back do bigram
+bigram_tf_idf <- bigrams_united %>%
+  count(ID, bigram) %>%
+  bind_tf_idf(bigram, ID, n) %>%
+  arrange(desc(tf_idf))
+
+bigram_tf_idf
+
+bigrams_separated %>%
+  filter(word1 == "not") %>%
+  count(word1, word2, sort = TRUE)
+
+bigram_graph <- bigram_counts %>%
+  filter(n > 20) %>%
+  graph_from_data_frame()
+
+bigram_graph
+
+set.seed(2017)
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+
+
+set.seed(2020)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = n), show.legend = FALSE,
+                 arrow = a, end_cap = circle(.07, 'inches')) +
+  geom_node_point(color = "lightblue", size = 5) +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+  theme_void()
+
+
+#functions that does what we have done
+count_bigrams <- function(dataset) {
+  dataset %>%
+    unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+    separate(bigram, c("word1", "word2"), sep = " ") %>%
+    filter(!word1 %in% stop_words$word,
+           !word2 %in% stop_words$word) %>%
+    count(word1, word2, sort = TRUE)
+}
+
+visualize_bigrams <- function(bigrams) {
+  set.seed(2016)
+  a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+  
+  bigrams %>%
+    graph_from_data_frame() %>%
+    ggraph(layout = "fr") +
+    geom_edge_link(aes(edge_alpha = n), show.legend = FALSE, arrow = a) +
+    geom_node_point(color = "lightblue", size = 5) +
+    geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
+    theme_void()
+}
+
+
+```
+#### Applying book method
+```{r}
+# All text as one corpus
+text_df <- all_company_ads %>% select(translatedText)
+colnames(text_df) <- c('text')
+
+tidy_text <- text_df %>% unnest_tokens(word, text) %>% anti_join(stop_words)
+
+text_words <- tidy_text %>% count(word, sort = TRUE)
+
+total_words <- text_words %>% 
+  summarize(total = sum(n))
+
+freq_by_rank <- text_words %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total_words$total)
+
+print(head(text_words,100))
+
+# Now with bigrams
+bigram_words <- count_bigrams(text_df) %>%
+  unite(bigram, word1, word2, sep = " ")
+
+total_bigrams <- bigram_words %>% 
+  summarize(total = sum(n))
+
+freq_by_rank_bigram <- bigram_words %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total_bigrams$total)
+
+# Now with trigrams
+count_trigrams <- function(dataset) {
+  dataset %>%
+    unnest_tokens(trigram, text, token = "ngrams", n = 3) %>%
+    separate(trigram, c("word1", "word2","word3"), sep = " ") %>%
+    filter(!word1 %in% stop_words$word,
+           !word2 %in% stop_words$word,
+           !word3 %in% stop_words$word) %>%
+    count(word1, word2, word3, sort = TRUE)
+}
+
+trigram_words <- count_trigrams(text_df) %>%
+  unite(trigram, word1, word2, word3, sep = " ")
+
+total_trigrams <- trigram_words %>% 
+  summarize(total = sum(n))
+
+freq_by_rank_trigram <- trigram_words %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total_trigrams$total)
+
+# Now with quadrigrams
+count_quadrigrams <- function(dataset) {
+  dataset %>%
+    unnest_tokens(quadrigram, text, token = "ngrams", n = 4) %>%
+    separate(quadrigram, c("word1", "word2","word3","word4"), sep = " ") %>%
+    filter(!word1 %in% stop_words$word,
+           !word2 %in% stop_words$word,
+           !word3 %in% stop_words$word,
+           !word4 %in% stop_words$word) %>%
+    count(word1, word2, word3, word4, sort = TRUE)
+}
+
+quadrigram_words <- count_quadrigrams(text_df) %>%
+  unite(quadrigram, word1, word2, word3, word4, sep = " ")
+
+total_quadrigrams <- quadrigram_words %>% 
+  summarize(total = sum(n))
+
+freq_by_rank_quadrigram <- quadrigram_words %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total_quadrigrams$total)
+
+# Now with tetrigrams
+count_tetrigrams <- function(dataset) {
+  dataset %>%
+    unnest_tokens(tetrigram, text, token = "ngrams", n = 5) %>%
+    separate(tetrigram, c("word1", "word2","word3","word4", "word5"), sep = " ") %>%
+    filter(!word1 %in% stop_words$word,
+           !word2 %in% stop_words$word,
+           !word3 %in% stop_words$word,
+           !word4 %in% stop_words$word,
+           !word5 %in% stop_words$word) %>%
+    count(word1, word2, word3, word4, word5, sort = TRUE)
+}
+
+tetrigram_words <- count_tetrigrams(text_df) %>%
+  unite(tetrigram, word1, word2, word3, word4, word5, sep = " ")
+
+total_tetrigrams <- tetrigram_words %>% 
+  summarize(total = sum(n))
+
+freq_by_rank_tetrigram <- tetrigram_words %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total_tetrigrams$total)
+
+
+# Now with hexigrams
+count_hexigrams <- function(dataset) {
+  dataset %>%
+    unnest_tokens(hexigram, text, token = "ngrams", n = 6) %>%
+    separate(hexigram, c("word1", "word2","word3","word4", "word5","word6"), sep = " ") %>%
+    filter(!word1 %in% stop_words$word,
+           !word2 %in% stop_words$word,
+           !word3 %in% stop_words$word,
+           !word4 %in% stop_words$word,
+           !word5 %in% stop_words$word,
+           !word6 %in% stop_words$word) %>%
+    count(word1, word2, word3, word4, word5, word6, sort = TRUE)
+}
+
+hexigram_words <- count_hexigrams(text_df) %>%
+  unite(hexigram, word1, word2, word3, word4, word5, word6, sep = " ")
+
+total_hexigrams <- hexigram_words %>% 
+  summarize(total = sum(n))
+
+freq_by_rank_hexigram <- hexigram_words %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total_hexigrams$total)
+
+```
+
+```{r}
+# Split by ID
+text_df2 <- all_company_ads %>% select(translatedText,ID)
+colnames(text_df2) <- c('text','ID')
+
+text_words2 <- text_df2 %>% 
+  unnest_tokens(word, text) %>% 
+  anti_join(stop_words) %>% 
+  count(ID, word, sort = TRUE)
+
+total_words2 <- text_words2 %>% 
+  group_by(ID) %>% 
+  summarize(total = sum(n))
+
+text_words2 <- left_join(text_words2, total_words2)
+
+freq_by_rank2 <- text_words2 %>% 
+  group_by(ID) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+####
+
+
+####
+text_tf_idf2 <- text_words2 %>%
+  bind_tf_idf(word, ID, n)
+
+# This can be used if other dtm matrix method is to be used
+dtm_text_tf_idf2 <- text_tf_idf2 %>% cast_dtm(ID, word, n)
+
+dtm_df_text_tf_idf2 <- as.data.frame(as.matrix(dtm_text_tf_idf2))
+
+tf <- colSums(as.matrix(dtm_text_tf_idf2))
+
+# Calculate IDF
+idf <- log2(nDocs(dtm_text_tf_idf2) / colSums(as.matrix(dtm_text_tf_idf2 > 0)))
+
+# Calculate TF-IDF
+tfidf <- weightTfIdf(dtm_text_tf_idf2)
+
+# Convert TF-IDF matrix to dataframe
+tfidf_df <- data.frame(as.matrix(tfidf))
+colnames(tfidf_df) <- make.names(colnames(tfidf_df))
+
+# Convert TF and IDF to dataframe
+tf_df <- data.frame(TF = tf)
+idf_df <- data.frame(IDF = idf)
+
+# Calculate mean TF-IDF score for each word
+mean_tfidf <- data.frame(colMeans(as.matrix(tfidf_df)))
+colnames(mean_tfidf) <- c("TF-IDF")
+
+# Combine mean TF-IDF scores with word frequencies
+result_df <- cbind(Word = rownames(mean_tfidf), mean_tfidf, tf_df, idf_df)
+result_df$Total_Frequency <- colSums(as.matrix(dtm_text_tf_idf2))
+
+#STAY TIDY
+text_tf_idf2_mean <- text_tf_idf2 %>%
+  group_by(word) %>%
+  summarise(
+    mean_tf = mean(tf),
+    mean_idf = mean(idf),
+    mean_tf_idf = mean(tf_idf)
+  ) %>%
+  arrange(desc(mean_tf_idf))
+
+
+```
+
+```{r}
+df <- text_df2
+
+# Tokenize the text into words
+df_words <- df %>%
+  unnest_tokens(word, text)
+
+df_words <- df_words %>%
+  anti_join(stop_words, by = "word")
+
+# Calculate term frequency (TF)
+df_tf <- df_words %>%
+  count(ID, word, sort = TRUE) %>%
+  group_by(ID) %>%
+  mutate(tf = n / sum(n)) %>%
+  ungroup()
+
+# Calculate inverse document frequency (IDF)
+df_idf <- df_tf %>%
+  group_by(word) %>%
+  summarise(idf = log(n_distinct(df$ID) / n_distinct(ID))) %>%
+  ungroup()
+
+# Calculate TF-IDF
+df_tf_idf <- df_tf %>%
+  inner_join(df_idf, by = "word") %>%
+  mutate(tf_idf = tf * idf) %>%
+  arrange(desc(tf_idf))
+
+# View the result
+print(df_tf_idf)
+
+# Optionally, to get a nicely formatted dataframe with TF, IDF, and TF-IDF for each word in each document:
+df_result <- df_tf_idf %>%
+  select(ID, word, tf, idf, tf_idf)
+
+# View the final result
+print(df_result)
+
+df_overall <- df_tf_idf %>%
+  group_by(word) %>%
+  summarise(mean_tf_idf = mean(tf_idf)) %>%
+  arrange(desc(mean_tf_idf))
+
+```
+
+```{r}
+# Split by nation
+text_df3 <- mutate(all_company_ads, ID = case_when(
+                    ID >= 10000 & ID < 20000 ~ "sw",
+                    ID >= 20000 & ID < 30000 ~ "no",
+                    ID >= 30000 & ID < 40000 ~ "dk",
+                    TRUE ~ as.character(ID)  # If none of the conditions are met, keep the original ID
+                 ))
+colnames(text_df3) <- c('ID','text')
+
+text_words3 <- text_df3 %>% 
+  unnest_tokens(word, text) %>% 
+  anti_join(stop_words) %>% 
+  count(ID, word, sort = TRUE)
+
+total_words3 <- text_words3 %>% 
+  group_by(ID) %>% 
+  summarize(total = sum(n))
+
+text_words3 <- left_join(text_words3, total_words3)
+
+freq_by_rank3 <- text_words3 %>% 
+  group_by(ID) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+text_tf_idf3 <- text_words3 %>%
+  bind_tf_idf(word, ID, n)
+
+text_tf_idf3_mean <- text_tf_idf3 %>%
+  group_by(word) %>%
+  summarise(
+    mean_tf = mean(tf),
+    mean_idf = mean(idf),
+    mean_tf_idf = mean(tf_idf)
+  ) %>%
+  arrange(desc(mean_tf_idf))
+
+text_tf_idf_no <- text_tf_idf3 %>% filter(ID == 'no')
+text_tf_idf_sw <- text_tf_idf3 %>% filter(ID == 'sw')
+
+# The same but with custom stopwords
+custom_stopwords <- data.frame(word = c("opportunities","skills","company","knowledge","vattenfall","vattenfall's",
+                                        "aker","sweden's","aibel","akkodis","norway's","uppsala","luleå","bergen",
+                                        "västerås","unionen","kth","ramboll","gävle","seko","ab","hsqe","nes",
+                                        "ntnu","nationality","position","role","relevant","320","739","ingemar",
+                                        "norway","industry.akkodis","us:professional","equinor","up.our","nyköping",
+                                        "bu","adam","ovako","stigbert","www.kth.se","boden","finspång","vital",
+                                        "norwegian","administration.we","clubs","588","lennartsson","christer",
+                                        "010","073","akademikerna","gustafsson","ltu.se") )
+stop_words_combined <- bind_rows(stop_words, custom_stopwords)
+
+text_words3 <- text_df3 %>% 
+  unnest_tokens(word, text) %>% 
+  anti_join(stop_words_combined) %>% 
+  count(ID, word, sort = TRUE)
+
+total_words3 <- text_words3 %>% 
+  group_by(ID) %>% 
+  summarize(total = sum(n))
+
+text_words3 <- left_join(text_words3, total_words3)
+
+freq_by_rank3 <- text_words3 %>% 
+  group_by(ID) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+text_tf_idf3 <- text_words3 %>%
+  bind_tf_idf(word, ID, n)
+
+text_tf_idf3_mean <- text_tf_idf3 %>%
+  group_by(word) %>%
+  summarise(
+    mean_tf = mean(tf),
+    mean_idf = mean(idf),
+    mean_tf_idf = mean(tf_idf)
+  ) %>%
+  arrange(desc(mean_tf_idf))
+
+text_tf_idf_no <- text_tf_idf3 %>% filter(ID == 'no')
+text_tf_idf_sw <- text_tf_idf3 %>% filter(ID == 'sw')
+
+
+
+```
+
+
+The nations but with stemming
+```{r} 
+custom_stopwords <- data.frame(word = c("opportunities","skills","company","knowledge","vattenfall","vattenfall's",
+                                        "aker","sweden's","aibel","akkodis","norway's","uppsala","luleå","bergen",
+                                        "västerås","unionen","kth","ramboll","gävle","seko","ab","hsqe","nes",
+                                        "ntnu","nationality","position","role","relevant","320","739","ingemar",
+                                        "norway","industry.akkodis","us:professional","equinor","up.our","nyköping",
+                                        "bu","adam","ovako","stigbert","www.kth.se","boden","finspång","vital",
+                                        "norwegian","administration.we","clubs","588","lennartsson","christer",
+                                        "010","073","akademikerna","gustafsson","ltu.se","vattenfal","skill",
+                                        "akkodi","rambol","offer","trondheim","180","ledarna","0920","592","680",
+                                        "516","rabbalshed","torbjörn","gotland","norrbotten","mönsterå","saco",
+                                        "stavang","you’ll","continent","261") )
+stop_words_combined <- bind_rows(stop_words, custom_stopwords)
+# The nations but with stemming
+text_df3 <- mutate(all_company_ads, ID = case_when(
+                    ID >= 10000 & ID < 20000 ~ "sw",
+                    ID >= 20000 & ID < 30000 ~ "no",
+                    ID >= 30000 & ID < 40000 ~ "dk",
+                    TRUE ~ as.character(ID)  # If none of the conditions are met, keep the original ID
+                 ))
+colnames(text_df3) <- c('ID','text')
+
+text_words3 <- text_df3 %>% 
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words_combined) %>%
+  mutate(old_word = word) %>%
+  mutate(word = wordStem(word, language = "en")) %>%
+  anti_join(stop_words_combined) 
+
+stemmed_word_matrix <- text_words3 %>% select(old_word,word)
+
+text_words3 <- text_words3 %>% 
+  count(ID, word, sort = TRUE)
+
+total_words3 <- text_words3 %>% 
+  group_by(ID) %>% 
+  summarize(total = sum(n))
+
+text_words3 <- left_join(text_words3, total_words3)
+
+freq_by_rank3 <- text_words3 %>% 
+  group_by(ID) %>% 
+  mutate(rank = row_number(), 
+         term_frequency = n/total) %>%
+  ungroup()
+
+text_tf_idf3 <- text_words3 %>%
+  bind_tf_idf(word, ID, n)
+
+text_tf_idf3_mean <- text_tf_idf3 %>%
+  group_by(word) %>%
+  summarise(
+    mean_tf = mean(tf),
+    mean_idf = mean(idf),
+    mean_tf_idf = mean(tf_idf)
+  ) %>%
+  arrange(desc(mean_tf_idf))
+
+text_tf_idf_no <- text_tf_idf3 %>% filter(ID == 'no')
+text_tf_idf_sw <- text_tf_idf3 %>% filter(ID == 'sw')
+
+###
+# Other stemming notes
+
+#install.packages("textstem")
+library(textstem)
+
+
+#"#
+
+# Tokenize the text into words
+df_words <- df %>%
+  unnest_tokens(word, text)
+
+# Apply lemmatization to the words and create a mapping of original to lemmatized words
+df_words <- df_words %>%
+  mutate(lemmatized_word = lemmatize_words(word))
+
+# Remove stop words from lemmatized words
+data("stop_words")
+df_words <- df_words %>%
+  anti_join(stop_words, by = c("lemmatized_word" = "word"))
+
+
+
+#"#
+
+# Custom stemming dictionary
+custom_stems <- data.frame(
+  original = c("projects", "project"),
+  stemmed = c("project", "project")
+)
+
+# Apply custom stemming
+df_words <- df_words %>%
+  left_join(custom_stems, by = c("word" = "original")) %>%
+  mutate(stemmed_word = ifelse(is.na(stemmed), word, stemmed)) %>%
+  select(-stemmed)
+
+
+```
+
+Split by natin and using bigrams, also custom stopwords but no stemming
+```{r}
+
+
+
+text_df4 <- mutate(all_company_ads, ID = case_when(
+                    ID >= 10000 & ID < 20000 ~ "sw",
+                    ID >= 20000 & ID < 30000 ~ "no",
+                    ID >= 30000 & ID < 40000 ~ "dk",
+                    TRUE ~ as.character(ID)  # If none of the conditions are met, keep the original ID
+                 ))
+colnames(text_df4) <- c('ID','text')
+
+
+
+text_bigrams4 <- text_df4 %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  filter(!is.na(bigram))
+
+bigrams_separated <- text_bigrams4 %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+
+custom_stopwords <- data.frame(word = c("opportunities","skills","company","knowledge","vattenfall","vattenfall's",
+                                        "aker","sweden's","aibel","akkodis","norway's","uppsala","luleå","bergen",
+                                        "västerås","unionen","kth","ramboll","gävle","seko","ab","hsqe","nes",
+                                        "ntnu","nationality","position","role","relevant","320","739","ingemar",
+                                        "norway","industry.akkodis","us:professional","equinor","up.our","nyköping",
+                                        "bu","adam","ovako","stigbert","www.kth.se","boden","finspång","vital",
+                                        "norwegian","administration.we","clubs","588","lennartsson","christer",
+                                        "010","073","akademikerna","gustafsson","ltu.se","siemens","50","00") )
+stop_words_combined <- bind_rows(stop_words, custom_stopwords)
+
+bigrams_filtered4 <- bigrams_separated %>%
+  filter(!word1 %in% stop_words_combined$word) %>%
+  filter(!word2 %in% stop_words_combined$word)
+
+bigrams_united <- bigrams_filtered4 %>%
+  unite(bigram, word1, word2, sep = " ")
+
+bigram_stopwords <- data.frame(bigram = c("means activities","application deadline","abroad competitive",
+                                          "private life","employment takes","largest suppliers"))
+
+bigrams_united4 <- bigrams_united %>%
+  filter(!bigram %in% bigram_stopwords$bigram)
+
+
+
+bigram_tf_idf4 <- bigrams_united4 %>%
+  count(ID, bigram) %>%
+  bind_tf_idf(bigram, ID, n) %>%
+  arrange(desc(tf))
+
+bigram_tf_idf4_mean <- bigram_tf_idf4 %>%
+  group_by(bigram) %>%
+  summarise(
+    tf = mean(tf),
+    idf = mean(idf),
+    tf_idf = mean(tf_idf)
+  ) %>%
+  arrange(desc(tf))
+
+bigram_tf_idf4_no <- bigram_tf_idf4 %>% filter(ID == 'no')
+bigram_tf_idf4_sw <- bigram_tf_idf4 %>% filter(ID == 'sw')
+
+
+```
+
+#### Choose keywords
+```{r}
+#hard_words_df <- result_df %>% filter(Word == "automation")
+new_word <-  result_df %>% filter(Word == "safety")
+
+hard_words_df <- rbind(hard_words_df,new_word)
+soft_words_df <- rbind(soft_words_df,new_word)
+unclear_words_df <- rbind(unclear_words_df,new_word)
+
+re_arrange <- bigram_tf_idf4_no %>% arrange(desc(tf_idf))
+
+upload_words <- re_arrange %>% head(20) %>% select(bigram,tf_idf,idf,tf)
+colnames(upload_words) <- c('Bigram','TF-IDF','IDF','TF')
+
+
+write_sheet(upload_words, ss = sheet, sheet = "test_upload")
+
+```
