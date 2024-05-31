@@ -20,13 +20,22 @@ library(dplyr)
 library(quanteda)
 library(tm)
 library(stringr)
+library(wordcloud)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(Matrix)
+library(SnowballC)
 ```
+
+
 ### Python packages - Delete?
 ```{python}
 from openai import OpenAI
 import os
 import pandas as pd
 import ast
+import math
 
 app_key = os.environ.get("OPENAI_API_KEY")
 ```
@@ -37,199 +46,483 @@ gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www
 
 sheet <- gs4_get("https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0")
 
-CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
-Main <- read_sheet(sheet, "Main")
+Keywords_sheet <- read_sheet(sheet, "Keywords")
 ```
 
-## Investigate and choose sector
+## Make keywords more homogeneous
+### First cleansing of non-unique words
 ```{r}
-companies_hydro <- CompanyAnalysis %>% select(Name,Industry_Sector,Hydrogen_relevance) %>% filter(Hydrogen_relevance == "Yes")
-
-sectors <- companies_hydro %>% select(Industry_Sector) %>% table()
-
-Hydrogen_technology_manufacturer <- companies_hydro %>% filter(Industry_Sector == "Hydrogen technology manufacturer") %>% select(Name)
+keywords_en_og <- Keywords_sheet %>% select(translatedText)
 
 
-chosen_companies <- Hydrogen_technology_manufacturer
+# Separate the Keywords column into multiple rows
+keywords_df_total <- separate_rows(keywords_en_og, translatedText, sep = ',')
+colnames(keywords_df_total) <- c("Keywords")
+keywords_df_total <- keywords_df_total %>% arrange(Keywords) %>% unique()
 ```
 
-## Get add descriptions of chosen companies
-```{r}
-chosen_ads <- data_frame()
-# Make dataframe with all english translations of ad, only Swedish and Norwegian
-all_ads <- Main %>% filter(ID<30000) %>% select(ID,Company,translatedText) 
-
-# Loop for gathering add descriptions
-for (i in seq_len(nrow(chosen_companies))){
-  company <- chosen_companies$Name[i]
-  new_ads <- all_ads %>% filter(Company == company) %>% select(ID,translatedText)
-  chosen_ads <- rbind(chosen_ads,new_ads)
-}
+```{python}
+keywords_df_total_py = r['keywords_df_total']
 ```
 
-## Finding keywords
-### From Elin
+### Using AI to lessen workload
+#### AI-function
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def uniqueKeywords(text):
+  example = "If you are provided this list: ['24/ 7 operation','24/7 operation','24/7 operations','IT support','IT support team','IT supporter','IT supporter team'], your response should be like: [['24/ 7 operation','24/7 operation'],['24/7 operation','24/7 operation'],['24/7 operations','24/7 operation'],['IT support','IT support'],['IT support team','IT support'],['IT supporter','IT support'],['IT supporter team','IT support']]."
+  
+  content = "You are a helpful assistent that figure out unique keywords when given a list of keywords. You will be provided a python list containing keywords. Some of these keywords are very similar, your job is to discover similar keywords and give them a common name. Your response should be in the form of a python list. The list should have the same number of items as the list you were provided with. Each item in this new list should be a python list with two items in them, where the first item is the original keyword and the second item is the new name for the keyword. Thus you will respond with a 'keyword-mapping' of old keywords and their new names. Here is an example: "+example
+  
+  prompt = f"Find the common keyword name for the following keywords: '{text}'"
+  
+  response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=4096,
+    temperature=0.5
+  )
+  return response.choices[0].message.content.strip()
+```
+
+#### Using function
+```{python}
+keyword_list_total = list(keywords_df_total_py['Keywords'])
+
+result_total = []
+for i in range(math.ceil(len(keyword_list_total)/300)):
+  keywords = str(keyword_list_total[0+i*300:300+i*300])
+  result = uniqueKeywords(keywords)
+  result_total.append(result)
+```
+
+#### Turn AI-result into functioning dataframe
+##### Automatic iteration
+```{python}
+list_of_lists_total = []
+for i in range(len(result_total)):
+  result = result_total[i]
+  list_string = result[10:20000]
+  list_string_short = list_string[:-4]
+  
+  try:
+    list_of_lists = ast.literal_eval(list_string_short)
+    list_of_lists_total = list_of_lists_total + list_of_lists
+  except:
+    print(i)
+```
+##### Manual fixing
+```{python}
+result = result_total[41]
+list_string = result[28:20000]
+list_string_short = list_string[:-4]
+
+
+
+list_of_lists = ast.literal_eval(list_string_short)
+list_of_lists_total = list_of_lists_total + list_of_lists
+```
+##### Dataframe compiling
+```{python}
+keywords_AI_mapping_py = pd.DataFrame(list_of_lists_total, columns=['Original_keyword', 'New_keyword'])
+```
+
+### Reduce size of keywords dataframe
 ```{r}
-#calculating the frequency of the words used in the ads
-words <- chosen_ads %>% unnest_tokens(word,translatedText) %>% count(ID,word, sort = TRUE)
-#Calculating the total number of words used by companies in their ads 
-total_words <- words %>% group_by(ID) %>% summarize(total = sum(n))
-#joining to one tibble
-words <- as_tibble(left_join(words, total_words))
+keywords_AI_mapping <- py$keywords_AI_mapping_py
 
-#calculating the tf-idf and arranging the table so that the words with high tf-idf
-#are at the top
-ad_tf_idf <- words %>%
-  bind_tf_idf(word, ID, n) %>%
-  select(-total) %>%
-  arrange(desc(tf_idf))
+keywords_AI_reduced <- keywords_AI_mapping %>% select(New_keyword) %>% unique()
+```
 
-#plotting the words with the highest tf-idf
-ad_tf_idf %>%
-  group_by(ID) %>%
-  slice_max(tf_idf, n = 15) %>%
-  ungroup() %>%
-  ggplot(aes(tf_idf, fct_reorder(word, tf_idf), fill = ID)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ID, ncol = 2, scales = "free") +
-  labs(x = "tf-idf", y = NULL)
+### Save AI-mapping recording
+```{r}
+write_sheet(keywords_AI_mapping, ss = sheet, sheet = "test_upload")
+```
 
-#adding tank and term frequency
-freq_by_rank <- words %>% 
-  group_by(ID) %>% 
-  mutate(rank = row_number(), 
-         term_frequency = n/total) %>%
+
+
+
+### Second round of AI-reduction
+```{python}
+keywords_AI_reduced_py = r['keywords_AI_reduced']
+keyword_list_total = list(keywords_AI_reduced_py['New_keyword'])
+```
+```{python}
+result_total = []
+for i in range(math.ceil(len(keyword_list_total)/300)):
+  keywords = str(keyword_list_total[0+i*300:300+i*300])
+  result = uniqueKeywords(keywords)
+  result_total.append(result)
+  print(i)
+```
+
+```{python}
+list_of_lists_total = []
+for i in range(len(result_total)):
+  result = result_total[i]
+  list_string = result[10:20000]
+  list_string_short = list_string[:-4]
+  
+  try:
+    list_of_lists = ast.literal_eval(list_string_short)
+    list_of_lists_total = list_of_lists_total + list_of_lists
+  except:
+    print(i)
+```
+```{python}
+keywords_AI_mapping2_py = pd.DataFrame(list_of_lists_total, columns=['Original_keyword', 'New_keyword'])
+```
+
+```{r}
+keywords_AI_mapping2 <- py$keywords_AI_mapping2_py
+
+keywords_AI_reduced_2nd <- keywords_AI_mapping2 %>% select(New_keyword) %>% unique()
+```
+
+### Save second AI-mapping recording
+```{r}
+write_sheet(keywords_AI_mapping2, ss = sheet, sheet = "test_upload")
+```
+
+### Third round
+```{python}
+keywords_AI_reduced2_py = r['keywords_AI_reduced_2nd']
+keyword_list_total = list(keywords_AI_reduced2_py['New_keyword'])[1:4000]
+keywords_string_total = str(keyword_list_total)
+```
+#### Second AI-function
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def uniqueKeywords2(text,nr1,nr2):
+  example = "If you are provided this list: ['24/ 7 operation','24/7 operation','24/7 operations','IT support','IT support team','IT supporter','IT supporter team'], your response should be like: [['24/ 7 operation','24/7 operation'],['24/7 operation','24/7 operation'],['24/7 operations','24/7 operation'],['IT support','IT support'],['IT support team','IT support'],['IT supporter','IT support'],['IT supporter team','IT support']]."
+  
+  content = "You are a helpful assistent that figure out unique keywords when given a list of keywords. You will be provided a python list containing keywords. Some of these keywords are very similar, your job is to discover similar keywords and give them a common name. Your response should be in the form of a python list. The list should have the same number of items as the list you were provided with. Each item in this new list should be a python list with two items in them, where the first item is the original keyword and the second item is the new name for the keyword. Thus you will respond with a 'keyword-mapping' of old keywords and their new names. Here is an example: "+example+" However your response should not cover all of the provided keywords. Although you should take all provided keywords into account, should your response be only for the keywords inbetween keyword number "+str(nr1)+" and keyword number "+str(nr2)+"."
+  
+  prompt = f"Find the common keyword name for the following keywords: '{text}'"
+  
+  response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=4096,
+    temperature=0.5
+  )
+  return response.choices[0].message.content.strip()
+```
+#### Second AI 2.0
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def uniqueKeywords3(text1,text2):
+  example = "If you are provided this 'Keyword Corpus': ['24/ 7 operation','24/7 operation','24/7 operations','IT support','IT support team','IT supporter','IT supporter team'], and this 'Keyword Fillout Form': [['24/ 7 operation',''],['24/7 operations',''],['IT support',''],,['IT supporter','']], your response should be like: [['24/ 7 operation','24/7 operation'],['24/7 operations','24/7 operation'],['IT support','IT support'],,['IT supporter','IT support']]."
+  
+  content = "You are a helpful assistent that figure out unique keywords when given a list of keywords. You will be provided a python list containing keywords, this list is called 'Keyword Corpus'. Some of these keywords are very similar, your job is to discover similar keywords and give them a common name. You will also be provided a second list with gaps in it for you to fill, this list is called 'Keyword Fillout Form'. The 'Keyword Fillout Form' will be a large list consisting of smaller lists. The first item in each smaller list will be a keyword which appears in the 'Keyword Corpus', while the second item is empty for you to fill in. Your task is to for each keyword in the 'Keyword Fillout Form' provide the new common name for the keyword while taking the whole 'Keyword Corpus' into account. Your response should be in the form of a python list. The response is a copy of the 'Keyword Fillout Form' but with new common names added for each keyword. Thus you will respond with a 'keyword-mapping' of old keywords and their new names. Here is an example: "+example
+  
+  prompt = f"Find the common keyword name for the following 'Keyword Corpus': '{text1}', and fillout the following 'Keyword Fillout Form': '{text2}'"
+  
+  response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=4096,
+    temperature=0.5
+  )
+  return response.choices[0].message.content.strip()
+```
+
+
+#### Using second AI-function
+```{python}
+def form_creator(item_list):
+  fillout_form = []
+  for item in item_list:
+    small_list = [item,'']
+    fillout_form.append(small_list)
+  return str(fillout_form)
+
+result_total = []
+for i in range(math.ceil(len(keyword_list_total)/300)):
+  keyword_chunk = keyword_list_total[0+i*300:300+300*i]
+  keyword_fillout = form_creator(keyword_chunk)
+  
+  result = uniqueKeywords3(keywords_string_total,keyword_fillout)
+  result_total.append(result)
+  print("Fnished with iteration: "+str(i))
+  print(result)
+```
+
+
+```{python}
+list_of_lists_total = []
+for i in range(len(result_total)):
+  result = result_total[i]
+  list_string = result[10:20000]
+  list_string_short = list_string[:-4]
+  
+  try:
+    list_of_lists = ast.literal_eval(list_string_short)
+    list_of_lists_total = list_of_lists_total + list_of_lists
+  except:
+    print(i)
+```
+Manual fix
+```{python}
+result = result_total[11]
+list_string = result[28:20000]
+list_string_short = list_string[:-4]
+print(list_string_short)
+
+
+list_of_lists = ast.literal_eval(list_string_short)
+list_of_lists_total = list_of_lists_total + list_of_lists
+
+```
+
+
+
+
+
+```{python}
+keywords_AI_mapping3_py = pd.DataFrame(list_of_lists_total, columns=['Original_keyword', 'New_keyword'])
+```
+
+```{r}
+keywords_AI_mapping3 <- py$keywords_AI_mapping3_py %>% arrange(Original_keyword)
+
+keywords_AI_reduced_3rd <- keywords_AI_mapping3 %>% select(New_keyword) %>% unique()
+
+write_sheet(keywords_AI_mapping3, ss = sheet, sheet = "test_upload")
+
+```
+
+## Fixing a keyword map and apply to grand keywordlist
+```{r}
+all_maps <- Keywords_sheet %>% select(Original_keyword...7,New_keyword...8,Original_keyword...10,New_keyword...11,Original_keyword...13,New_keyword...14)
+map1 <- all_maps %>% select(Original_keyword...7,New_keyword...8) %>% drop_na()
+colnames(map1) <- c("Original_word","New_word_1")
+map2 <- all_maps %>% select(Original_keyword...10,New_keyword...11) %>% drop_na()
+colnames(map2) <- c("New_word_1","New_word_2")
+map3 <- all_maps %>% select(Original_keyword...13,New_keyword...14) %>% drop_na()
+colnames(map3) <- c("New_word_2","New_word_3")
+
+
+joint_map <- merge(map1, map2, by = "New_word_1", all.x = TRUE)
+joint_map <- merge(joint_map, map3, by = "New_word_2", all.x = TRUE)
+#joint_map <- joint_map[, c("Original_word", "New_word_1", "New_word_2","New_word_3")]
+
+final_keywordmapping <- joint_map %>% select(Original_word,New_word_3)
+colnames(final_keywordmapping) <- c("Keyword","New_word")
+```
+Manual fixing
+```{r}
+final_keywordmapping1_1 <- final_keywordmapping %>% unique()
+
+duplicate_rows <- final_keywordmapping1_1 %>%
+  group_by(Keyword) %>%
+  filter(n() > 1) %>%
   ungroup()
 
-#calculating the exponent of the power law for the middle section
-rank_subset <- freq_by_rank %>% filter(rank < 100, rank > 10)
-```
-### New finding
-#### First try
-```{r}
-# Convert text to lowercase and remove punctuation
-df <- chosen_ads
-colnames(df) <- c("ID","Text")
-df$Text <- tolower(df$Text)
-df$Text <- gsub("[[:punct:]]", "", df$Text)
-
-# Define custom stopwords
-custom_stopwords <- c("will","work","good","nel","zeg","friday","company","working","position","ability","within")
-# Add custom stopwords to the default English stopwords
-custom_stopwords <- c(stopwords("en"), custom_stopwords)
-
-# Tokenization
-corpus <- Corpus(VectorSource(df$Text))
-corpus <- tm_map(corpus, content_transformer(tolower))
-corpus <- tm_map(corpus, removePunctuation)
-corpus <- tm_map(corpus, removeNumbers)
-corpus <- tm_map(corpus, removeWords, custom_stopwords)
-
-# Stemming - does not work very well
-#corpus <- tm_map(corpus, stemDocument)
-
-# Create Document Term Matrix
-dtm <- DocumentTermMatrix(corpus)
-
-# Convert DTM to dataframe
-dtm_df <- as.data.frame(as.matrix(dtm))
-colnames(dtm_df) <- make.names(colnames(dtm_df))
-
-# Calculate word frequencies
-word_freq <- colSums(dtm_df)
-
-# Sort words by frequency
-sorted_words <- sort(word_freq, decreasing = TRUE)
-
-# Extract top keywords (e.g., top 10)
-top_keywords <- head(sorted_words, 20)
-
-print(top_keywords)
-
-# Calculate TF-IDF
-tfidf <- weightTfIdf(dtm)
-
-# Convert TF-IDF matrix to dataframe
-tfidf_df <- as.data.frame(as.matrix(tfidf))
-colnames(tfidf_df) <- make.names(colnames(tfidf_df))
-
-# Calculate TF-IDF scores for each word
-tfidf_scores <- colMeans(tfidf_df)
-
-# Sort words by TF-IDF score
-sorted_keywords2 <- sort(tfidf_scores, decreasing = TRUE)
-
-# Extract top keywords (e.g., top 10)
-top_keywords2 <- head(sorted_keywords2, 20)
-
-# Print or store the top keywords
-print(top_keywords2)
+#final_keywordmapping <- final_keywordmapping %>%
+#  filter(!row_number() %in% c(52,161,165,198,220,236,268,278,281,329,389,483,462,476,481,551,552,636,633,641,650,672,729,810,791,784,817,861,905,898,1009,1007,1058,1197,1381,1385,1384,1380,1546,1542,1571,1562,1574,1630,1688,1701,1723,1768,1758,1772,1776,1777,))
 
 ```
-#### Refined attempt
-```{r}
-# Convert text to lowercase and remove punctuation
-df <- chosen_ads
-colnames(df) <- c("ID","Text")
-df$Text <- tolower(df$Text)
-df$Text <- gsub("[[:punct:]]", "", df$Text)
+Following parts can be ignored
+```{python} 
+keymap = r['final_keywordmapping']
+duplicates = list(r['duplicate_rows2']['Keyword'])
 
-# Define custom stopwords
-custom_stopwords <- c("will","work","good","nel","zeg","friday","company","working","position","ability","within","role","opportunity","skills")
-# Add custom stopwords to the default English stopwords
-custom_stopwords <- c(stopwords("en"), custom_stopwords)
-
-# Tokenization
-corpus <- Corpus(VectorSource(df$Text))
-corpus <- tm_map(corpus, content_transformer(tolower))
-corpus <- tm_map(corpus, removePunctuation)
-corpus <- tm_map(corpus, removeNumbers)
-corpus <- tm_map(corpus, removeWords, custom_stopwords)
-
-# Create Document Term Matrix
-dtm <- DocumentTermMatrix(corpus)
-
-# Calculate TF
-tf <- colSums(as.matrix(dtm))
-
-# Calculate IDF
-idf <- log2(nDocs(dtm) / colSums(as.matrix(dtm > 0)))
-
-# Calculate TF-IDF
-tfidf <- weightTfIdf(dtm)
-
-# Convert TF-IDF matrix to dataframe
-tfidf_df <- data.frame(as.matrix(tfidf))
-colnames(tfidf_df) <- make.names(colnames(tfidf_df))
-
-# Convert TF and IDF to dataframe
-tf_df <- data.frame(TF = tf)
-idf_df <- data.frame(IDF = idf)
-
-# Calculate mean TF-IDF score for each word
-mean_tfidf <- data.frame(colMeans(as.matrix(tfidf_df)))
-colnames(mean_tfidf) <- c("TF-IDF")
-
-# Combine mean TF-IDF scores with word frequencies
-result_df <- cbind(Word = rownames(mean_tfidf), mean_tfidf, tf_df, idf_df)
-result_df$Total_Frequency <- colSums(as.matrix(dtm))
-
-
-
-ordered_result_df <- result_df[order(-result_df$Total_Frequency), ]
-top_20_df <- head(ordered_result_df,20)
-print(top_20_df$Word)
+indexlst = []
+for i in range(len(keymap.index)):
+  if keymap['Keyword'][i] in duplicates:
+    indexlst.append(i)
+    duplicates.remove(keymap['Keyword'][i])
+    print(i)
+````
+```{python}
+keymap_new = keymap.drop(index=indexlst)
 ```
-#### Choose keywords
 ```{r}
-#hard_words_df <- result_df %>% filter(Word == "hydrogen")
-new_word <-  result_df %>% filter(Word == "global")
+final_keywordmapping <- py$keymap_new
 
-hard_words_df <- rbind(hard_words_df,new_word)
-soft_words_df <- rbind(soft_words_df,new_word)
-unclear_words_df <- rbind(unclear_words_df,new_word)
+duplicate_rows <- final_keywordmapping %>%
+  group_by(Keyword) %>%
+  filter(n() > 1) %>%
+  ungroup()
 
+duplicate_rows2 <- duplicate_rows %>%
+  group_by(New_word) %>%
+  filter(n() > 1) %>%
+  ungroup() %>% unique()
 
-write_sheet(unclear_words_df, ss = sheet, sheet = "test_viktor")
+#final_keywordmapping <- final_keywordmapping %>% filter(!row_number() %in% c(51,1057,1545,1776,1876,2273,2560,2674,3571,3592,3728,3727,4109,4171,4260,4544,4736,4697,4884,5120,5303,5466,5712,6122,6130,6372,6383,7070,7388,7520,7632,8210,8733,9130,9240,9451,9467,9584,9957,10351,10894,11011,11185,11720,12236,12268,12374,13006,13295,14027,14122,14149,14175,14396,14689,16241,16691))
+```
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```{python}
+keymap1_1 = r['final_keywordmapping1_1']
+duplicates1_1 = r['duplicate_rows']
+#duplst = list(duplicates1_1['Keyword'])
+
+duplst = []
+for i in range(len(duplicates1_1.index)):
+  if duplicates1_1['Keyword'][i] in duplst:
+    index = duplst.index(duplicates1_1['Keyword'][i])+1
+    if len(duplicates1_1['New_word'][i]) > len(duplicates1_1['New_word'][index]):
+      duplicates1_1['New_word'][i] = duplicates1_1['New_word'][index]
+    else:
+      duplicates1_1['New_word'][index] = duplicates1_1['New_word'][i]
+  else:
+    duplst.append(duplicates1_1['Keyword'][i])
+    duplst.append(i)
+```
+```{r}
+duplicates1_2 <- py$duplicates1_1 %>% unique()%>%
+  group_by(Keyword) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+```
+```{python}
+duplicates1_2 = r['duplicates1_2']
+#duplst = list(duplicates1_1['Keyword'])
+
+duplst = []
+for i in range(len(duplicates1_2.index)):
+  if duplicates1_2['Keyword'][i] in duplst:
+    index = duplst.index(duplicates1_2['Keyword'][i])+1
+    if len(duplicates1_2['New_word'][i]) > len(duplicates1_2['New_word'][index]):
+      duplicates1_2['New_word'][i] = duplicates1_2['New_word'][index]
+    else:
+      duplicates1_2['New_word'][index] = duplicates1_2['New_word'][i]
+  else:
+    duplst.append(duplicates1_2['Keyword'][i])
+    duplst.append(i)
+```
+```{r}
+duplicates1_3 <- py$duplicates1_2 %>% unique()%>%
+  group_by(Keyword) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+```
+```{python}
+duplicates1_3 = r['duplicates1_3']
+#duplst = list(duplicates1_1['Keyword'])
+
+duplst = []
+for i in range(len(duplicates1_3.index)):
+  if duplicates1_3['Keyword'][i] in duplst:
+    index = duplst.index(duplicates1_3['Keyword'][i])+1
+    if len(duplicates1_3['New_word'][i]) > len(duplicates1_3['New_word'][index]):
+      duplicates1_3['New_word'][i] = duplicates1_3['New_word'][index]
+    else:
+      duplicates1_3['New_word'][index] = duplicates1_3['New_word'][i]
+  else:
+    duplst.append(duplicates1_3['Keyword'][i])
+    duplst.append(i)
+```
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```{python}
+keymap_new = r['final_keywordmapping1_1']
+keymap_new2 = keymap_new.drop([52,
+
+1057,1545,1776,1876,2273,2560,2674,3571,3592,3728,3727,4109,4171,4260,4544,4736,4697,4884,5120,5303,5466,5712,6122,6130,6372,6383,7070,7388,7520,7632,8210,8733,9130,9240,9451,9467,9584,9957,10351,10894,11011,11185,11720,12236,12268,12374,13006,13295,14027,14122,14149,14175,14396,14689,16241,16691])
+```
+```{r}
+df <- data.frame(
+  word1 = c('apple', 'banana', 'apple', 'grape'),
+  word2 = c('fruit', 'yellow', 'red', 'purple')
+)
+
+# Add a new column with word lengths
+df <- df %>%
+  mutate(word2_length = nchar(word2))
+
+# Remove duplicate rows based on 'word1' while keeping the row with the shortest 'word2'
+result <- df %>%
+  group_by(word1) %>%
+  filter(word2_length == min(word2_length)) %>%
+  select(-word2_length)  # Remove the temporary column
+
+# View the resulting dataframe
+print(result)
+
+```
+```{r}
+final_keywordmapping2 <- py$keymap_new2
+
+write_sheet(final_keywordmapping2, ss = sheet, sheet = "test_upload")
+```
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```{r}
+# Add a new column with word lengths
+final_keywordmapping1_1 <- final_keywordmapping1_1 %>%
+  mutate(word2_length = nchar(New_word))
+
+# Remove duplicate rows based on 'word1' while keeping the row with the shortest 'word2'
+final_keywordmapping1_2 <- final_keywordmapping1_1 %>%
+  group_by(Keyword) %>%
+  filter(word2_length == min(word2_length)) %>%
+  select(-word2_length)  %>% # Remove the temporary column
+  arrange(Keyword)
+
+duplicate_rows <- final_keywordmapping1_2 %>%
+  group_by(Keyword) %>%
+  filter(n() > 1) %>%
+  ungroup()
+```
+
+```{python}
+keymap_new = r['final_keywordmapping1_2']
+keymap_new2 = keymap_new.drop([3300,3305,3312,3472])
+```
+
+```{r}
+final_keywordmapping2 <- py$keymap_new2
+
+write_sheet(final_keywordmapping2, ss = sheet, sheet = "test_upload")
+```
+
+```{r}
+Keyword_texts <- Keywords_sheet %>% select(ID,translatedText) %>% drop_na()
+colnames(Keyword_texts) <- c('ID','text')
+
+Keyword_nationality <- mutate(Keyword_texts, ID = case_when(
+                    ID >= 10000 & ID < 20000 ~ "sw",
+                    ID >= 20000 & ID < 30000 ~ "no",
+                    ID >= 30000 & ID < 40000 ~ "dk",
+                    TRUE ~ as.character(ID)  # If none of the conditions are met, keep the original ID
+                 )) %>% separate_rows(text, sep = ',')    # This is done instead of unnesting -> it keeps the keywords whole and keeps information of from which text they came from
+colnames(Keyword_nationality) <- c('ID','Keyword')
+Keyword_nationality <- as.data.frame(apply(Keyword_nationality, 2, function(x) trimws(x, "both")))
+
+# Before counting, use the keyword mapping
+Keyword_nationality_filtered <- new_df <- left_join(Keyword_nationality, final_keywordmapping2, by = "Keyword")
+
+na_rows_any <- Keyword_nationality_filtered[!complete.cases(Keyword_nationality_filtered), ]
+
+Keyword_nationality_filtered <- Keyword_nationality_filtered[-c(56544), ]
+
+Keyword_nationality_filtered <- Keyword_nationality_filtered %>% select(ID,New_word)
+colnames(Keyword_nationality_filtered) <- c('ID','word')
+
+#%>% count(ID, Keyword, sort = TRUE)
+```
+## Error?
+```{r}
+# checking for errors
+na_rows_any <- Keyword_nationality_filtered[!complete.cases(Keyword_nationality_filtered), ]
+
 
 ```
