@@ -1,0 +1,982 @@
+---
+title: "Analysis"
+format: html
+editor: visual
+---
+
+# Libraries
+
+```{r}
+library(tidyverse)
+library(rlang)
+library(stringr)
+library(broom)
+library(ggthemes)
+library(ggrepel)
+library(tidygraph)
+library(ggraph)
+library(googlesheets4)
+library(gtsummary)
+library(gt)
+library(gtExtras)
+library(patchwork)
+
+```
+
+# Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+df_main_raw <- read_sheet(ss, sheet = "Main")
+geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:J")
+
+df_companies <- read_sheet(ss, sheet = "CompanyAnalysis")
+df_job_roles <- read_sheet(ss, sheet = "Job_roles")
+keywords_raw <- read_sheet(ss, sheet = "Keywords")
+
+#cities <- read_csv2("data/ai_cities_cleaned.csv") # Needs to be checked
+#regions_raw <- read_csv2("data/locations_regions.csv")
+#regions_pop_raw <- read_csv2("data/regions_population.csv")
+
+workforce_gdp <- tribble(
+  ~Country, ~Workforce, ~GDP_per_capita_kUSD, ~GDP_total_billion_USD, 
+  "SE", 5.2, 56, 592,  
+  "NO", 2.8, 109, 593,
+  "DK", 3.0, 67, 400
+  )
+
+```
+
+# Wrangel
+
+```{r}
+geo <- geo_locations_raw
+
+job_roles <- df_job_roles %>%
+  select(ID, job_role = Job_role)
+
+jobs <- df_main_raw %>% 
+  inner_join(geo, by = c("Location"="New_name")) %>%
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%
+  mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
+  filter(Scrape_date >= "2023-08-20") %>%
+  left_join(job_roles)
+
+max(jobs$Scrape_date)
+
+companies <- df_companies %>% slice(-1)
+
+new_keys <- keywords_raw %>% select(keywords = Keyword, new_key= New_word)
+
+#remove company and country names
+rm_companies <- str_to_lower(companies$Name)
+rm_location <- str_to_lower(c(jobs$Location, jobs$region))
+rm_words <- c("goteborg", "gothenburg", "background")
+
+keywords <- keywords_raw %>% 
+  select(id=ID, keywords = translatedText) %>%
+  mutate(country = case_when(
+    str_detect(id, pattern ="^1") ~ "SE", 
+    str_detect(id, pattern ="^2") ~ "NO",
+    str_detect(id, pattern ="^3") ~ "DK"
+  )) %>% na.omit() %>%
+  separate_rows(keywords, sep = ",") %>%
+  mutate(keywords = str_squish(keywords)) %>%
+  relocate(keywords, .after = last_col()) %>%
+  filter(!keywords == "") %>%
+  left_join(new_keys) %>%
+  mutate(new_key = str_to_lower(new_key)) %>%
+  filter(!(new_key %in% rm_companies & keywords %in% rm_companies)) %>%
+  filter(!new_key %in% rm_location) %>%
+  filter(!new_key %in% rm_words)
+
+```
+
+
+
+# Descriptives
+
+## New jobs over time
+- plot describing number of new jobs per month
+
+```{r}
+jobs_over_time <- jobs %>% 
+  mutate(year = lubridate::year(Scrape_date), month = lubridate::month(Scrape_date)) %>% 
+  group_by(year, month, Country) %>%
+  summarise(n =n()) %>%
+  unite("ym", year:month, sep = "-") %>%
+  ungroup() %>%
+  mutate(ym = as_factor(ym))
+
+jobs_over_time %>% 
+  ggplot(aes(ym, n, fill= Country)) + 
+  geom_col() + 
+  scale_fill_viridis_d()+
+  theme_minimal() +
+  labs(x= "", y= "Nr. of new jobs")
+  
+#ggsave("figs/jobs_over_time.png", dpi = 600)
+
+```
+
+
+## New jobs and country stats
+- simple comparision of main stats between countries
+
+```{r}
+
+comp <- jobs %>% 
+  select(Country, Company) %>% 
+  unique() %>% 
+  group_by(Country) %>% 
+  count(name="nr_comp")
+
+tbl_country_comp <- jobs %>% 
+  group_by(Country) %>% 
+  summarise(Jobs = n(), .groups = "drop") %>%
+  mutate(perc = Jobs/sum(Jobs)*100) %>%
+  left_join(comp) %>%
+  mutate(perc_c = nr_comp/sum(nr_comp)*100) %>%
+  left_join(workforce_gdp) 
+
+gt_tbl_country_comp <- tbl_country_comp %>% 
+  gt(rowname_col = "Country") %>%
+  tab_stubhead(label = "Country") %>%
+  grand_summary_rows(
+    columns = -Country,
+    fns = list(
+      Total ~sum(.)
+    )
+  ) %>% 
+  fmt_number(decimals = 0) %>%
+  tab_spanner(
+    columns = c(Jobs, perc),
+    label = "New Jobs"
+  ) %>%
+  tab_spanner(columns = c(nr_comp, perc_c),
+              label = "Organisations") %>%
+  tab_spanner(columns = c(Workforce, GDP_total_billion_USD, GDP_per_capita_kUSD),
+              label = "Country Statistics") %>%
+  cols_label(
+    Jobs ~ "Nr.",
+    perc ~ "(%)",
+    nr_comp ~ "Nr.",
+    perc_c ~ "(%)",
+    Workforce ~ "Labour<br>(mil.)",
+    GDP_total_billion_USD ~ "GDP<br>(b$)",
+    GDP_per_capita_kUSD ~ "GDP/Cap.<br>(k$)",
+    .fn = md
+  ) %>% gt_theme_espn()
+gt_tbl_country_comp
+#gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
+
+```
+
+## Overview company descriptives 
+- Here are two tables. First one long with all companies. Then three smaller ones, one for each country. 
+```{r}
+
+companies_overview <- jobs %>%
+  group_by(Country, Company) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  mutate(share = n/sum(n)*100) %>%
+  ungroup()
+
+long_table <- companies_overview %>%
+  gt(rowname_col = "Company",
+     groupname_col = "Country") %>%
+  summary_rows(
+    columns = c(n, share),
+    fns = list(
+    Total ~ sum(.)
+    ),
+    fmt = ~ fmt_number(., decimals = 0),
+  ) %>%
+  summary_rows(
+    columns = n,
+    fns = list(
+      Min ~ min(.), 
+      Max ~ max(.),
+      Average ~ mean(.),
+      Nr_org. ~ length(.)
+      ),
+    fmt = ~ fmt_number(., decimals = 0)
+  ) %>%
+  fmt_number(columns = share, decimals = 1) %>%
+  grand_summary_rows(
+    columns = n,
+    fns = list(
+      Total ~ sum(.),
+      Min ~ min(.),
+      Max ~ max(.),
+      Average ~ mean(.),
+      Nr_org. ~ length(.)
+      ),
+    fmt = ~ fmt_number(., decimals = 0)
+    ) %>%
+  cols_label(
+    n ~ "New Jobs",
+    share ~ "Share (%)"
+  )
+
+long_table
+
+#gtsave(long_table, filename = "tables/long_tbl_companies.pdf")
+
+
+```
+
+Per country tables
+- an idea here is to add the distribution figure to the table. Not a priority.
+
+```{r}
+
+tot_jobs <- sum(companies_overview$n)
+top_10 <- companies_overview %>%
+  # Group by country to perform operations within each country
+  group_by(Country) %>%
+  # Arrange by descending n within each group
+  arrange(desc(n), .by_group = TRUE) %>%
+  # Create a new column to identify top 10 companies considering ties
+  mutate(Rank = rank(-n, ties.method = "first")) %>%
+  # Adjust Company name, keeping top 10 and any ties at the 10th place, lump the rest as 'Other'
+  mutate(Company = ifelse(Rank <= 10, Company, "Other")) %>%
+  # Regroup to combine 'Other' entries
+  group_by(Country, Company) %>%
+  # Summarize to aggregate counts for each company or 'Other'
+  summarize(n = sum(n)) %>%
+  mutate(share = n/sum(n)*100, share_tot = n/tot_jobs*100) %>%
+  # Arrange within each country to ensure 'Other' appears last and companies are sorted by n
+  arrange(Country, desc(n)) %>%
+  mutate(Company = fct_infreq(Company) %>% fct_relevel("Other", after = Inf)) %>%
+  # Final arrange to ensure 'Other' is last
+  arrange(Country, Company == "Other") %>%
+  ungroup() %>%
+  mutate(Company = as.character(Company)) %>%
+  mutate(Company = str_trunc(Company, width =20, ellipsis = "."))
+
+
+top10 <- function(cc){
+  
+  ll <- case_when(
+    cc== "DK" ~ "Denmark",
+    cc== "SE" ~ "Sweden",
+    cc == "NO" ~"Norway"
+  )
+  
+  top_10 %>% 
+  filter(Country == cc) %>%
+  select(-Country) %>%
+  gt(rowname_col = "Company") %>%
+  tab_stubhead(label = "Companies") %>%
+  grand_summary_rows(
+    columns = c(n, share, share_tot),
+    fns = list(
+      Total = ~ sum(.)
+    ), 
+    fmt = ~fmt_number(., columns = share_tot, decimals = 1)) %>%
+  fmt_number(columns = c(share, share_tot), decimals = 1) %>%
+  tab_spanner(
+    columns = everything(),
+    label = ll
+  ) %>% 
+  cols_label(
+    n~"New jobs",
+    share ~ "(%)",
+    share_tot ~ "Total(%)"
+  ) %>%
+  gt_theme_espn()
+}
+
+
+dk <- top10("DK")
+no <- top10("NO")
+se <- top10("SE")
+dk 
+no
+se
+#gtsave(dk, filename = "tables/dk_comp.png")
+#gtsave(no, filename = "tables/no_comp.png")
+#gtsave(se, filename = "tables/se_comp.png")
+```
+
+## Distribution - add to table above later?
+```{r}
+df_distribution <- jobs %>% 
+  count(Company, Country) %>% 
+  filter(!Company == "!!!NEW_COMPANY!!!")
+
+df_distribution %>% 
+  ggplot(aes(n, Country, fill = Country), alpha = 0.5) + 
+  geom_violin() + 
+  scale_fill_colorblind() + 
+  theme_grey() +
+  theme(legend.position = "bottom") +
+  labs(x = "", y = "")
+
+#ggsave(filename = "figs/violine.png", width = 6, height = 4, dpi = 600)
+
+
+```
+
+
+## What type of actors are reqruiting?
+```{r}
+
+types <- companies %>% 
+  select(Name, Multinational, Organisation_type, Ownership_type, Industry_Sector, Hydrogen_specialist, Location_of_jobs) %>%
+  mutate(multi_Nordic = ifelse(str_length(Location_of_jobs)>2, TRUE, FALSE))
+
+company_types <- jobs %>% 
+  group_by(Company, Country) %>% 
+  summarise(n = n()) %>%
+  left_join(types, by = c("Company" = "Name")) %>%
+  na.omit()
+
+company_types_clean <- company_types %>% 
+  rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic")
+
+ppf <- function(vr_name) {
+  y <- sym(vr_name)
+  pl <- company_types_clean %>% 
+  ggplot(aes(x= n, y= !!y , 
+             fill = Country)) + 
+  geom_col(drop = F)+
+    scale_x_continuous(limits = c(0, 1600))+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = y)+
+    theme_minimal()+
+    theme(
+      legend.position = 
+        ifelse(y =="Sector" | y == "Organisation", "bottom", "none"), 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+  return(pl)
+}
+
+v<- c("Multinational", "Organisation", "Ownership", "Sector", "H2-spec.", "MultiNordic")
+
+plot_list <- map(v, ppf)
+names(plot_list) <- v
+
+sml_pl <- plot_list[[1]] + plot_list[[6]] +plot_list[[3]]+plot_list[[5]] + plot_layout(ncol = 1, axes = "collect") &
+  theme(legend.position="bottom", text = element_text(size = 14)) 
+sml_pl
+multi_pl <-plot_list[[2]] + sml_pl + 
+  plot_layout(ncol = 2, guides = "collect") &
+  theme(legend.position="bottom", 
+        text = element_text(size = 14)) 
+multi_pl
+#ggsave(filename = "figs/multi_pl.png", dpi = 1200, width = 12, height = 8)
+
+```
+
+
+## Overview: bipart companies reqruiting across -
+- here one could play around abit more with colors to highlight different type of actors
+
+```{r}
+
+types <- companies %>% 
+  select(Name, Multinational, Organisation_type, Ownership_type, Industry_Sector, Hydrogen_specialist, Location_of_jobs) %>%
+  mutate(multi_Nordic = ifelse(str_length(Location_of_jobs)>2, TRUE, FALSE)) %>% rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic")
+
+df_gs <- jobs %>% 
+  count(Company, Country, name = "weight") %>% 
+  filter(!Company == "!!!NEW_COMPANY!!!") %>%
+  left_join(types, by =c("Company" = "Name")) %>% 
+  na.omit() %>% 
+  filter(Organisation == "Firm") # select only firms
+
+nr_jobs_comp <- jobs %>% count(Company, name = "jobs") %>% 
+  filter(!Company == "!!!NEW_COMPANY!!!") %>% 
+  rename(name = Company)
+
+nr_jobs_country <- jobs %>% 
+  count(Country, name = "jobs") %>% 
+  rename(name = Country)
+node_data <- bind_rows(nr_jobs_comp, nr_jobs_country)
+
+gs <- df_gs %>% 
+  as_tbl_graph(directed = FALSE) %N>%
+  mutate(type = ifelse(name %in% df_gs$Company, "actor", "country")) %>%
+  mutate(ctrl = centrality_degree()) %>%
+  left_join(node_data)
+  
+
+nodes <- gs %N>% as_tibble()
+edges <- gs %E>% as_tibble()
+
+set.seed(143)
+ggraph(gs, layout = "nicely") +
+  geom_edge_link(aes(edge_width = weight), 
+                 edge_alpha =0.3, 
+                 edge_color = "lightgrey", 
+                 show.legend = FALSE) + 
+  geom_node_point(aes(color = type, shape = type, size = jobs),
+                  alpha = 0.6, show.legend = FALSE) +
+  geom_node_text(aes(label = ifelse(type != "actor", name, "")),
+                 size= 2, show.legend = FALSE) +
+  geom_node_text(aes(
+    label = ifelse(type == "actor" & (jobs >4 | ctrl >1), 
+                   str_trunc(name, 10, ellipsis = "."), ""),
+    size = ifelse(type == "actor", jobs, ctrl)), 
+                 repel = T, show.legend = FALSE) +
+  theme_graph() +
+  scale_color_manual(values = c("actor" = "lightblue", "country" = "orange")) +
+  scale_size(range = c(2,14))+
+  scale_edge_width(range = c(2, 4))+
+  ggtitle("")
+ggsave("figs/two_mode_countries.png", dpi = 1200, width = 12, height = 8)
+```
+
+
+
+## Overview: Jobs per sector - tbl
+```{r}
+tbl <- jobs %>%
+  inner_join(df_companies %>% 
+               select(Name, Industry_Sector), by = c("Company"="Name")) %>%
+  rename(Sector = Industry_Sector) %>%
+  mutate(Sector = fct_infreq(Sector)) %>% 
+  mutate(job_role = fct_infreq(job_role))
+
+gt_tbl <- tbl %>%
+  tbl_cross(Sector, Country, percent = "cell") %>%
+  as_gt() %>%
+  gt_theme_espn() 
+
+gt_tbl %>% gtsave("figs/sector_country.png")
+gt_tbl
+```
+
+## Overview: Jobs per sector - plot
+```{r}
+
+tbl %>% 
+  group_by(Country, Sector) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(Sector), 
+             fill = Country)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+#ggsave("figs/Total_jobs_per_sector.png", dpi = 1200, width = 6, height = 8)
+
+
+
+```
+
+
+
+## Overview: job_roles
+```{r}
+
+gt_tbl <- tbl %>%
+  tbl_cross(job_role, Country, percent = "cell") %>%
+  as_gt() %>%
+  gt_theme_espn() 
+gt_tbl %>% gtsave("figs/jobrole_country.png")
+gt_tbl
+
+
+
+```
+
+## Plot job roles
+```{r}
+tbl %>% 
+  group_by(Country, job_role) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(job_role), 
+             fill = Country)) + 
+  geom_col()+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 6, height = 8)
+
+```
+
+## Places - Where? Create a new map?
+```{r}
+
+
+
+
+```
+
+
+## Keywords
+```{r}
+
+df_keys_long <- keywords %>% 
+  group_by(country, keywords) %>%
+  summarise(n =n()) %>%
+  rename(word=keywords) %>% 
+  tidytext::bind_tf_idf(word, country, n)
+
+df_keys_short <- keywords %>% 
+  group_by(country, new_key) %>%
+  summarise(n =n()) %>%
+  rename(word=new_key) %>%
+  tidytext::bind_tf_idf(word, country, n)
+
+df_keys <- df_keys_short
+
+
+common_words <- df_keys %>% 
+  filter(n >4) %>% #words appearing at least once per country
+  select(country, word) %>% unique() %>% 
+  group_by(word) %>% summarise(nr_joint=n()) %>%
+  filter(nr_joint>1) %>%
+  inner_join(df_keys)
+
+#summary(df_keys$tf_idf)
+#df_keys %>% ggplot(aes(tf_idf)) + geom_histogram() +
+#  facet_wrap(~country)
+
+## shared words
+keys_se <- df_keys %>% 
+  filter(country == "SE")
+keys_dk <- df_keys %>% filter(country == "DK")
+keys_no <- df_keys %>% filter(country == "NO")
+
+
+## top words for each country
+keys_se <- df_keys %>% filter(country == "SE") %>%
+  arrange(desc(tf_idf)) %>%
+  slice_max(tf_idf, n = 150, with_ties = FALSE)
+  
+keys_dk <- df_keys %>% filter(country == "DK") %>%
+  arrange(desc(tf_idf)) %>%
+  slice_max(tf_idf, n = 150, with_ties = FALSE)
+
+keys_no <- df_keys %>% filter(country == "NO") %>% 
+  arrange(desc(tf_idf)) %>%
+  slice_max(tf_idf, n = 150, with_ties = FALSE)
+
+df_signf <- bind_rows(keys_se, keys_dk, keys_no)
+
+
+country_node_data <- df_signf %>% 
+  count(country) %>% rename(name=country)
+
+node_data <- df_signf %>% 
+  group_by(word) %>%
+  summarise(n=sum(n)) %>%
+  rename(name = word) %>% 
+  bind_rows(country_node_data)
+
+gs_keys <- df_signf %>% 
+  as_tbl_graph(directed = FALSE) %>%
+  mutate(type = ifelse(name %in% df_keys$word, "word", "country")) %>%
+  mutate(ctrl = centrality_degree()) %N>%
+  left_join(node_data)
+  
+
+nodes <- gs_keys %N>% as_tibble()
+edges <- gs_keys %E>% as_tibble()
+  
+set.seed(143)
+ggraph(gs_keys, layout = "stress") +
+  geom_edge_link(aes(edge_width = tf_idf), 
+                 edge_alpha =0.3, 
+                 edge_color = "lightgrey", 
+                 show.legend = FALSE) + 
+  geom_node_point(aes(color = type, shape = type, size = n),
+                  alpha = 0.6, show.legend = FALSE) +
+  geom_node_text(aes(label = ifelse(type != "word", name, "")),
+                 size= 2, show.legend = FALSE) +
+  geom_node_text(aes(
+    label = ifelse(type == "word" & (n >20 & ctrl > 1), 
+                   str_trunc(name, 10, ellipsis = "."), ""),
+    size = ifelse(type == "actor", n, ctrl)), 
+                 repel = T, show.legend = FALSE) +
+  theme_graph() +
+  scale_color_manual(values = c("word" = "lightblue", "country" = "orange")) +
+  scale_shape_manual(values = c("word" = 16, "country" = 17))+
+  scale_size(range = c(2,14))+
+  scale_edge_width(range = c(2, 4))+
+  ggtitle("")
+ggsave("figs/keyword_countries.png", dpi = 1200, width = 12, height = 8)
+  
+
+```
+
+
+
+## Correlation between jobs and populations in specific locations and in regions
+- In this section we first check the correlation between new jobs for the different locations
+- We then check the correlation between new jobs and regions.
+
+### Wrangling the data
+```{r}
+location_new_jobs <- jobs %>% 
+  group_by(Location) %>%
+  summarise(new_jobs = n()) %>% rename(location = Location)
+
+location_all <- location_region_pop %>% 
+  left_join(location_new_jobs) %>%
+  filter(!is.na(new_jobs)) # there is some na's since the file pop_ai reads locations from sheet "geo_locations_raw" without checking if there are jobs in the harmonized time period. 
+
+
+```
+
+### lm new jobs ~ locations - all countries
+```{r}
+lm_location <- lm(new_jobs ~ loc_pop, data = location_all)
+summary(lm_location)
+tidy(lm_location)
+
+glance(lm_location)
+
+```
+
+
+### lm new jobs ~ locations - per country
+```{r}
+lm_data <- location_all %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ loc_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data %>% select(country, glance) %>% unnest(glance)
+
+outliers <- lm_data %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(location = map(data, ~.x$location),
+         region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(location, region, outliers)) %>%
+  relocate(location:region, .after = "country") %>%
+  filter(outlier)
+
+```
+
+### Plot between location and new jobs
+- add p-value and R.squared to plot
+```{r}
+location_all %>% 
+  ggplot(aes(x= round(loc_pop/1e3), y= new_jobs, colour = country)) + 
+  geom_smooth(aes(round(loc_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 2.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_smooth(method = "lm", show.legend = F, se = F, 
+              linewidth = 1.5, alpha =0.7)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = paste0(location, "\n(",region,")"),
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers)+
+  scale_color_colorblind("Country")+
+  scale_size_continuous(range = c(1,4)) +
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  theme_minimal() +
+  guides(size = "none")+
+  theme(legend.position = "top")
+ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
+```
+
+- For all three countries it appears to be a linear relationship
+- It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
+
+
+
+### lm new jobs ~ region
+- now same thing but for all regions
+
+```{r}
+region_new_jobs <- location_all %>% 
+  group_by(region, reg_pop, country) %>%
+  summarise(new_jobs = sum(new_jobs))
+
+lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
+glance(lm_regions)
+
+```
+#### lm new jobs ~ region per country
+- and regions per country 
+
+```{r}
+
+lm_data_reg <- region_new_jobs %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ reg_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg %>% select(country, glance) %>% unnest(glance)
+
+outliers_reg <- lm_data_reg %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+```
+
+
+### Plot between region and new jobs
+- higlight outlier
+- add p and r.squared
+```{r}
+region_new_jobs <- location_all %>% 
+  group_by(region, reg_pop, country) %>%
+  summarise(new_jobs = sum(new_jobs))
+
+
+region_new_jobs %>% 
+  ggplot(aes(round(reg_pop/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(reg_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg)+
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  theme_minimal() +
+  theme(legend.position = "top")
+ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
+
+
+
+```
+- From a Nordic perspectives significantly more jobs are created in Oslo, Rogland, Vestland
+- Too few regions to split between countries.
+
+
+# Sectors 
+
+
+# Actors 
+
+
+## Most new jobs are created by companies that only recruit in one country?
+```{r}
+most_jobs <- nodes %>% 
+  filter(type == "actor") %>%
+  mutate(type = ifelse(ctrl == 1, "single", "multiple"))
+
+most_jobs %>% group_by(type)  %>%
+  summarise(jobs = sum(jobs))
+
+most_jobs %>% filter(type == "multiple") %>% 
+  left_join(companies %>% select(Name, Industry_Sector), by = c("name" = "Name")) %>%
+  group_by(Industry_Sector) %>%
+  summarise(Jobs = sum(jobs)) %>%
+  arrange(desc(Jobs)) %>%
+  bind_rows(summarise(., Industry_Sector = "Total", Jobs = sum(Jobs))) %>%
+  gt()
+
+
+```
+
+
+
+
+# Distribution
+```{r}
+
+company_types %>% ggplot(aes(n, fill = Country)) + 
+  geom_histogram()+
+  scale_fill_colorblind("Country")+
+  theme_minimal()
+
+```
+
+
+
+
+## regression of all company data - is this correct?
+```{r}
+
+# run model over all countries
+mdl_country_company <- company_types %>% 
+  nest(-Country) %>% mutate(mdl = map(data, ~glm(n ~ Multinational + Organisation_type + Ownership_type + Industry_Sector+ Hydrogen_specialist + multi_Nordic, data = .)))
+
+#create a list of tables
+reg_tables <- mdl_country_company %>% 
+  mutate(tbl = map(mdl, ~tbl_regression(.x))) %>%
+  pull(tbl)
+
+names(reg_tables) <- mdl_country_company$Country
+
+combined_table <- tbl_merge(
+  reg_tables,
+  tab_spanner = names(reg_tables)
+)
+
+combined_table %>% as_gt() %>%
+  gtsave(filename = "tables/company_regression.png")
+
+```
+
+
+
+
+
+## Share of companies
+```{r}
+
+prop <- df_distribution %>% filter(Country =="SE") %>% 
+  ungroup() %>% 
+  slice_max(prop = 0.8, order_by = n)
+
+prop <- df_distribution %>% filter(Country =="SE") %>% 
+  ungroup() %>% 
+  mutate(ff = fct_lump_n(Company, n = 10, w=n))
+
+df_distribution %>% 
+  group_by(Country, n) %>%
+  summarise(nr_companies = n())
+
+```
+
+
+
+
+
+# H3 What?
+```{r}
+companies_sector <- companies %>% select(Company = Name, Sector = Industry_Sector)
+
+tmp <- jobs %>%
+  left_join(companies_sector) %>%
+  group_by(Country, Sector, job_role) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  complete(Country, Sector, job_role, fill = list(n= 0)) %>%
+  filter(!is.na(job_role) & !is.na(Sector))
+
+tmp_no <- tmp %>% filter(Country == "NO")
+tmp_dk <- tmp %>% filter(Country == "DK")
+tmp_se <- tmp %>% filter(Country == "SE")
+
+lm_all <- lm(n ~ Sector+job_role, data = tmp)
+t1 <- gtsummary::tbl_regression(lm_all) %>% add_significance_stars()
+
+lm_no <- lm(n ~ Sector+job_role, data = tmp_no)
+t2 <- gtsummary::tbl_regression(lm_no) %>% add_significance_stars()
+
+lm_dk <- lm(n ~ Sector+job_role, data = tmp_dk)
+t3 <- gtsummary::tbl_regression(lm_dk) %>% add_significance_stars()
+
+lm_se <- lm(n ~ Sector+job_role, data = tmp_se)
+t4 <- gtsummary::tbl_regression(lm_se) %>% add_significance_stars()
+
+t_merge <- tbl_merge(
+  tbls = list(t1, t2, t3, t4),
+  tab_spanner = c("**All Countries**", "**Norway**", "**Denmark**", "**Sweden**")
+)
+
+t_merge %>% as_gt() %>% gtsave(filename = "tables/sector_jobroles_lm.png")
+```
+
+
+# Share of total jobs
+```{r}
+se <- tbl %>% count(Country) %>% subset(Country == "SE", n) %>% pull()
+dk <- tbl %>% count(Country) %>% subset(Country == "DK", n) %>% pull()
+no <- tbl %>% count(Country) %>% subset(Country == "NO", n) %>% pull()
+
+sector <- tbl %>%
+  count(Sector, Country) %>%
+  complete(Sector, Country, 
+           fill = list(n = 0)) %>%
+  relocate(Country) %>%
+  mutate(share = )
+  pivot_wider(names_from = Country, values_from = n)
+
+```
+
+
+
+
+```{r}
+sector <- tbl %>%
+  count(Sector, Country) %>%
+  complete(Sector, Country, 
+           fill = list(n = 0)) %>%
+  relocate(Country)
+
+test_chi_data <- sector %>% 
+  pivot_wider(names_from = Sector, values_from = n)
+
+# Test for significant difference between sectors and countries
+chi_sq_res <- chisq.test(select(test_chi_data, -Country))
+#fisher.test(select(test_chi_data, -Country))
+
+write_csv(sector, "tables/sectors.csv")
+  
+
+sector %>% 
+  ggplot(aes(n, Sector, fill= Country)) + 
+  geom_col(position = "fill")+
+  theme_fivethirtyeight()+
+  scale_fill_fivethirtyeight()+
+  labs(x = "", y = "Proportion")
+ggsave("figs/sector_focus.png")
+```
+
+
+
+```{r}
+
+sector %>% 
+  ggplot(aes(n, Industry_Sector, fill = Country)) + 
+  geom_col() + 
+  facet_wrap(~Country, scales = "fixed") +
+  theme_fivethirtyeight()+
+  scale_fill_fivethirtyeight()
+
+ggsave("figs/sector_focus2.png", width = 14, height = 8)
+
+
+```
