@@ -68,10 +68,7 @@ location_region_pop <- cities %>%
   rename(reg_pop = population)
 
 
-geo <- geo_locations_raw %>% 
-  select(-Comment) %>% 
-  rename(Location = Name2) %>% 
-  unique()
+geo <- geo_locations_raw
 
 jobs <- df_main_raw %>% 
   inner_join(geo, by = "Location") %>%
@@ -121,7 +118,11 @@ ggsave("figs/jobs_over_time.png", dpi = 600)
 
 ```{r}
 
-comp <- jobs %>% select(Country, Company) %>% unique() %>% group_by(Country) %>% count(name="nr_comp")
+comp <- jobs %>% 
+  select(Country, Company) %>% 
+  unique() %>% 
+  group_by(Country) %>% 
+  count(name="nr_comp")
 
 tbl_country_comp <- jobs %>% 
   group_by(Country) %>% 
