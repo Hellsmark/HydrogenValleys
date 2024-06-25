@@ -33,7 +33,7 @@ geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:J")
 
 df_companies <- read_sheet(ss, sheet = "CompanyAnalysis")
 df_job_roles <- read_sheet(ss, sheet = "Job_roles")
-keywords_raw <- read_sheet(ss, sheet = "Keywords")
+#keywords_raw <- read_sheet(ss, sheet = "Keywords")
 
 #cities <- read_csv2("data/ai_cities_cleaned.csv") # Needs to be checked
 #regions_raw <- read_csv2("data/locations_regions.csv")
@@ -57,7 +57,7 @@ job_roles <- df_job_roles %>%
   select(ID, job_role = Job_role)
 
 jobs <- df_main_raw %>% 
-  inner_join(geo, by = c("Location"="New_name")) %>%
+  inner_join(geo, by = c("Location"="New_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
   mutate(Country = case_when(
     str_detect(ID, pattern ="^1") ~ "SE", 
     str_detect(ID, pattern ="^2") ~ "NO",
@@ -71,6 +71,8 @@ max(jobs$Scrape_date)
 
 companies <- df_companies %>% slice(-1)
 
+
+## keyword 
 new_keys <- keywords_raw %>% select(keywords = Keyword, new_key= New_word)
 
 #remove company and country names
@@ -99,7 +101,7 @@ keywords <- keywords_raw %>%
 
 
 
-# Descriptives
+# Method - Descriptives
 
 ## New jobs over time
 - plot describing number of new jobs per month
@@ -326,6 +328,22 @@ df_distribution %>%
 ```
 
 
+
+
+
+
+## Places -  Map
+```{r}
+
+# create overview of where the jobs are
+
+
+```
+
+
+
+# Actors 
+
 ## What type of actors are reqruiting?
 ```{r}
 
@@ -438,6 +456,9 @@ ggsave("figs/two_mode_countries.png", dpi = 1200, width = 12, height = 8)
 
 
 
+
+# Sectors - Elin
+
 ## Overview: Jobs per sector - tbl
 ```{r}
 tbl <- jobs %>%
@@ -479,7 +500,11 @@ tbl %>%
 
 ```
 
+- Residual plot
 
+# Job roles - Elin 
+
+- samma som ovan
 
 ## Overview: job_roles
 ```{r}
@@ -515,119 +540,17 @@ ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 6, height = 8)
 
 ```
 
-## Places - Where? Create a new map?
-```{r}
+## Olika Ingenjörstyper 
 
 
 
-
-```
-
-
-## Keywords
-```{r}
-
-df_keys_long <- keywords %>% 
-  group_by(country, keywords) %>%
-  summarise(n =n()) %>%
-  rename(word=keywords) %>% 
-  tidytext::bind_tf_idf(word, country, n)
-
-df_keys_short <- keywords %>% 
-  group_by(country, new_key) %>%
-  summarise(n =n()) %>%
-  rename(word=new_key) %>%
-  tidytext::bind_tf_idf(word, country, n)
-
-df_keys <- df_keys_short
-
-
-common_words <- df_keys %>% 
-  filter(n >4) %>% #words appearing at least once per country
-  select(country, word) %>% unique() %>% 
-  group_by(word) %>% summarise(nr_joint=n()) %>%
-  filter(nr_joint>1) %>%
-  inner_join(df_keys)
-
-#summary(df_keys$tf_idf)
-#df_keys %>% ggplot(aes(tf_idf)) + geom_histogram() +
-#  facet_wrap(~country)
-
-## shared words
-keys_se <- df_keys %>% 
-  filter(country == "SE")
-keys_dk <- df_keys %>% filter(country == "DK")
-keys_no <- df_keys %>% filter(country == "NO")
-
-
-## top words for each country
-keys_se <- df_keys %>% filter(country == "SE") %>%
-  arrange(desc(tf_idf)) %>%
-  slice_max(tf_idf, n = 150, with_ties = FALSE)
-  
-keys_dk <- df_keys %>% filter(country == "DK") %>%
-  arrange(desc(tf_idf)) %>%
-  slice_max(tf_idf, n = 150, with_ties = FALSE)
-
-keys_no <- df_keys %>% filter(country == "NO") %>% 
-  arrange(desc(tf_idf)) %>%
-  slice_max(tf_idf, n = 150, with_ties = FALSE)
-
-df_signf <- bind_rows(keys_se, keys_dk, keys_no)
-
-
-country_node_data <- df_signf %>% 
-  count(country) %>% rename(name=country)
-
-node_data <- df_signf %>% 
-  group_by(word) %>%
-  summarise(n=sum(n)) %>%
-  rename(name = word) %>% 
-  bind_rows(country_node_data)
-
-gs_keys <- df_signf %>% 
-  as_tbl_graph(directed = FALSE) %>%
-  mutate(type = ifelse(name %in% df_keys$word, "word", "country")) %>%
-  mutate(ctrl = centrality_degree()) %N>%
-  left_join(node_data)
-  
-
-nodes <- gs_keys %N>% as_tibble()
-edges <- gs_keys %E>% as_tibble()
-  
-set.seed(143)
-ggraph(gs_keys, layout = "stress") +
-  geom_edge_link(aes(edge_width = tf_idf), 
-                 edge_alpha =0.3, 
-                 edge_color = "lightgrey", 
-                 show.legend = FALSE) + 
-  geom_node_point(aes(color = type, shape = type, size = n),
-                  alpha = 0.6, show.legend = FALSE) +
-  geom_node_text(aes(label = ifelse(type != "word", name, "")),
-                 size= 2, show.legend = FALSE) +
-  geom_node_text(aes(
-    label = ifelse(type == "word" & (n >20 & ctrl > 1), 
-                   str_trunc(name, 10, ellipsis = "."), ""),
-    size = ifelse(type == "actor", n, ctrl)), 
-                 repel = T, show.legend = FALSE) +
-  theme_graph() +
-  scale_color_manual(values = c("word" = "lightblue", "country" = "orange")) +
-  scale_shape_manual(values = c("word" = 16, "country" = 17))+
-  scale_size(range = c(2,14))+
-  scale_edge_width(range = c(2, 4))+
-  ggtitle("")
-ggsave("figs/keyword_countries.png", dpi = 1200, width = 12, height = 8)
-  
-
-```
-
-
+# Where - places - Hans
 
 ## Correlation between jobs and populations in specific locations and in regions
 - In this section we first check the correlation between new jobs for the different locations
 - We then check the correlation between new jobs and regions.
 
-### Wrangling the data
+### Wrangling the data - Integrera med tidigare wrangling
 ```{r}
 location_new_jobs <- jobs %>% 
   group_by(Location) %>%
@@ -792,45 +715,11 @@ ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 - Too few regions to split between countries.
 
 
-# Sectors 
-
-
-# Actors 
-
-
-## Most new jobs are created by companies that only recruit in one country?
-```{r}
-most_jobs <- nodes %>% 
-  filter(type == "actor") %>%
-  mutate(type = ifelse(ctrl == 1, "single", "multiple"))
-
-most_jobs %>% group_by(type)  %>%
-  summarise(jobs = sum(jobs))
-
-most_jobs %>% filter(type == "multiple") %>% 
-  left_join(companies %>% select(Name, Industry_Sector), by = c("name" = "Name")) %>%
-  group_by(Industry_Sector) %>%
-  summarise(Jobs = sum(jobs)) %>%
-  arrange(desc(Jobs)) %>%
-  bind_rows(summarise(., Industry_Sector = "Total", Jobs = sum(Jobs))) %>%
-  gt()
-
-
-```
 
 
 
 
-# Distribution
-```{r}
-
-company_types %>% ggplot(aes(n, fill = Country)) + 
-  geom_histogram()+
-  scale_fill_colorblind("Country")+
-  theme_minimal()
-
-```
-
+### CUT OUT =======
 
 
 
@@ -963,6 +852,125 @@ sector %>%
   scale_fill_fivethirtyeight()+
   labs(x = "", y = "Proportion")
 ggsave("figs/sector_focus.png")
+```
+
+## Keywords
+```{r}
+
+df_keys_long <- keywords %>% 
+  group_by(country, keywords) %>%
+  summarise(n =n()) %>%
+  rename(word=keywords) %>% 
+  tidytext::bind_tf_idf(word, country, n)
+
+df_keys_short <- keywords %>% 
+  group_by(country, new_key) %>%
+  summarise(n =n()) %>%
+  rename(word=new_key) %>%
+  tidytext::bind_tf_idf(word, country, n)
+
+df_keys <- df_keys_short
+
+
+common_words <- df_keys %>% 
+  filter(n >4) %>% #words appearing at least once per country
+  select(country, word) %>% unique() %>% 
+  group_by(word) %>% summarise(nr_joint=n()) %>%
+  filter(nr_joint>1) %>%
+  inner_join(df_keys)
+
+#summary(df_keys$tf_idf)
+#df_keys %>% ggplot(aes(tf_idf)) + geom_histogram() +
+#  facet_wrap(~country)
+
+## shared words
+keys_se <- df_keys %>% 
+  filter(country == "SE")
+keys_dk <- df_keys %>% filter(country == "DK")
+keys_no <- df_keys %>% filter(country == "NO")
+
+
+## top words for each country
+keys_se <- df_keys %>% filter(country == "SE") %>%
+  arrange(desc(tf_idf)) %>%
+  slice_max(tf_idf, n = 150, with_ties = FALSE)
+  
+keys_dk <- df_keys %>% filter(country == "DK") %>%
+  arrange(desc(tf_idf)) %>%
+  slice_max(tf_idf, n = 150, with_ties = FALSE)
+
+keys_no <- df_keys %>% filter(country == "NO") %>% 
+  arrange(desc(tf_idf)) %>%
+  slice_max(tf_idf, n = 150, with_ties = FALSE)
+
+df_signf <- bind_rows(keys_se, keys_dk, keys_no)
+
+
+country_node_data <- df_signf %>% 
+  count(country) %>% rename(name=country)
+
+node_data <- df_signf %>% 
+  group_by(word) %>%
+  summarise(n=sum(n)) %>%
+  rename(name = word) %>% 
+  bind_rows(country_node_data)
+
+gs_keys <- df_signf %>% 
+  as_tbl_graph(directed = FALSE) %>%
+  mutate(type = ifelse(name %in% df_keys$word, "word", "country")) %>%
+  mutate(ctrl = centrality_degree()) %N>%
+  left_join(node_data)
+  
+
+nodes <- gs_keys %N>% as_tibble()
+edges <- gs_keys %E>% as_tibble()
+  
+set.seed(143)
+ggraph(gs_keys, layout = "stress") +
+  geom_edge_link(aes(edge_width = tf_idf), 
+                 edge_alpha =0.3, 
+                 edge_color = "lightgrey", 
+                 show.legend = FALSE) + 
+  geom_node_point(aes(color = type, shape = type, size = n),
+                  alpha = 0.6, show.legend = FALSE) +
+  geom_node_text(aes(label = ifelse(type != "word", name, "")),
+                 size= 2, show.legend = FALSE) +
+  geom_node_text(aes(
+    label = ifelse(type == "word" & (n >20 & ctrl > 1), 
+                   str_trunc(name, 10, ellipsis = "."), ""),
+    size = ifelse(type == "actor", n, ctrl)), 
+                 repel = T, show.legend = FALSE) +
+  theme_graph() +
+  scale_color_manual(values = c("word" = "lightblue", "country" = "orange")) +
+  scale_shape_manual(values = c("word" = 16, "country" = 17))+
+  scale_size(range = c(2,14))+
+  scale_edge_width(range = c(2, 4))+
+  ggtitle("")
+ggsave("figs/keyword_countries.png", dpi = 1200, width = 12, height = 8)
+  
+
+```
+
+
+
+###CUT OUT: Most new jobs are created by companies that only recruit in one country?
+```{r}
+most_jobs <- nodes %>% 
+  filter(type == "actor") %>%
+  mutate(type = ifelse(ctrl == 1, "single", "multiple"))
+
+most_jobs %>% group_by(type)  %>%
+  summarise(jobs = sum(jobs))
+
+most_jobs %>% filter(type == "multiple") %>% 
+  left_join(companies %>% select(Name, Industry_Sector), by = c("name" = "Name")) %>%
+  group_by(Industry_Sector) %>%
+  summarise(Jobs = sum(jobs)) %>%
+  arrange(desc(Jobs)) %>%
+  bind_rows(summarise(., Industry_Sector = "Total", Jobs = sum(Jobs))) %>%
+  gt()
+
+
 ```
 
 
