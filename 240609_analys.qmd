@@ -471,6 +471,7 @@ gt_tbl <- tbl %>%
 
 #gt_tbl %>% gtsave("figs/sector_country.png")
 gt_tbl
+
 ```
 
 ## Overview: Jobs per sector - plot
@@ -498,26 +499,37 @@ tbl %>%
 
 ```
 
-## Residuals plot - Sectors
+## Deviation plot - Sectors
+
 ```{r}
-sectors_tbl <- tbl %>% select(Sector,Country) %>% table()
+sectors_norm <- tbl %>% group_by(Sector, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(Sector, Country, fill = list(n_job = 0)) 
 
-chi_sector <- chisq.test(sectors_tbl, simulate.p.value=TRUE) 
+jobs_total <- aggregate(n_job ~ Country, data = sectors_norm, sum)
 
-sector_residuals <- as.data.frame(chi_sector$residuals)
+sector_total <- aggregate(n_job ~ Sector, data = sectors_norm, sum)
 
+sectors_norm <- merge(sectors_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+sectors_norm <- merge(sectors_norm, sector_total, by = "Sector", suffixes = c("", "_sector"))
 
-sector_residuals_plot <- ggplot(sector_residuals, aes(x = str_wrap(Sector, 15, whitespace_only = FALSE), y = Freq)) +
+sectors_norm$n_norm <- sectors_norm$n_job / sectors_norm$n_job_country
+sectors_norm$mean <- sectors_norm$n_job_sector / sum(jobs_total$n_job)
+sectors_norm$diff <- sectors_norm$n_norm - sectors_norm$mean
+
+sector_deviation_plot <- ggplot(sectors_norm, aes(x = str_wrap(Sector, 20, whitespace_only = FALSE), y = diff*100)) +
   geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
   scale_fill_colorblind("Country") +
   theme(legend.position = "top") +
-  labs(y = "Residuals", x = "") +
+  labs(y = "Deviation from mean", x = "") +
   theme_bw() +
-  theme(axis.text.x = element_text(size = 10, angle = 45, hjust = 1, vjust = 1)) 
-sector_residuals_plot
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
+sector_deviation_plot
 
-#ggsave(filename = "figs/jobroles/sector_residuals.png", plot = sector_residuals_plot, limitsize = FALSE, width = 10, height = 7)
+#ggsave(filename = "figs/jobroles/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+
 ```
+
 
 # Job roles - Elin
 
@@ -547,7 +559,7 @@ tbl %>% drop_na(job_role) %>% #removing NA:s here
   geom_col()+
     scale_x_continuous()+
     scale_fill_colorblind("Country")+
-    labs(x= "", y = "", title = "Total jobs per sector")+
+    labs(x= "", y = "", title = "Total jobs per job role")+
     theme_minimal()+
     theme(
       legend.position = "bottom", 
@@ -557,29 +569,38 @@ tbl %>% drop_na(job_role) %>% #removing NA:s here
 #ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 6, height = 8)
 
 ```
-
-## Residuals plot - job roles
-
-- Jag ska fixa till så att texten på axlarna blir bättre samt mellanrum mellan staplarna  
+## Deviation plot - job roles
 
 ```{r}
-jobroles_tbl <- tbl %>% select(job_role, Country) %>% table()
+jobs_norm <- tbl %>% group_by(job_role, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(job_role, Country, fill = list(n_job = 0)) 
 
-chi_jobroles <- chisq.test(jobroles_tbl, simulate.p.value=TRUE) 
+jobs_total <- aggregate(n_job ~ Country, data = jobs_norm, sum)
 
-jobroles_residuals <- as.data.frame(chi_jobroles$residuals)
+jobrole_total <- aggregate(n_job ~ job_role, data = jobs_norm, sum)
 
-jobroles_residuals_plot <- ggplot(jobroles_residuals, aes(x = str_wrap(job_role, 20, whitespace_only = FALSE), y = Freq)) +
+jobs_norm <- merge(jobs_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+jobs_norm <- merge(jobs_norm, jobrole_total, by = "job_role", suffixes = c("", "_jobrole"))
+
+jobs_norm$n_norm <- jobs_norm$n_job / jobs_norm$n_job_country
+jobs_norm$mean <- jobs_norm$n_job_jobrole / sum(jobs_total$n_job)
+jobs_norm$diff <- jobs_norm$n_norm - jobs_norm$mean
+
+jobroles_deviation_plot <- ggplot(jobs_norm, aes(x = str_wrap(job_role, 20, whitespace_only = FALSE), y = diff*100)) +
   geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
   scale_fill_colorblind("Country") +
   theme(legend.position = "top") +
-  labs(y = "Residuals", x = "") +
+  labs(y = "Deviation from mean", x = "") +
   theme_bw() +
   theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
-jobroles_residuals_plot
+jobroles_deviation_plot
 
-#ggsave(filename = "figs/jobroles/jobroles_residuals.png", plot = jobroles_residuals_plot, limitsize = FALSE, width = 10, height = 7)
+#ggsave(filename = "figs/jobroles/jobroles_deviation.png", plot = jobroles_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+
 ```
+
+
 
 ## Type of engineers
 
@@ -622,27 +643,38 @@ tbl %>% filter(job_role == "Engineering") %>%
 #ggsave("figs/Total_jobs_per_engineering_type.png", dpi = 1200, width = 6, height = 8)
 
 ```
-### Residuals plot - engineers
+
+## Deviation plot - engineers
 
 ```{r}
-engineers_tbl <- tbl %>% filter(job_role == "Engineering") %>% select(Type, Country) %>% table()
+engineers_norm <- tbl %>% filter(job_role == "Engineering") %>% group_by(Type, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(Type, Country, fill = list(n_job = 0)) 
 
-chi_engineers <- chisq.test(engineers_tbl, simulate.p.value=TRUE) 
+jobs_total <- aggregate(n_job ~ Country, data = engineers_norm, sum)
 
-engineers_residuals <- as.data.frame(chi_engineers$residuals)
+engineer_total <- aggregate(n_job ~ Type, data = engineers_norm, sum)
 
+engineers_norm <- merge(engineers_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+engineers_norm <- merge(engineers_norm, engineer_total, by = "Type", suffixes = c("", "_type"))
 
-engineers_residuals_plot <- ggplot(engineers_residuals, aes(x = Type, y = Freq)) +
+engineers_norm$n_norm <- engineers_norm$n_job / engineers_norm$n_job_country
+engineers_norm$mean <- engineers_norm$n_job_type / sum(jobs_total$n_job)
+engineers_norm$diff <- engineers_norm$n_norm - engineers_norm$mean
+
+engineers_deviation_plot <- ggplot(engineers_norm, aes(x = str_wrap(Type, 20, whitespace_only = FALSE), y = diff*100)) +
   geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
   scale_fill_colorblind("Country") +
   theme(legend.position = "top") +
-  labs(y = "Residuals", x = "") +
+  labs(y = "Deviation from mean", x = "") +
   theme_bw() +
-  theme(axis.text.x = element_text(size = 10, angle = 45, hjust = 1, vjust = 1)) 
-engineers_residuals_plot
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
+engineers_deviation_plot
 
-#ggsave(filename = "figs/jobroles/engineers_residuals.png", plot = engineers_residuals_plot)
+#ggsave(filename = "figs/jobroles/engineers_deviation.png", plot = engineers_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+
 ```
+
 
 # Where - places - Hans
 
