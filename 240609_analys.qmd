@@ -453,6 +453,8 @@ ggraph(gs, layout = "nicely") +
   scale_edge_width(range = c(2, 4))+
   ggtitle("")
 ggsave("figs/two_mode_countries.png", dpi = 1200, width = 12, height = 8)
+
+#ggsave("figs/two_mode_countries.png", dpi = 1200, width = 12, height = 8)
 ```
 
 # Sectors - Elin
@@ -473,7 +475,9 @@ gt_tbl <- tbl %>%
   gt_theme_espn() 
 
 gt_tbl %>% gtsave("figs/sector_country.png")
+#gt_tbl %>% gtsave("figs/sector_country.png")
 gt_tbl
+
 ```
 
 ## Overview: Jobs per sector - plot
@@ -494,12 +498,14 @@ tbl %>%
       legend.position = "bottom", 
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
+
 #ggsave("figs/Total_jobs_per_sector.png", dpi = 1200, width = 6, height = 8)
 
 
 
 ```
 
+<<<<<<< HEAD
 -   Residual plot
 
 # Job roles - Elin
@@ -508,6 +514,44 @@ tbl %>%
 
 ## Overview: job_roles
 
+=======
+## Deviation plot - Sectors
+
+```{r}
+sectors_norm <- tbl %>% group_by(Sector, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(Sector, Country, fill = list(n_job = 0)) 
+
+jobs_total <- aggregate(n_job ~ Country, data = sectors_norm, sum)
+
+sector_total <- aggregate(n_job ~ Sector, data = sectors_norm, sum)
+
+sectors_norm <- merge(sectors_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+sectors_norm <- merge(sectors_norm, sector_total, by = "Sector", suffixes = c("", "_sector"))
+
+sectors_norm$n_norm <- sectors_norm$n_job / sectors_norm$n_job_country
+sectors_norm$mean <- sectors_norm$n_job_sector / sum(jobs_total$n_job)
+sectors_norm$diff <- sectors_norm$n_norm - sectors_norm$mean
+
+sector_deviation_plot <- ggplot(sectors_norm, aes(x = str_wrap(Sector, 20, whitespace_only = FALSE), y = diff*100)) +
+  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  theme(legend.position = "top") +
+  labs(y = "Deviation from mean", x = "") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
+sector_deviation_plot
+
+#ggsave(filename = "figs/jobroles/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+
+```
+
+
+# Job roles - Elin
+
+## Overview: job_roles -table
+
+>>>>>>> 87ca9fac92672afa183961865ec1464ac87bec3a
 ```{r}
 
 gt_tbl <- tbl %>%
@@ -515,16 +559,22 @@ gt_tbl <- tbl %>%
   as_gt() %>%
   gt_theme_espn() 
 gt_tbl %>% gtsave("figs/jobrole_country.png")
+#gt_tbl %>% gtsave("figs/jobrole_country.png")
 gt_tbl
 
 
 
 ```
 
+<<<<<<< HEAD
 ## Plot job roles
+=======
+## Overview: job roles - plot
+>>>>>>> 87ca9fac92672afa183961865ec1464ac87bec3a
 
 ```{r}
 tbl %>% 
+tbl %>% drop_na(job_role) %>% #removing NA:s here
   group_by(Country, job_role) %>%
   summarise(n =n()) %>%
   ggplot(aes(x= n, y= fct_rev(job_role), 
@@ -533,6 +583,7 @@ tbl %>%
     scale_x_continuous()+
     scale_fill_colorblind("Country")+
     labs(x= "", y = "", title = "Total jobs per sector")+
+    labs(x= "", y = "", title = "Total jobs per job role")+
     theme_minimal()+
     theme(
       legend.position = "bottom", 
@@ -540,18 +591,136 @@ tbl %>%
       plot.title = element_text(size = 12))
 ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 6, height = 8)
 
+#ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 6, height = 8)
+
+```
+## Deviation plot - job roles
+
+```{r}
+jobs_norm <- tbl %>% group_by(job_role, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(job_role, Country, fill = list(n_job = 0)) 
+
+jobs_total <- aggregate(n_job ~ Country, data = jobs_norm, sum)
+
+jobrole_total <- aggregate(n_job ~ job_role, data = jobs_norm, sum)
+
+jobs_norm <- merge(jobs_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+jobs_norm <- merge(jobs_norm, jobrole_total, by = "job_role", suffixes = c("", "_jobrole"))
+
+jobs_norm$n_norm <- jobs_norm$n_job / jobs_norm$n_job_country
+jobs_norm$mean <- jobs_norm$n_job_jobrole / sum(jobs_total$n_job)
+jobs_norm$diff <- jobs_norm$n_norm - jobs_norm$mean
+
+jobroles_deviation_plot <- ggplot(jobs_norm, aes(x = str_wrap(job_role, 20, whitespace_only = FALSE), y = diff*100)) +
+  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  theme(legend.position = "top") +
+  labs(y = "Deviation from mean", x = "") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
+jobroles_deviation_plot
+
+#ggsave(filename = "figs/jobroles/jobroles_deviation.png", plot = jobroles_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+
 ```
 
+<<<<<<< HEAD
 ## Olika Ingenjörstyper
+=======
+
+
+## Type of engineers
+
+### Overview: engineers - table
+
+```{r}
+
+gt_tbl <- tbl %>% filter(job_role == "Engineering") %>%
+  tbl_cross(Type, Country, percent = "cell") %>% #could also change to Type_2, for a different categorisation
+  as_gt() %>%
+  gt_theme_espn() 
+#gt_tbl %>% gtsave("figs/engineering_type_tbl.png")
+gt_tbl
+
+
+```
+
+### Overview: engineers - plot
+
+```{r}
+engineers_n <- tbl %>% filter(job_role == "Engineering") %>%
+  group_by(Type) %>%
+  summarise(total_n = n())
+
+tbl %>% filter(job_role == "Engineering") %>%
+  group_by(Country, Type) %>%
+  summarise(n = n()) %>%
+  left_join(engineers_n, by = "Type") %>%
+  ggplot(aes(x = n, y = fct_reorder(Type, total_n), fill = Country)) + 
+  geom_col()+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per type of engineer")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+#ggsave("figs/Total_jobs_per_engineering_type.png", dpi = 1200, width = 6, height = 8)
+
+```
+
+## Deviation plot - engineers
+
+```{r}
+engineers_norm <- tbl %>% filter(job_role == "Engineering") %>% group_by(Type, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(Type, Country, fill = list(n_job = 0)) 
+
+jobs_total <- aggregate(n_job ~ Country, data = engineers_norm, sum)
+
+engineer_total <- aggregate(n_job ~ Type, data = engineers_norm, sum)
+
+engineers_norm <- merge(engineers_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+engineers_norm <- merge(engineers_norm, engineer_total, by = "Type", suffixes = c("", "_type"))
+
+engineers_norm$n_norm <- engineers_norm$n_job / engineers_norm$n_job_country
+engineers_norm$mean <- engineers_norm$n_job_type / sum(jobs_total$n_job)
+engineers_norm$diff <- engineers_norm$n_norm - engineers_norm$mean
+
+engineers_deviation_plot <- ggplot(engineers_norm, aes(x = str_wrap(Type, 20, whitespace_only = FALSE), y = diff*100)) +
+  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  theme(legend.position = "top") +
+  labs(y = "Deviation from mean", x = "") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
+engineers_deviation_plot
+
+#ggsave(filename = "figs/jobroles/engineers_deviation.png", plot = engineers_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+
+```
+
+>>>>>>> 87ca9fac92672afa183961865ec1464ac87bec3a
 
 # Where - places - Hans
 
 ## Correlation between jobs and populations in specific locations and in regions
+<<<<<<< HEAD
 
 -   In this section we first check the correlation between new jobs for the different locations
 -   We then check the correlation between new jobs and regions.
 
 ### Wrangling the location data
+=======
+
+-   In this section we first check the correlation between new jobs for the different locations
+-   We then check the correlation between new jobs and regions.
+
+### Wrangling the data - Integrera med tidigare wrangling
+>>>>>>> 87ca9fac92672afa183961865ec1464ac87bec3a
 
 ```{r}
 
