@@ -2,6 +2,8 @@
 title: "Analysis"
 format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Libraries
@@ -51,13 +53,15 @@ workforce_gdp <- tribble(
 # Wrangel
 
 ```{r}
-geo <- geo_locations_raw
+geo <- geo_locations_raw %>% janitor::clean_names()
+
+
 
 job_roles <- df_job_roles %>%
   select(ID, job_role = Job_role)
 
 jobs <- df_main_raw %>% 
-  inner_join(geo, by = c("Location"="New_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
+  inner_join(geo, by = c("Location"="new_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
   mutate(Country = case_when(
     str_detect(ID, pattern ="^1") ~ "SE", 
     str_detect(ID, pattern ="^2") ~ "NO",
@@ -70,6 +74,7 @@ jobs <- df_main_raw %>%
 max(jobs$Scrape_date)
 
 companies <- df_companies %>% slice(-1)
+
 
 
 ## keyword 
@@ -99,12 +104,11 @@ keywords <- keywords_raw %>%
 
 ```
 
-
-
 # Method - Descriptives
 
 ## New jobs over time
-- plot describing number of new jobs per month
+
+-   plot describing number of new jobs per month
 
 ```{r}
 jobs_over_time <- jobs %>% 
@@ -126,9 +130,9 @@ jobs_over_time %>%
 
 ```
 
-
 ## New jobs and country stats
-- simple comparision of main stats between countries
+
+-   simple comparision of main stats between countries
 
 ```{r}
 
@@ -179,8 +183,10 @@ gt_tbl_country_comp
 
 ```
 
-## Overview company descriptives 
-- Here are two tables. First one long with all companies. Then three smaller ones, one for each country. 
+## Overview company descriptives
+
+-   Here are two tables. First one long with all companies. Then three smaller ones, one for each country.
+
 ```{r}
 
 companies_overview <- jobs %>%
@@ -234,8 +240,7 @@ long_table
 
 ```
 
-Per country tables
-- an idea here is to add the distribution figure to the table. Not a priority.
+Per country tables - an idea here is to add the distribution figure to the table. Not a priority.
 
 ```{r}
 
@@ -309,6 +314,7 @@ se
 ```
 
 ## Distribution - add to table above later?
+
 ```{r}
 df_distribution <- jobs %>% 
   count(Company, Country) %>% 
@@ -327,12 +333,8 @@ df_distribution %>%
 
 ```
 
+## Places - Map
 
-
-
-
-
-## Places -  Map
 ```{r}
 
 # create overview of where the jobs are
@@ -340,11 +342,10 @@ df_distribution %>%
 
 ```
 
-
-
-# Actors 
+# Actors
 
 ## What type of actors are reqruiting?
+
 ```{r}
 
 types <- companies %>% 
@@ -395,9 +396,9 @@ multi_pl
 
 ```
 
-
 ## Overview: bipart companies reqruiting across -
-- here one could play around abit more with colors to highlight different type of actors
+
+-   here one could play around abit more with colors to highlight different type of actors
 
 ```{r}
 
@@ -454,12 +455,10 @@ ggraph(gs, layout = "nicely") +
 ggsave("figs/two_mode_countries.png", dpi = 1200, width = 12, height = 8)
 ```
 
-
-
-
 # Sectors - Elin
 
 ## Overview: Jobs per sector - tbl
+
 ```{r}
 tbl <- jobs %>%
   inner_join(df_companies %>% 
@@ -478,6 +477,7 @@ gt_tbl
 ```
 
 ## Overview: Jobs per sector - plot
+
 ```{r}
 
 tbl %>% 
@@ -500,13 +500,14 @@ tbl %>%
 
 ```
 
-- Residual plot
+-   Residual plot
 
-# Job roles - Elin 
+# Job roles - Elin
 
-- samma som ovan
+-   samma som ovan
 
 ## Overview: job_roles
+
 ```{r}
 
 gt_tbl <- tbl %>%
@@ -521,6 +522,7 @@ gt_tbl
 ```
 
 ## Plot job roles
+
 ```{r}
 tbl %>% 
   group_by(Country, job_role) %>%
@@ -540,41 +542,44 @@ ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 6, height = 8)
 
 ```
 
-## Olika Ingenjörstyper 
-
-
+## Olika Ingenjörstyper
 
 # Where - places - Hans
 
 ## Correlation between jobs and populations in specific locations and in regions
-- In this section we first check the correlation between new jobs for the different locations
-- We then check the correlation between new jobs and regions.
 
-### Wrangling the data - Integrera med tidigare wrangling
+-   In this section we first check the correlation between new jobs for the different locations
+-   We then check the correlation between new jobs and regions.
+
+### Wrangling the location data
+
 ```{r}
-location_new_jobs <- jobs %>% 
+
+location_all <- jobs %>% 
   group_by(Location) %>%
-  summarise(new_jobs = n()) %>% rename(location = Location)
-
-location_all <- location_region_pop %>% 
-  left_join(location_new_jobs) %>%
-  filter(!is.na(new_jobs)) # there is some na's since the file pop_ai reads locations from sheet "geo_locations_raw" without checking if there are jobs in the harmonized time period. 
-
+  summarise(new_jobs = n()) %>% 
+  left_join(geo, by = c("Location" ="municipality_city")) %>%
+  na.omit() %>%
+  rename("location" = "Location") %>%
+  select(-new_name) %>%
+  unique()
 
 ```
 
-### lm new jobs ~ locations - all countries
+### lm new jobs \~ locations - all countries
+
 ```{r}
 lm_location <- lm(new_jobs ~ loc_pop, data = location_all)
 summary(lm_location)
 tidy(lm_location)
 
-glance(lm_location)
+lm_gl <- glance(lm_location)
+r2_p_all <- paste("R2:", round(lm_gl$r.squared, 2), "&\n", ifelse(lm_gl$p.value < 0.05, "p< 0.05", "p>0.05"))  
 
 ```
 
+### lm new jobs \~ locations - per country
 
-### lm new jobs ~ locations - per country
 ```{r}
 lm_data <- location_all %>% 
   group_by(country) %>%
@@ -584,7 +589,13 @@ lm_data <- location_all %>%
          glance = map(lm, ~glance(.)), 
          aug = map(lm, ~augment(.))) 
 
-lm_data %>% select(country, glance) %>% unnest(glance)
+lm_dk <- lm_data %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_se <- lm_data %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_no <- lm_data %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_dk <- paste("R2:", round(lm_dk$r.squared, 2), "&\n", ifelse(lm_dk$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_se <- paste("R2:", round(lm_se$r.squared, 2), "&\n", ifelse(lm_se$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_no <- paste("R2:", round(lm_no$r.squared, 2), "&\n", ifelse(lm_no$p.value < 0.05, "p< 0.05", "p>0.05"))  
 
 outliers <- lm_data %>%
   mutate(outliers = map(aug, ~.x %>%
@@ -600,7 +611,9 @@ outliers <- lm_data %>%
 ```
 
 ### Plot between location and new jobs
-- add p-value and R.squared to plot
+
+-   add p-value and R.squared to plot
+
 ```{r}
 location_all %>% 
   ggplot(aes(x= round(loc_pop/1e3), y= new_jobs, colour = country)) + 
@@ -620,19 +633,22 @@ location_all %>%
   scale_color_colorblind("Country")+
   scale_size_continuous(range = c(1,4)) +
   labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  annotate("text", x=750, y =190, label = r2_p_no)+
+  annotate("text", x=850, y =140, label = r2_p_dk)+
+  annotate("text", x=950, y =90, label = r2_p_all)+
+  annotate("text", x=950, y =50, label = r2_p_se)+
   theme_minimal() +
   guides(size = "none")+
-  theme(legend.position = "top")
-ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
+  theme(legend.position = "top") 
+#ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
 ```
 
-- For all three countries it appears to be a linear relationship
-- It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
+-   For all three countries it appears to be a linear relationship
+-   It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
 
+### lm new jobs \~ region
 
-
-### lm new jobs ~ region
-- now same thing but for all regions
+-   now same thing but for all regions
 
 ```{r}
 region_new_jobs <- location_all %>% 
@@ -643,8 +659,10 @@ lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
 glance(lm_regions)
 
 ```
-#### lm new jobs ~ region per country
-- and regions per country 
+
+#### lm new jobs \~ region per country
+
+-   and regions per country
 
 ```{r}
 
@@ -670,10 +688,11 @@ outliers_reg <- lm_data_reg %>%
 
 ```
 
-
 ### Plot between region and new jobs
-- higlight outlier
-- add p and r.squared
+
+-   higlight outlier
+-   add p and r.squared
+
 ```{r}
 region_new_jobs <- location_all %>% 
   group_by(region, reg_pop, country) %>%
@@ -711,19 +730,14 @@ ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 
 
 ```
-- From a Nordic perspectives significantly more jobs are created in Oslo, Rogland, Vestland
-- Too few regions to split between countries.
 
-
-
-
-
+-   From a Nordic perspectives significantly more jobs are created in Oslo, Rogland, Vestland
+-   Too few regions to split between countries.
 
 ### CUT OUT =======
 
-
-
 ## regression of all company data - is this correct?
+
 ```{r}
 
 # run model over all countries
@@ -747,11 +761,8 @@ combined_table %>% as_gt() %>%
 
 ```
 
-
-
-
-
 ## Share of companies
+
 ```{r}
 
 prop <- df_distribution %>% filter(Country =="SE") %>% 
@@ -768,11 +779,8 @@ df_distribution %>%
 
 ```
 
-
-
-
-
 # H3 What?
+
 ```{r}
 companies_sector <- companies %>% select(Company = Name, Sector = Industry_Sector)
 
@@ -808,8 +816,8 @@ t_merge <- tbl_merge(
 t_merge %>% as_gt() %>% gtsave(filename = "tables/sector_jobroles_lm.png")
 ```
 
-
 # Share of total jobs
+
 ```{r}
 se <- tbl %>% count(Country) %>% subset(Country == "SE", n) %>% pull()
 dk <- tbl %>% count(Country) %>% subset(Country == "DK", n) %>% pull()
@@ -824,9 +832,6 @@ sector <- tbl %>%
   pivot_wider(names_from = Country, values_from = n)
 
 ```
-
-
-
 
 ```{r}
 sector <- tbl %>%
@@ -855,6 +860,7 @@ ggsave("figs/sector_focus.png")
 ```
 
 ## Keywords
+
 ```{r}
 
 df_keys_long <- keywords %>% 
@@ -951,9 +957,8 @@ ggsave("figs/keyword_countries.png", dpi = 1200, width = 12, height = 8)
 
 ```
 
-
-
 ###CUT OUT: Most new jobs are created by companies that only recruit in one country?
+
 ```{r}
 most_jobs <- nodes %>% 
   filter(type == "actor") %>%
@@ -972,8 +977,6 @@ most_jobs %>% filter(type == "multiple") %>%
 
 
 ```
-
-
 
 ```{r}
 
