@@ -1,0 +1,278 @@
+---
+title: "Analysis"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Libraries
+
+```{r}
+library(tidyverse)
+library(rlang)
+library(stringr)
+library(broom)
+library(ggthemes)
+library(ggrepel)
+library(tidygraph)
+library(ggraph)
+library(googlesheets4)
+library(gtsummary)
+library(gt)
+library(gtExtras)
+library(patchwork)
+
+```
+
+# Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+df_main_raw <- read_sheet(ss, sheet = "Main")
+geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:J")
+
+df_companies <- read_sheet(ss, sheet = "CompanyAnalysis")
+df_job_roles <- read_sheet(ss, sheet = "Job_roles")
+#keywords_raw <- read_sheet(ss, sheet = "Keywords")
+
+#cities <- read_csv2("data/ai_cities_cleaned.csv") # Needs to be checked
+#regions_raw <- read_csv2("data/locations_regions.csv")
+#regions_pop_raw <- read_csv2("data/regions_population.csv")
+
+workforce_gdp <- tribble(
+  ~Country, ~Workforce, ~GDP_per_capita_kUSD, ~GDP_total_billion_USD, 
+  "SE", 5.2, 56, 592,  
+  "NO", 2.8, 109, 593,
+  "DK", 3.0, 67, 400
+  )
+
+```
+
+# Wrangel
+
+```{r}
+geo <- geo_locations_raw %>% janitor::clean_names()
+
+
+
+job_roles <- df_job_roles %>%
+  select(ID, job_role = Job_role)
+
+jobs <- df_main_raw %>% 
+  inner_join(geo, by = c("Location"="new_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%
+  mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
+  filter(Scrape_date >= "2023-08-20") %>%
+  left_join(job_roles)
+
+max(jobs$Scrape_date)
+
+companies <- df_companies %>% slice(-1)
+
+```
+
+
+
+```{r}
+
+location_all <- jobs %>% 
+  group_by(Location) %>%
+  summarise(new_jobs = n()) %>% 
+  left_join(geo, by = c("Location" ="municipality_city")) %>%
+  na.omit() %>%
+  rename("location" = "Location") %>%
+  select(-new_name) %>%
+  unique()
+
+```
+
+### lm new jobs ~ locations - all countries
+- linear model of all new jobs in all three countries (red line)
+
+```{r}
+lm_location <- lm(new_jobs ~ loc_pop, data = location_all)
+
+summary(lm_location)
+tidy(lm_location)
+
+lm_gl <- glance(lm_location)
+r2_p_all <- paste("R2:", round(lm_gl$r.squared, 2), "&\n", ifelse(lm_gl$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+```
+
+### lm new jobs ~ locations - per country
+- same as above but per country
+
+```{r}
+lm_data <- location_all %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ loc_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_dk <- lm_data %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_se <- lm_data %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_no <- lm_data %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_dk <- paste("R2:", round(lm_dk$r.squared, 2), "&\n", ifelse(lm_dk$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_se <- paste("R2:", round(lm_se$r.squared, 2), "&\n", ifelse(lm_se$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_no <- paste("R2:", round(lm_no$r.squared, 2), "&\n", ifelse(lm_no$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+# identifing outlier (2*sd)
+outliers <- lm_data %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(location = map(data, ~.x$location),
+         region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(location, region, outliers)) %>%
+  relocate(location:region, .after = "country") %>%
+  filter(outlier)
+
+```
+
+### Plot between location and new jobs
+- 
+
+```{r}
+location_all %>% 
+  ggplot(aes(x= round(loc_pop/1e3), y= new_jobs, colour = country)) + 
+  geom_smooth(aes(round(loc_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 2.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_smooth(method = "lm", show.legend = F, se = F, 
+              linewidth = 1.5, alpha =0.7)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = paste0(location, "\n(",region,")"),
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers)+
+  scale_color_colorblind("Country")+
+  scale_size_continuous(range = c(1,4)) +
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  annotate("text", x=750, y =190, label = r2_p_no)+
+  annotate("text", x=850, y =140, label = r2_p_dk)+
+  annotate("text", x=950, y =90, label = r2_p_all)+
+  annotate("text", x=950, y =50, label = r2_p_se)+
+  theme_minimal() +
+  guides(size = "none")+
+  theme(legend.position = "top") 
+#ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
+```
+
+-   For all three countries it appears to be a linear relationship
+-   It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
+
+### lm new jobs ~ region
+
+-   now same thing but on a regional level. 
+- I think we keep this one in favor of "location" since its easier to allocate the different locations to a region compared to finding a consistent "location" 
+
+#### lm new jobs ~ region, all countries
+```{r}
+region_new_jobs <- location_all %>% 
+  group_by(region, reg_pop, country) %>%
+  summarise(new_jobs = sum(new_jobs))
+
+lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
+
+# looking at mdl results
+glance(lm_regions)
+summary(lm_regions)
+tidy(lm_regions)
+
+# extract data for annotating the plot
+lm_gl <- glance(lm_regions)
+r2_p_all <- paste("R2:", round(lm_gl$r.squared, 2), "&\n", ifelse(lm_gl$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+```
+
+#### lm new jobs ~ region per country
+
+```{r}
+
+lm_data_reg <- region_new_jobs %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ reg_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_dk <- lm_data_reg %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_se <- lm_data_reg %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_no <- lm_data_reg %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_dk <- paste("R2:", round(lm_dk$r.squared, 2), "&\n", ifelse(lm_dk$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_se <- paste("R2:", round(lm_se$r.squared, 2), "&\n", ifelse(lm_se$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_no <- paste("R2:", round(lm_no$r.squared, 2), "&\n", ifelse(lm_no$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+outliers_reg <- lm_data_reg %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+```
+
+### Plot between region and new jobs
+
+- note: only names of outlier mentioned in graph
+
+```{r}
+region_new_jobs <- location_all %>% 
+  group_by(region, reg_pop, country) %>%
+  summarise(new_jobs = sum(new_jobs))
+
+
+region_new_jobs %>% 
+  ggplot(aes(round(reg_pop/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(reg_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  annotate("text", x=1200, y =250, label = r2_p_no)+
+  annotate("text", x=1600, y =200, label = r2_p_dk)+
+  annotate("text", x=2000, y =150, label = r2_p_all)+
+  annotate("text", x=2000, y =60, label = r2_p_se)+
+  theme_minimal() +
+  theme(legend.position = "top")
+ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
+
+
+```
+

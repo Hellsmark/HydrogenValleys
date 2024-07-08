@@ -15,6 +15,7 @@ library(googlesheets4)
 library(dummy)
 library(dendextend)
 library(patchwork)
+library(factoextra)
 ```
 
 ## Data
@@ -33,8 +34,6 @@ df_job_roles <- read_sheet(ss, sheet = "Job_roles")
 
 ```{r}
 geo <- geo_locations_raw %>% janitor::clean_names()
-
-
 
 job_roles <- df_job_roles %>%
   select(ID, job_role = Job_role)
@@ -159,7 +158,7 @@ dev.off()  # Close the device
 # Use hcut() which compute hclust and cut the tree
 
 cluster_plot <- function(k, mm){
-hc.cut <- hcut(mtrx, k = k, hc_method = mm) #methods: "complete", "single", "average"
+  hc.cut <- hcut(mtrx, k = k, hc_method = mm) #methods: "complete", "single", "average"
 
 # Visualize dendrogram
 dend_plot<- fviz_dend(hc.cut, 

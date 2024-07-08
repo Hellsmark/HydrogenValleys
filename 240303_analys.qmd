@@ -86,8 +86,6 @@ companies <- df_companies %>% slice(-1)
 
 ```
 
-
-
 # Descriptives
 
 ## New jobs over time
@@ -113,7 +111,6 @@ jobs_over_time %>%
 ggsave("figs/jobs_over_time.png", dpi = 600)
 
 ```
-
 
 ## New jobs and country stats
 
@@ -296,10 +293,6 @@ gtsave(no, filename = "tables/no_comp.png")
 gtsave(se, filename = "tables/se_comp.png")
 ```
 
-
-
-
-
 ## Overview: Jobs per sector
 
 ```{r}
@@ -317,9 +310,6 @@ gt_tbl
 
 ```
 
-
-
-
 ## Overview: job_roles
 
 ```{r}
@@ -330,7 +320,6 @@ jobs %>%
   gt_theme_espn()
 
 ```
-
 
 # Places - Where
 
@@ -362,7 +351,8 @@ location_all <- location_region_pop %>%
 
 ```
 
-### lm new jobs ~ locations - all countries
+### lm new jobs \~ locations - all countries
+
 ### lm new jobs \~ locations - all countries
 
 ```{r}
@@ -376,7 +366,8 @@ glance(lm_location)
 
 ### lm new jobs \~ locations - per country
 
-### lm new jobs ~ locations - per country
+### lm new jobs \~ locations - per country
+
 ```{r}
 lm_data <- location_all %>% 
   group_by(country) %>%
@@ -433,10 +424,10 @@ ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
 -   For all three countries it appears to be a linear relationship
 -   It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
 
+### lm new jobs \~ region
 
 ### lm new jobs \~ region
 
-### lm new jobs ~ region
 -   now same thing but for all regions
 
 ```{r}
@@ -448,7 +439,8 @@ lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
 glance(lm_regions)
 
 ```
-#### lm new jobs ~ region per country
+
+#### lm new jobs \~ region per country
 
 #### lm new jobs \~ region per country
 
@@ -477,7 +469,6 @@ outliers_reg <- lm_data_reg %>%
   filter(outlier)
 
 ```
-
 
 ### Plot between region and new jobs
 
@@ -525,7 +516,6 @@ ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 -   From a Nordic perspectives significantly more jobs are created in Oslo, Rogland, Vestland
 -   Too few regions to split between countries.
 
-
 # Companies - who
 
 ## Distribution
@@ -548,7 +538,6 @@ ggsave(filename = "figs/violine.png", width = 6, height = 4, dpi = 600)
 
 ```
 
-
 ## Share of companies
 
 ```{r}
@@ -568,7 +557,6 @@ df_distribution %>%
   summarise(nr_companies = n())
 
 ```
-
 
 ## Bipartitie - Companies Countries
 
@@ -640,8 +628,6 @@ most_jobs %>% filter(type == "multiple") %>%
 
 ```
 
-
-
 # H2 The creation of new jobs within the hydrogen economy is positively correlated with sector and job roles
 
 ```{r}
@@ -679,7 +665,6 @@ t_merge <- tbl_merge(
 t_merge %>% as_gt() %>% gtsave(filename = "tables/sector_jobroles_lm.png")
 ```
 
-
 # Share of total jobs
 
 ```{r}
@@ -696,9 +681,6 @@ sector <- tbl %>%
   pivot_wider(names_from = Country, values_from = n)
 
 ```
-
-
-
 
 ```{r}
 sector <- tbl %>%
@@ -725,8 +707,6 @@ sector %>%
   labs(x = "", y = "Proportion")
 ggsave("figs/sector_focus.png")
 ```
-
-
 
 ```{r}
 
