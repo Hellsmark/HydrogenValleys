@@ -1,0 +1,279 @@
+---
+title: "cluster"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+#libraries
+
+```{r}
+library(tidyverse)
+library(cluster)
+library(googlesheets4)
+library(dummy)
+library(dendextend)
+library(patchwork)
+```
+
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+df_main_raw <- read_sheet(ss, sheet = "Main")
+geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:J")
+
+df_companies <- read_sheet(ss, sheet = "CompanyAnalysis")
+df_job_roles <- read_sheet(ss, sheet = "Job_roles")
+```
+
+# wrangle
+
+```{r}
+geo <- geo_locations_raw %>% janitor::clean_names()
+
+
+
+job_roles <- df_job_roles %>%
+  select(ID, job_role = Job_role)
+
+jobs <- df_main_raw %>% 
+  inner_join(geo, by = c("Location"="new_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
+  mutate(Country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%
+  mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
+  filter(Scrape_date >= "2023-08-20") %>%
+  left_join(job_roles)
+
+max(jobs$Scrape_date)
+
+companies <- df_companies %>% slice(-1)
+```
+
+
+
+# Selecting categories
+
+- Country, region, sector, job_role
+- Remove all na 
+
+```{r}
+df_jobs <- jobs %>% 
+  left_join(companies, by =c("Company" = "Name")) %>%
+  select(country = Country, region, sector= Industry_Sector, competence= job_role) %>%
+  na.omit()
+
+df_cl <- df_jobs %>%
+  group_by(country, region, sector, competence) %>%
+  summarise(n = n())
+
+```
+
+
+
+# cluster analysis
+
+
+
+## creating cluster df: df_wide and a matrix
+```{r}
+
+df_wide_cl <- df_cl %>% 
+  unite(place, c("region", "country"), sep = ", ") %>%
+  pivot_wider(names_from = "competence", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+  
+
+mtrx <- as.matrix(df_wide_cl %>% select(-place, -sector))
+```
+
+
+## deciding on nr of clusters
+
+### kmeans 
+```{r}
+wss <- map_dbl(2:60, function(k){
+  km <- kmeans(x= mtrx, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_knee <- tibble(k = 2:60, wss = wss)
+
+df_knee %>% 
+  ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/kmean_knee.png")
+# => k= 6, k=8, k = 12
+```
+
+### silhouete
+```{r}
+
+sil_width <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = mtrx, k = k)
+  pam_k$silinfo$avg.width
+}) 
+
+df_sil <- tibble(k = 2:60, sil_width = sil_width)
+
+df_sil %>% ggplot(aes(k, sil_width)) + geom_line() + 
+  geom_point()+
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/sil_width.png")
+# => k=2, 3, 6
+
+```
+
+
+### dendogram
+```{r}
+dist_cl <- dist(mtrx)
+
+hcl <- hclust(dist_cl, method = "average")
+hcl_obj <- as.dendrogram(hcl)
+
+plot(hcl_obj)
+
+dend_color <- color_branches(hcl_obj, k = 12)
+
+plot(dend_color)  
+# Save the plot to a file
+png("figs/dend_12.png", width = 800, height = 600)  # Open a PNG device
+plot(dend_color)
+dev.off()  # Close the device
+
+
+```
+
+
+
+### visualizing cluster overlaps 
+```{r}
+# Use hcut() which compute hclust and cut the tree
+
+cluster_plot <- function(k, mm){
+hc.cut <- hcut(mtrx, k = k, hc_method = mm) #methods: "complete", "single", "average"
+
+# Visualize dendrogram
+dend_plot<- fviz_dend(hc.cut, 
+                      show_labels = TRUE, 
+                      main = paste("K:", k, " Method:", mm),
+                      cex=0.4,
+                      rect = TRUE)
+ggsave(paste0("figs/clust/k_", k, "_", mm, "_dend.png"), plot = dend_plot)
+
+# Visualize cluster
+cluster_plot <- fviz_cluster(hc.cut, 
+                               ellipse.type = "convex", 
+                               repel = FALSE,
+                               labelsize = 8,
+                               main = paste("K:", k, " Method:", mm),
+                               ggtheme = theme_grey())
+  
+  ggsave(paste0("figs/clust/k", k, "_", mm, "_cl.png"), plot = cluster_plot)
+  
+  # Return both plots as a list
+  list(dend_plot = dend_plot, cluster_plot = cluster_plot)
+}
+
+#testing the function
+cluster_plot(5, "complete")
+
+# iterating over all combinations
+methods <- c("complete", "average", "single")
+kk<- 2:12
+
+combinations <- expand.grid(k = kk, method = methods)
+
+# Apply cluster_plot to all combinations
+plots <- map2(combinations$k, combinations$method, cluster_plot)
+
+names(plots) <- paste("K", combinations$k, "Method", combinations$method, sep = "_")
+
+# To inspect the list of plots
+print(plots)
+
+
+# => k=3 appears to generate least overlaps
+
+```
+
+
+
+## When decided on number of clusters and best method. Connect clusters with data, (there's probably a better method for this)
+
+Tycker följande ser intressanta ut
+_ k3: complete
+- k5: complete
+- k6: average/complete
+
+```{r}
+dist_cl <- dist(mtrx)
+hcl <- hclust(dist_cl, method = "average")
+cut_hcl <- cutree(hcl, k = 5)
+
+df_hcl <- df_wide_cl %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cut_hcl) %>% 
+  relocate(cl, .after = "id") # look at this data and the cluster plot to make sense of clusters. Sort on each cluster
+
+df_hcl %>% arrange(desc(cl)) %>% head(20) %>% gt::gt() %>% gtExtras::gt_theme_espn()
+df_hcl %>% filter(cl ==2) %>% pull(place) %>% unique()
+
+
+# Summary stat
+sum_stat <- df_hcl %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+
+df_hcl_long <- df_hcl %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+
+pl_cl <- df_hcl_long %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+
+```
+
+
+
+## heatmap
+```{r}
+
+
+
+df_hcl_long %>% 
+  ggplot(aes(x=str_trunc(sector, width = 15, ellipsis = "."), 
+             y=str_trunc(competence, width =15, ellipsis = "."), 
+             fill = n)) +
+  geom_tile() +
+  scale_fill_viridis_c(direction=1, option = "D")+
+  facet_wrap(~cl)+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))+
+  labs(x="", y ="")
+ggsave("figs/heat_ave_k3.png")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
