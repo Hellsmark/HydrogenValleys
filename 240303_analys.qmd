@@ -68,10 +68,7 @@ location_region_pop <- cities %>%
   rename(reg_pop = population)
 
 
-geo <- geo_locations_raw %>% 
-  select(-Comment) %>% 
-  rename(Location = Name2) %>% 
-  unique()
+geo <- geo_locations_raw
 
 jobs <- df_main_raw %>% 
   inner_join(geo, by = "Location") %>%
@@ -89,12 +86,11 @@ companies <- df_companies %>% slice(-1)
 
 ```
 
-
-
 # Descriptives
 
 ## New jobs over time
-- plot describing number of new jobs per month
+
+-   plot describing number of new jobs per month
 
 ```{r}
 jobs_over_time <- jobs %>% 
@@ -116,13 +112,17 @@ ggsave("figs/jobs_over_time.png", dpi = 600)
 
 ```
 
-
 ## New jobs and country stats
-- simple comparision of main stats between countries
+
+-   simple comparision of main stats between countries
 
 ```{r}
 
-comp <- jobs %>% select(Country, Company) %>% unique() %>% group_by(Country) %>% count(name="nr_comp")
+comp <- jobs %>% 
+  select(Country, Company) %>% 
+  unique() %>% 
+  group_by(Country) %>% 
+  count(name="nr_comp")
 
 tbl_country_comp <- jobs %>% 
   group_by(Country) %>% 
@@ -165,8 +165,10 @@ gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
 
 ```
 
-## Overview company descriptives 
-- Here are two tables. First one long with all companies. Then three smaller ones, one for each country. 
+## Overview company descriptives
+
+-   Here are two tables. First one long with all companies. Then three smaller ones, one for each country.
+
 ```{r}
 
 companies_overview <- jobs %>%
@@ -221,6 +223,7 @@ gtsave(long_table, filename = "tables/long_tbl_companies.pdf")
 ```
 
 Per country tables
+
 ```{r}
 
 tot_jobs <- sum(companies_overview$n)
@@ -290,11 +293,8 @@ gtsave(no, filename = "tables/no_comp.png")
 gtsave(se, filename = "tables/se_comp.png")
 ```
 
-
-
-
-
 ## Overview: Jobs per sector
+
 ```{r}
 tbl <- jobs %>%
   inner_join(df_companies %>% 
@@ -310,10 +310,8 @@ gt_tbl
 
 ```
 
-
-
-
 ## Overview: job_roles
+
 ```{r}
 jobs %>% 
   rename("Job type" = Job_role) %>%
@@ -323,10 +321,10 @@ jobs %>%
 
 ```
 
-
 # Places - Where
 
 ## A new map?
+
 ```{r}
 
 
@@ -335,10 +333,12 @@ jobs %>%
 ```
 
 ## Correlation between jobs and populations in specific locations and in regions
-- In this section we first check the correlation between new jobs for the different locations
-- We then check the correlation between new jobs and regions.
+
+-   In this section we first check the correlation between new jobs for the different locations
+-   We then check the correlation between new jobs and regions.
 
 ### Wrangling the data
+
 ```{r}
 location_new_jobs <- jobs %>% 
   group_by(Location) %>%
@@ -351,7 +351,10 @@ location_all <- location_region_pop %>%
 
 ```
 
-### lm new jobs ~ locations - all countries
+### lm new jobs \~ locations - all countries
+
+### lm new jobs \~ locations - all countries
+
 ```{r}
 lm_location <- lm(new_jobs ~ loc_pop, data = location_all)
 summary(lm_location)
@@ -361,8 +364,10 @@ glance(lm_location)
 
 ```
 
+### lm new jobs \~ locations - per country
 
-### lm new jobs ~ locations - per country
+### lm new jobs \~ locations - per country
+
 ```{r}
 lm_data <- location_all %>% 
   group_by(country) %>%
@@ -388,7 +393,9 @@ outliers <- lm_data %>%
 ```
 
 ### Plot between location and new jobs
-- add p-value and R.squared to plot
+
+-   add p-value and R.squared to plot
+
 ```{r}
 location_all %>% 
   ggplot(aes(x= round(loc_pop/1e3), y= new_jobs, colour = country)) + 
@@ -414,13 +421,14 @@ location_all %>%
 ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
 ```
 
-- For all three countries it appears to be a linear relationship
-- It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
+-   For all three countries it appears to be a linear relationship
+-   It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
 
+### lm new jobs \~ region
 
+### lm new jobs \~ region
 
-### lm new jobs ~ region
-- now same thing but for all regions
+-   now same thing but for all regions
 
 ```{r}
 region_new_jobs <- location_all %>% 
@@ -431,8 +439,12 @@ lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
 glance(lm_regions)
 
 ```
-#### lm new jobs ~ region per country
-- and regions per country 
+
+#### lm new jobs \~ region per country
+
+#### lm new jobs \~ region per country
+
+-   and regions per country
 
 ```{r}
 
@@ -458,10 +470,11 @@ outliers_reg <- lm_data_reg %>%
 
 ```
 
-
 ### Plot between region and new jobs
-- higlight outlier
-- add p and r.squared
+
+-   higlight outlier
+-   add p and r.squared
+
 ```{r}
 region_new_jobs <- location_all %>% 
   group_by(region, reg_pop, country) %>%
@@ -499,13 +512,14 @@ ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 
 
 ```
-- From a Nordic perspectives significantly more jobs are created in Oslo, Rogland, Vestland
-- Too few regions to split between countries.
 
+-   From a Nordic perspectives significantly more jobs are created in Oslo, Rogland, Vestland
+-   Too few regions to split between countries.
 
 # Companies - who
 
 ## Distribution
+
 ```{r}
 df_distribution <- jobs %>% 
   count(Company, Country) %>% 
@@ -524,8 +538,8 @@ ggsave(filename = "figs/violine.png", width = 6, height = 4, dpi = 600)
 
 ```
 
-
 ## Share of companies
+
 ```{r}
 
 prop <- df_distribution %>% filter(Country =="SE") %>% 
@@ -543,7 +557,6 @@ df_distribution %>%
   summarise(nr_companies = n())
 
 ```
-
 
 ## Bipartitie - Companies Countries
 
@@ -594,7 +607,8 @@ ggraph(gs, layout = "stress") +
 ggsave("figs/two_mode_countries.png", dpi = 600)
 ```
 
-# Most new jobs are created by companies that only recruit in one country. 
+# Most new jobs are created by companies that only recruit in one country.
+
 ```{r}
 most_jobs <- nodes %>% 
   filter(type == "actor") %>%
@@ -614,9 +628,8 @@ most_jobs %>% filter(type == "multiple") %>%
 
 ```
 
+# H2 The creation of new jobs within the hydrogen economy is positively correlated with sector and job roles
 
-
-# H2 The creation of  new jobs within the hydrogen economy is positively correlated with sector and job roles
 ```{r}
 companies_sector <- companies %>% select(Company = Name, Sector = Industry_Sector)
 
@@ -652,8 +665,8 @@ t_merge <- tbl_merge(
 t_merge %>% as_gt() %>% gtsave(filename = "tables/sector_jobroles_lm.png")
 ```
 
-
 # Share of total jobs
+
 ```{r}
 se <- tbl %>% count(Country) %>% subset(Country == "SE", n) %>% pull()
 dk <- tbl %>% count(Country) %>% subset(Country == "DK", n) %>% pull()
@@ -668,9 +681,6 @@ sector <- tbl %>%
   pivot_wider(names_from = Country, values_from = n)
 
 ```
-
-
-
 
 ```{r}
 sector <- tbl %>%
@@ -697,8 +707,6 @@ sector %>%
   labs(x = "", y = "Proportion")
 ggsave("figs/sector_focus.png")
 ```
-
-
 
 ```{r}
 
