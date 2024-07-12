@@ -2,6 +2,8 @@
 title: "Analysis"
 format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Libraries
@@ -51,13 +53,13 @@ workforce_gdp <- tribble(
 # Wrangel
 
 ```{r}
-geo <- geo_locations_raw
+geo <- geo_locations_raw %>% janitor::clean_names()
 
 job_roles <- df_job_roles %>%
   select(ID, job_role = Job_role, Type, Type_2)
 
 jobs <- df_main_raw %>% 
-  inner_join(geo, by = c("Location"="New_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
+  inner_join(geo, by = c("Location"="new_name"), relationship = "many-to-many") %>%
   mutate(Country = case_when(
     str_detect(ID, pattern ="^1") ~ "SE", 
     str_detect(ID, pattern ="^2") ~ "NO",
@@ -73,29 +75,29 @@ companies <- df_companies %>% slice(-1)
 
 
 ## keyword 
-new_keys <- keywords_raw %>% select(keywords = Keyword, new_key= New_word)
+#new_keys <- keywords_raw %>% select(keywords = Keyword, new_key= New_word)
 
 #remove company and country names
-rm_companies <- str_to_lower(companies$Name)
-rm_location <- str_to_lower(c(jobs$Location, jobs$region))
-rm_words <- c("goteborg", "gothenburg", "background")
+#rm_companies <- str_to_lower(companies$Name)
+#rm_location <- str_to_lower(c(jobs$Location, jobs$region))
+#rm_words <- c("goteborg", "gothenburg", "background")
 
-keywords <- keywords_raw %>% 
-  select(id=ID, keywords = translatedText) %>%
-  mutate(country = case_when(
-    str_detect(id, pattern ="^1") ~ "SE", 
-    str_detect(id, pattern ="^2") ~ "NO",
-    str_detect(id, pattern ="^3") ~ "DK"
-  )) %>% na.omit() %>%
-  separate_rows(keywords, sep = ",") %>%
-  mutate(keywords = str_squish(keywords)) %>%
-  relocate(keywords, .after = last_col()) %>%
-  filter(!keywords == "") %>%
-  left_join(new_keys) %>%
-  mutate(new_key = str_to_lower(new_key)) %>%
-  filter(!(new_key %in% rm_companies & keywords %in% rm_companies)) %>%
-  filter(!new_key %in% rm_location) %>%
-  filter(!new_key %in% rm_words)
+#keywords <- keywords_raw %>% 
+#  select(id=ID, keywords = translatedText) %>%
+#  mutate(country = case_when(
+#    str_detect(id, pattern ="^1") ~ "SE", 
+#    str_detect(id, pattern ="^2") ~ "NO",
+#    str_detect(id, pattern ="^3") ~ "DK"
+#  )) %>% na.omit() %>%
+#  separate_rows(keywords, sep = ",") %>%
+#  mutate(keywords = str_squish(keywords)) %>%
+#  relocate(keywords, .after = last_col()) %>%
+#  filter(!keywords == "") %>%
+#  left_join(new_keys) %>%
+#  mutate(new_key = str_to_lower(new_key)) %>%
+#  filter(!(new_key %in% rm_companies & keywords %in% rm_companies)) %>%
+#  filter(!new_key %in% rm_location) %>%
+#  filter(!new_key %in% rm_words)
 
 ```
 
@@ -175,7 +177,7 @@ gt_tbl_country_comp <- tbl_country_comp %>%
   ) %>% gt_theme_espn()
 gt_tbl_country_comp
 
-gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
+#gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
 
 ```
 
@@ -393,18 +395,6 @@ multi_pl
 
 
 ```
-```{r}
-
-hyd_spec_no <- company_types %>% filter(Hydrogen_specialist == "Yes") %>% filter(Country == "NO") 
-not_spec_no <- company_types %>% filter(Hydrogen_specialist == "No") %>% filter(Country == "NO")
-
-hyd_spec_dk <- company_types %>% filter(Hydrogen_specialist == "Yes") %>% filter(Country == "DK") 
-not_spec_dk <- company_types %>% filter(Hydrogen_specialist == "No") %>% filter(Country == "DK")
-
-hyd_spec_se <- company_types %>% filter(Hydrogen_specialist == "Yes") %>% filter(Country == "SE") 
-not_spec_se <- company_types %>% filter(Hydrogen_specialist == "No") %>% filter(Country == "SE")
-
-```
 
 ## Overview: bipart companies reqruiting across -
 
@@ -479,7 +469,7 @@ tbl <- jobs %>%
   mutate(job_role = fct_infreq(job_role))
 
 gt_tbl <- tbl %>%
-  tbl_cross(Sector, Country, percent = "column") %>%
+  tbl_cross(Sector, Country, percent = "cell") %>%
   as_gt() %>%
   gt_theme_espn() 
 
@@ -508,7 +498,6 @@ tbl %>%
       plot.title = element_text(size = 12))
 
 #ggsave("figs/Total_jobs_per_sector.png", dpi = 1200, width = 6, height = 8)
-
 
 
 ```
@@ -543,7 +532,43 @@ sector_deviation_plot
 #ggsave(filename = "figs/jobroles/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
 
 ```
+
+### Patchwork plot
+
+-   Would be nice if the y-axis match in the combined plot
+
+```{r}
+p1 <- tbl %>% 
+  group_by(Country, Sector) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(Sector), 
+             fill = Country)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(legend.position = "none", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+p2 <- ggplot(sectors_norm, aes(x = diff*100, y = str_wrap(Sector, 20, whitespace_only = FALSE))) +
+  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  theme(legend.position = "top") +
+  labs(y = "", x = "", title = "Deviation from mean") +
+  theme_minimal()+
+    theme(legend.position = "none", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12)) 
+
+combined_sectors <- p1 + p2
+#ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors, limitsize = FALSE, width = 12, height = 7)
+```
+
 ## Trading/non-trading
+
+-   Instead of using facet_wrap one could see if it is enough to change the colors of the trading/non-trading sectors on the y-axis
 
 ```{r}
 tbl$Trading <- ifelse(tbl$Sector %in% c("Energy Utility", "Oil/gas/refinery", "Chemicals", "Iron/steel/mining", "Transport"), "Trading", "Non-trading")
@@ -577,7 +602,7 @@ tbl %>%
 ```{r}
 
 gt_tbl <- tbl %>% rename("Type of job" = job_role) %>%
-  tbl_cross("Type of job", Country, percent = "column") %>%
+  tbl_cross("Type of job", Country, percent = "cell") %>%
   as_gt() %>%
   gt_theme_espn() 
 #gt_tbl %>% gtsave("figs/jobrole_country.png")
@@ -608,7 +633,10 @@ tbl %>% drop_na(job_role) %>% #removing NA:s here
 #ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 8, height = 8)
 
 ```
+
 ## Deviation plot - job roles
+
+-   One could see if it is possible to use a logarithmic scale for the plot or use a break in the "Engineering"-bar
 
 ```{r}
 jobs_norm <- tbl %>% group_by(job_role, Country) %>%
@@ -639,34 +667,6 @@ jobroles_deviation_plot
 
 ```
 
-```{r}
-mean_per_jobrole <- jobs_norm %>%
-  group_by(job_role) %>%
-  summarise(mean_n_job = mean(n_norm))
-
-jobs_norm <- merge(jobs_norm, mean_per_jobrole, by = "job_role", suffixes = c("", "_jobrole"))
-
-jobs_norm$diff_n_job <- jobs_norm$n_norm - jobs_norm$mean_n_job
-
-jobroles_deviation_plot_2 <- ggplot(jobs_norm, aes(x = str_wrap(job_role, 20, whitespace_only = FALSE), y = diff_n_job*100)) +
-  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
-  scale_fill_colorblind("Country") +
-  theme(legend.position = "top") +
-  labs(y = "Deviation from mean", x = "") +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
-jobroles_deviation_plot_2
-
-sd_jobrole <- jobs_norm %>%
-  group_by(job_role) %>%
-  summarise(sd_n_job = sd(n_norm))
-
-jobs_norm <- merge(jobs_norm, sd_jobrole, by = "job_role", suffixes = c("", "_jobrole"))
-
-diff_significant <- jobs_norm %>% filter(diff_n_job < (-1)*sd_n_job | diff_n_job > sd_n_job)
-```
-
-
 ## Type of engineers
 
 ### Overview: engineers - table
@@ -690,7 +690,7 @@ engineers_n <- tbl %>% filter(job_role == "Engineering") %>%
   group_by(Type_2) %>%
   summarise(total_n = n())
 
-tbl %>% filter(job_role == "Engineering") %>%
+engineers_plot <- tbl %>% filter(job_role == "Engineering") %>%
   group_by(Country, Type_2) %>%
   summarise(n = n()) %>%
   left_join(engineers_n, by = "Type_2") %>%
@@ -701,15 +701,17 @@ tbl %>% filter(job_role == "Engineering") %>%
     labs(x= "", y = "", title = "Total jobs per type of engineer")+
     theme_minimal()+
     theme(
-      legend.position = "bottom", 
+      legend.position = "none", 
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-#ggsave("figs/Total_jobs_per_engineering_type.png", dpi = 1200, width = 6, height = 6)
+#ggsave(filename = "figs/Total_jobs_per_engineering_type.png", plot = engineers_plot, dpi = 1200, width = 6, height = 6)
 
 ```
 
 ### Deviation plot - engineers
+
+-   Would be nice if the y-axis match in the combined plot
 
 ```{r}
 engineers_norm <- tbl %>% filter(job_role == "Engineering") %>% group_by(Type_2, Country) %>%
@@ -727,19 +729,20 @@ engineers_norm$n_norm <- engineers_norm$n_job / engineers_norm$n_job_country
 engineers_norm$mean <- engineers_norm$n_job_type / sum(jobs_total$n_job)
 engineers_norm$diff <- engineers_norm$n_norm - engineers_norm$mean
 
-engineers_deviation_plot <- ggplot(engineers_norm, aes(x = str_wrap(Type_2, 20, whitespace_only = FALSE), y = diff*100)) +
+engineers_deviation_plot <- ggplot(engineers_norm, aes(x = diff*100, y = str_wrap(Type_2, 20, whitespace_only = FALSE))) +
   geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
   scale_fill_colorblind("Country") +
   theme(legend.position = "top") +
-  labs(y = "Deviation from mean", x = "") +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
-engineers_deviation_plot
+  labs(y = "", x = "",title = "Deviation from mean") +
+  theme_minimal()+
+    theme(text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
 
 #ggsave(filename = "figs/jobroles/engineers_deviation.png", plot = engineers_deviation_plot, limitsize = FALSE, width = 6, height = 6)
 
+combined_engineers <- engineers_plot + engineers_deviation_plot
+ggsave(filename = "figs/jobroles/combined_engineers.png", plot = combined_engineers, limitsize = FALSE, width = 10, height = 6) 
 ```
-
 
 # Where - places - Hans
 
@@ -1032,7 +1035,7 @@ test_chi_data <- sector %>%
 chi_sq_res <- chisq.test(select(test_chi_data, -Country))
 #fisher.test(select(test_chi_data, -Country))
 
-write_csv(sector, "tables/sectors.csv")
+#write_csv(sector, "tables/sectors.csv")
   
 
 sector %>% 
@@ -1041,7 +1044,7 @@ sector %>%
   theme_fivethirtyeight()+
   scale_fill_fivethirtyeight()+
   labs(x = "", y = "Proportion")
-ggsave("figs/sector_focus.png")
+#ggsave("figs/sector_focus.png")
 ```
 
 ## Keywords
@@ -1137,7 +1140,7 @@ ggraph(gs_keys, layout = "stress") +
   scale_size(range = c(2,14))+
   scale_edge_width(range = c(2, 4))+
   ggtitle("")
-ggsave("figs/keyword_countries.png", dpi = 1200, width = 12, height = 8)
+#ggsave("figs/keyword_countries.png", dpi = 1200, width = 12, height = 8)
   
 
 ```
@@ -1172,7 +1175,7 @@ sector %>%
   theme_fivethirtyeight()+
   scale_fill_fivethirtyeight()
 
-ggsave("figs/sector_focus2.png", width = 14, height = 8)
+#ggsave("figs/sector_focus2.png", width = 14, height = 8)
 
 
 ```
