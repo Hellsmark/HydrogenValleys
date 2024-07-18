@@ -6,16 +6,37 @@ editor_options:
   chunk_output_type: console
 ---
 
-#libraries
+# libraries
 
 ```{r}
+
+set.seed(123456789)
+library(conflicted)
 library(tidyverse)
-library(cluster)
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
 library(googlesheets4)
-library(dummy)
+library(ggfortify)
+library(clusterSim)
+library(clValid)
 library(dendextend)
-library(patchwork)
 library(factoextra)
+library(cluster)
+library(stats)
+library(ggplot2)
+library(RColorBrewer)
+
+```
+
+```{r}
+# Are these needed?
+library(dummy)
+library(patchwork)
+library(fpc)
+library(dbscan)
+library(FactoMineR)
+library(forecast)
+
 ```
 
 ## Data
@@ -51,20 +72,18 @@ jobs <- df_main_raw %>%
 
 max(jobs$Scrape_date)
 
-companies <- df_companies %>% slice(-1)
+companies <- df_companies
 ```
-
-
 
 # Selecting categories
 
-- Country, region, sector, job_role
-- Remove all na 
+-   Country, region, sector, job_role
+-   Remove all na
 
 ```{r}
 df_jobs <- jobs %>% 
   left_join(companies, by =c("Company" = "Name")) %>%
-  select(country = Country, region, sector= Industry_Sector, competence= job_role) %>%
+  select(country = nation, region, sector= Industry_Sector, competence= job_role) %>%
   na.omit()
 
 df_cl <- df_jobs %>%
@@ -73,13 +92,10 @@ df_cl <- df_jobs %>%
 
 ```
 
-
-
 # cluster analysis
 
-
-
 ## creating cluster df: df_wide and a matrix
+
 ```{r}
 
 df_wide_cl <- df_cl %>% 
@@ -93,10 +109,10 @@ df_wide_cl <- df_cl %>%
 mtrx <- as.matrix(df_wide_cl %>% select(-place, -sector))
 ```
 
-
 ## deciding on nr of clusters
 
-### kmeans 
+### kmeans
+
 ```{r}
 wss <- map_dbl(2:60, function(k){
   km <- kmeans(x= mtrx, centers = k, iter.max = 40, nstart = 30)
@@ -109,10 +125,11 @@ df_knee %>%
   ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
   scale_x_continuous(breaks = 2:60)
 ggsave("figs/kmean_knee.png")
-# => k= 6, k=8, k = 12
+# => k= 6, k=8, k = 12, k = 14
 ```
 
 ### silhouete
+
 ```{r}
 
 sil_width <- map_dbl(2:60, function(k){
@@ -130,30 +147,28 @@ ggsave("figs/sil_width.png")
 
 ```
 
-
 ### dendogram
+
 ```{r}
 dist_cl <- dist(mtrx)
 
-hcl <- hclust(dist_cl, method = "average")
+hcl <- hclust(dist_cl, method = "ward.D2")
 hcl_obj <- as.dendrogram(hcl)
 
 plot(hcl_obj)
 
-dend_color <- color_branches(hcl_obj, k = 12)
+dend_color <- color_branches(hcl_obj, k = 14)
 
 plot(dend_color)  
 # Save the plot to a file
-png("figs/dend_12.png", width = 800, height = 600)  # Open a PNG device
+png("figs/dend_14_ward.png", width = 800, height = 600)  # Open a PNG device
 plot(dend_color)
 dev.off()  # Close the device
 
-
 ```
 
+### visualizing cluster overlaps
 
-
-### visualizing cluster overlaps 
 ```{r}
 # Use hcut() which compute hclust and cut the tree
 
@@ -204,14 +219,9 @@ print(plots)
 
 ```
 
-
-
 ## When decided on number of clusters and best method. Connect clusters with data, (there's probably a better method for this)
 
-Tycker följande ser intressanta ut
-_ k3: complete
-- k5: complete
-- k6: average/complete
+Tycker följande ser intressanta ut \_ k3: complete - k5: complete - k6: average/complete
 
 ```{r}
 dist_cl <- dist(mtrx)
@@ -240,12 +250,9 @@ pl_cl <- df_hcl_long %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(d
 
 ```
 
-
-
 ## heatmap
+
 ```{r}
-
-
 
 df_hcl_long %>% 
   ggplot(aes(x=str_trunc(sector, width = 15, ellipsis = "."), 
@@ -261,18 +268,1239 @@ ggsave("figs/heat_ave_k3.png")
 
 ```
 
+## Trying ward dendogram on h2_dataset - with new matrix encoding
+
+```{r}
+
+# Data frame
+df_h2 <- jobs %>% 
+  left_join(companies, by =c("Company" = "Name")) %>%
+  select(id = ID, country = Country, region, sector= Industry_Sector, competence= job_role) %>%
+  na.omit() %>%
+  unite(place, c("region", "country"), sep = ", ")
+
+# One-hot encode the categorical variables
+# Step-by-step transformation
+df_h2 <- df_h2 %>%
+  mutate(across(place:competence, as.character))
+
+df_long_h2 <- df_h2 %>%
+  pivot_longer(cols = place:competence, names_to = "Topic", values_to = "Category")
+
+df_united_h2_1 <- df_long_h2 %>%
+  unite("Topic_Category", Topic, Category, sep = "_") %>%
+  mutate(value = 1)
+
+# Remove potential duplicates by grouping by ID and Topic_Category and then taking the maximum value
+df_united_h2 <- df_united_h2_1 %>%
+  group_by(id, Topic_Category) %>%
+  summarise(value = max(value), .groups = 'drop')
+
+df_encoded_h2 <- df_united_h2 %>%
+  pivot_wider(names_from = "Topic_Category", values_from = "value", values_fill = list(value = 0))
+
+
+
+# Remove the ID column for clustering
+df_clustering_mtrx_h2 <- df_encoded_h2 %>% select(-id)
+
+# Calculate the distance matrix
+distance_matrix_h2 <- dist(df_clustering_mtrx_h2, method = "euclidean")
+
+# Perform hierarchical clustering
+hc_h2 <- hclust(distance_matrix_h2, method = "ward.D2")
+
+# Plot the dendrogram
+
+
+plot(hc_h2, labels = df_encoded_h2$id, main = "Dendrogram of Hierarchical Clustering")
+
+# Add a red line to cut the dendrogram at a certain height
+abline(h = 8, col = "red")
+
+
+
+hcobj_h2 <- as.dendrogram(hc_h2)
+
+dend_color_h2 <- color_branches(hcobj_h2, k = 10)
+
+plot(dend_color_h2)  
+# Save the plot to a file
+png("figs/dend_dummy_ward_.png", width = 800, height = 600)  # Open a PNG device
+plot(dend_color_h2)
+dev.off()  # Close the device
+```
+
+```{r}
+height_cut <- 11  # Adjust this height based on your dendrogram
+clusters <- cutree(hc_h2, h = height_cut)
+
+# Append cluster membership to the original data
+df_clustered_h2 <- df_encoded_h2 %>% select(id)
+df_clustered_h2$Cluster <- clusters
+
+# If you want to know the number of clusters
+number_of_clusters <- length(unique(clusters))
+
+```
+
+### K-means and silhouete
+
+```{r}
+# K-means
+wss_1hot <- map_dbl(2:60, function(k){
+  km <- kmeans(x= df_clustering_mtrx_h2, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_knee_1hot <- tibble(k = 2:60, wss = wss_1hot)
+
+df_knee_1hot %>% 
+  ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/kmean_knee_1hot.png")
+# => 
+
+# Silhouete
+sil_width_1hot <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = df_clustering_mtrx_h2, k = k)
+  pam_k$silinfo$avg.width
+}) 
+
+df_sil_1hot <- tibble(k = 2:60, sil_width = sil_width_1hot)
+
+df_sil_1hot %>% ggplot(aes(k, sil_width)) + geom_line() + 
+  geom_point()+
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/sil_width_1hot.png")
+# => 
+```
+
+## DBSCAN on mtrx
+
+```{r}
+
+
+db <- dbscan(mtrx,eps=0.15,minPts = 5)
+
+# Obtain optimal eps
+kNNdistplot(mtrx,k=100)
+abline(h=20,lty=2)
+
+# around eps = 4-5 seems reaconable
+eps = 5
+minpts = 34
+# Density- based clustering with fpc & dbscan
+f <- fpc::dbscan(mtrx,eps = eps, MinPts = minpts) #d <- dbscan::dbscan(mtrx,eps,minpts)
+
+# Cluster visualization 
+fviz_cluster(f, mtrx, geom = "point") 
+
+
+eps_values <- c(1,2, 3, 4, 5, 6, 7,8,9,10)
+minpts_values <- c(5,10, 15,20, 25, 30)
+
+results <- list()
+
+for (eps in eps_values) {
+  for (minpts in minpts_values) {
+    db <- fpc::dbscan(mtrx, eps = eps, MinPts = minpts)
+    cluster_count <- length(unique(db$cluster))
+    noise_points <- sum(db$cluster == 0)
+    results[[paste("eps", eps, "minpts", minpts, sep = "_")]] <- list(
+      clusters = cluster_count,
+      noise = noise_points,
+      db = db
+    )
+  }
+}
+
+# Print results to find the best combination
+for (res in names(results)) {
+  cat("Params:", res, 
+      "Clusters:", results[[res]]$clusters, 
+      "Noise:", results[[res]]$noise, "\n")
+}
+
+# Select the best combination based on previous output
+best_eps <- 1  # Example value, replace with your optimal eps
+best_minpts <- 30  # Example value, replace with your optimal minPts
+
+# Apply DBSCAN with the best parameters
+best_dbscan <- fpc::dbscan(mtrx, eps = best_eps, MinPts = best_minpts)
+
+# Visualize the clusters
+fviz_cluster(best_dbscan, mtrx, geom = "point")
+
+
+```
+
+## DBSCAN on 1hot
+
+```{r}
+db <- dbscan(mtrx,eps=0.15,minPts = 5)
+
+# Obtain optimal eps
+kNNdistplot(df_clustering_mtrx_h2,k=10)
+abline(h=20,lty=2)
+
+# around eps = 4-5 seems reaconable
+eps = 1
+minpts = 34
+# Density- based clustering with fpc & dbscan
+f <- fpc::dbscan(df_clustering_mtrx_h2,eps = eps, MinPts = minpts) #d <- dbscan::dbscan(mtrx,eps,minpts)
+
+# Cluster visualization 
+fviz_cluster(f, df_clustering_mtrx_h2, geom = "point") 
+
+
+eps_values <- c(0.1,0.5,1,1.5, 2)
+minpts_values <- c(5,10,20, 40, 65, 100, 130, 150)
+
+results <- list()
+
+for (eps in eps_values) {
+  for (minpts in minpts_values) {
+    db <- fpc::dbscan(df_clustering_mtrx_h2, eps = eps, MinPts = minpts)
+    cluster_count <- length(unique(db$cluster))
+    noise_points <- sum(db$cluster == 0)
+    results[[paste("eps", eps, "minpts", minpts, sep = "_")]] <- list(
+      clusters = cluster_count,
+      noise = noise_points,
+      db = db
+    )
+  }
+}
+
+# Print results to find the best combination
+for (res in names(results)) {
+  cat("Params:", res, 
+      "Clusters:", results[[res]]$clusters, 
+      "Noise:", results[[res]]$noise, "\n")
+}
+
+# Select the best combination based on previous output
+best_eps <- 1.5  # Example value, replace with your optimal eps
+best_minpts <- 65  # Example value, replace with your optimal minPts
+
+# Apply DBSCAN with the best parameters
+best_dbscan <- fpc::dbscan(df_clustering_mtrx_h2, eps = best_eps, MinPts = best_minpts)
+
+# Visualize the clusters
+fviz_cluster(best_dbscan, df_clustering_mtrx_h2, geom = "point")
+
+
+png("figs/kNNdist_5line.png", width = 800, height = 600)  # Open a PNG device
+kNNdistplot(df_clustering_mtrx_h2,k=5)
+abline(h=5,lty=2)
+dev.off()  # Close the device
+
+png("figs/dpscan5_34.png", width = 800, height = 600)  # Open a PNG device
+fviz_cluster(f, df_clustering_mtrx_h2, geom = "point") 
+dev.off()  # Close the device
+
+```
+
+## Trying out another way to represent the dataset
+
+```{r}
+
+
+# Convert categorical variables to factors if needed
+df_h2$place <- as.factor(df_h2$place)
+df_h2$sector <- as.factor(df_h2$sector)
+df_h2$competence <- as.factor(df_h2$competence)
+
+# Check for missing values
+sum(is.na(df_h2))  # Check for NA values
+
+# Perform Multiple Correspondence Analysis (MCA)
+mca_result <- MCA(df_h2[, c("place", "sector", "competence")], graph = FALSE)
+
+# Extract dimensions explaining a certain percentage of variance
+mca_dims <- dimdesc(mca_result, axes = c(1, 2), proba = 0.2)
+
+# Use transformed MCA dimensions for clustering or further analysis
+mca_data_20 <- as.data.frame(mca_result$ind$coord)
+
+# Now mca_data contains transformed MCA dimensions suitable for clustering
+
+```
+
+```{r}
+# K-means
+wss_mca <- map_dbl(2:60, function(k){
+  km <- kmeans(x= mca_data, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_knee_mca <- tibble(k = 2:60, wss = wss_mca)
+
+df_knee_mca %>% 
+  ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/kmean_knee_mca.png")
+# => k= 9-13
+
+# Silhouete
+sil_width_mca <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = mca_data, k = k)
+  pam_k$silinfo$avg.width
+}) 
+
+df_sil_mca <- tibble(k = 2:60, sil_width = sil_width_mca)
+
+df_sil_mca %>% ggplot(aes(k, sil_width)) + geom_line() + 
+  geom_point()+
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/sil_width_mca.png")
+# => k=2, 5
+
+
+
+```
+
+```{r}
+# Obtain optimal eps
+kNNdistplot(mca_data,k=3)
+abline(h=0.7,lty=2)
+
+# around eps = 0.5 seems reaconable
+eps = 1
+minpts = 34
+# Density- based clustering with fpc & dbscan
+f <- fpc::dbscan(mca_data,eps = eps, MinPts = minpts) #d <- dbscan::dbscan(mtrx,eps,minpts)
+
+# Cluster visualization 
+fviz_cluster(f, mca_data, geom = "point") 
+
+
+eps_values <- c(0.2,0.3,0.4,0.5, 0.6,0.7)
+minpts_values <- c(3,5,7, 10, 15, 20)
+
+results <- list()
+
+for (eps in eps_values) {
+  for (minpts in minpts_values) {
+    db <- fpc::dbscan(mca_data, eps = eps, MinPts = minpts)
+    cluster_count <- length(unique(db$cluster))
+    noise_points <- sum(db$cluster == 0)
+    results[[paste("eps", eps, "minpts", minpts, sep = "_")]] <- list(
+      clusters = cluster_count,
+      noise = noise_points,
+      db = db
+    )
+  }
+}
+
+# Print results to find the best combination
+for (res in names(results)) {
+  cat("Params:", res, 
+      "Clusters:", results[[res]]$clusters, 
+      "Noise:", results[[res]]$noise, "\n")
+}
+
+# Select the best combination based on previous output
+best_eps <- 0.7  # Example value, replace with your optimal eps
+best_minpts <- 15  # Example value, replace with your optimal minPts
+
+# Apply DBSCAN with the best parameters
+best_dbscan <- fpc::dbscan(mca_data, eps = best_eps, MinPts = best_minpts)
+
+# Visualize the clusters
+fviz_cluster(best_dbscan, mca_data, geom = "point")
+
+
+png("figs/kNNdist_5line.png", width = 800, height = 600)  # Open a PNG device
+kNNdistplot(mca_data,k=5)
+abline(h=5,lty=2)
+dev.off()  # Close the device
+
+png("figs/dpscan5_34.png", width = 800, height = 600)  # Open a PNG device
+fviz_cluster(f, mca_data, geom = "point") 
+dev.off()  # Close the device
+
+```
+
+# Using created matrices to make and interpret clusters
+
+```{r}
+# sil k = 2, 6 (maybe 3-5)
+# k-elbow k = 6 - 10 - 14 or 8 - 12
+# mtrx hold 17 features
+
+# K-mean
+# Will try out k = 2, 6, 10 and 14
+set.seed(123456789)
+KM_2 <- kmeans(mtrx,2)
+set.seed(123456789)
+KM_6 <- kmeans(mtrx,6)
+#KM_10 <- kmeans(mtrx,10)
+#KM_14 <- kmeans(mtrx,14)
+
+# Evaluate
+## With plots
+png("figs/k-mean_2.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_2,mtrx,frame=TRUE)
+dev.off()  # Close the device
+png("figs/k-mean_6.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_6,mtrx,frame=TRUE)
+dev.off()  # Close the device
+#png("figs/k-mean_10.png", width = 800, height = 600)  # Open a PNG device
+#autoplot(KM_10,mtrx,frame=TRUE)
+#dev.off()  # Close the device
+#png("figs/k-mean_14.png", width = 800, height = 600)  # Open a PNG device
+#autoplot(KM_14,mtrx,frame=TRUE)
+#dev.off()  # Close the device
+
+## With values
+KM_2$centers
+KM_6$centers
+#KM_10$centers
+#KM_14$centers
+
+
+# set.seed()
+set.seed(123456789)
+KM_3 <- kmeans(mtrx,3)
+set.seed(123456789)
+KM_4 <- kmeans(mtrx,4)
+set.seed(123456789)
+KM_5 <- kmeans(mtrx,5)
+set.seed(123456789)
+png("figs/k-mean_3.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_3,mtrx,frame=TRUE)
+dev.off()  # Close the device
+png("figs/k-mean_4.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_4,mtrx,frame=TRUE)
+dev.off()  # Close the device
+png("figs/k-mean_5.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_5,mtrx,frame=TRUE)
+dev.off()  # Close the device
+
+
+## After evaluation with plots and centers it seems like 2-4 clusters show best result
+## Now evaluate with scores
+data <- mtrx
+
+sil <- c()
+wcs <- c()
+dun <- c()
+dav <- c()
+
+for (i in 2:6) {
+  kmeans_result <- kmeans(data,i)
+  
+  ### Silhouette Score
+  silhouette_score <- silhouette(kmeans_result$cluster, dist(data))
+  mean_silhouette_score <- mean(silhouette_score[, 3])
+
+  # Within-Cluster Sum of Squares (WCSS)
+  wcss <- sum(kmeans_result$withinss)
+
+  # Dunn Index
+  dunn_index <- dunn(clusters = kmeans_result$cluster, Data = data)
+
+  # Davies-Bouldin Index
+  davies_bouldin_index <- index.DB(data, kmeans_result$cluster)$DB
+  
+  sil <- c(sil,mean_silhouette_score)
+  wcs <- c(wcs,wcss)
+  dun <- c(dun,dunn_index)
+  dav <- c(dav,davies_bouldin_index)
+  print(paste("The scores for k = ",as.character(i)))
+  print(paste("Mean Silhouette Score:", mean_silhouette_score))
+  print(paste("WCSS:", wcss))
+  print(paste("Dunn Index:", dunn_index))
+  print(paste("Davies-Bouldin Index:", davies_bouldin_index))
+}
+max(sil) # k=2
+min(wcs) # k=4
+max(dun) # k=2
+min(dav) # k=2
+
+## After calculating evaluation scores we see that k = 2 has overall best scores, while k = 4 still has a DB value below 1. Although all k had very low Dunn indexes, indicating all clusters not being very well seperated or compact.
+```
+
+## Add clusters to data
+
+```{r}
+cl_2 <- KM_2$cluster
+cl_3 <- KM_3$cluster
+cl_4 <- KM_4$cluster
+cl_6 <- KM_6$cluster
+
+df_hcl_2 <- df_wide_cl %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_2) %>% 
+  relocate(cl, .after = "id") # look at this data and the cluster plot to make sense of clusters. Sort on each cluster
+df_hcl_3 <- df_wide_cl %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_3) %>% 
+  relocate(cl, .after = "id")
+df_hcl_4 <- df_wide_cl %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_4) %>% 
+  relocate(cl, .after = "id")
+df_hcl_6 <- df_wide_cl %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_6) %>% 
+  relocate(cl, .after = "id")
+
+# Summary stat
+sum_stat_2 <- df_hcl_2 %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_3 <- df_hcl_3 %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_4 <- df_hcl_4 %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_6 <- df_hcl_6 %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+
+df_hcl_long_2 <- df_hcl_2 %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_3 <- df_hcl_3 %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_4 <- df_hcl_4 %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_6 <- df_hcl_6 %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+
+#Place
+pl_cl_2 <- df_hcl_long_2 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_3 <- df_hcl_long_3 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_4 <- df_hcl_long_4 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_6 <- df_hcl_long_6 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+#Sector
+se_cl_2 <- df_hcl_long_2 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_3 <- df_hcl_long_3 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_4 <- df_hcl_long_4 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_6 <- df_hcl_long_6 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+```
+
+## Investigate results
+
+```{r}
+total_sum_2_1 <- df_hcl_2 %>% 
+  filter(cl == 1) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_2_2 <- df_hcl_2 %>% 
+  filter(cl == 2) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_3_1 <- df_hcl_3 %>% 
+  filter(cl == 1) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_3_2 <- df_hcl_3 %>% 
+  filter(cl == 2) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_3_3 <- df_hcl_3 %>% 
+  filter(cl == 3) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_4_1 <- df_hcl_4 %>% 
+  filter(cl == 1) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_4_2 <- df_hcl_4 %>% 
+  filter(cl == 2) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_4_3 <- df_hcl_4 %>% 
+  filter(cl == 3) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_4_4 <- df_hcl_4 %>% 
+  filter(cl == 4) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_6_1 <- df_hcl_6 %>% 
+  filter(cl == 1) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_6_2 <- df_hcl_6 %>% 
+  filter(cl == 2) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_6_3 <- df_hcl_6 %>% 
+  filter(cl == 3) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_6_4 <- df_hcl_6 %>% 
+  filter(cl == 4) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_6_5 <- df_hcl_6 %>% 
+  filter(cl == 5) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+
+total_sum_6_6 <- df_hcl_6 %>% 
+  filter(cl == 6) %>% 
+  select(-id,-cl,-place,-sector) %>% 
+  unlist() %>% sum()
+```
+
+### Try out seeds
+
+```{r}
+i <- 30
+#set.seed(123 * i)
+KM_6_seeds <- kmeans(mtrx, 6)
+filename <- paste0("figs/seedtest/k6/k-mean_seed", as.character(123 * i), ".png")
+png(filename = filename, width = 800, height = 600)
+autoplot(KM_6_seeds, data = mtrx, frame = TRUE)
+dev.off()
+
+```
+
+```{r}
+cl_6_seeds <- KM_6_seeds$cluster
+autoplot(KM_6_seeds, data = mtrx, frame = TRUE)
+
+
+df_hcl_6_seeds <- df_wide_cl %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_6_seeds) %>% 
+  relocate(cl, .after = "id")
+
+sum_stat_6_seeds <- df_hcl_6_seeds %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+
+df_hcl_long_6_seeds <- df_hcl_6_seeds %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+
+pl_cl_6_seeds <- df_hcl_long_6_seeds %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+se_cl_6_seeds <- df_hcl_long_6_seeds %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+```
+
+## National comparison
+
+```{r}
+df_cl_nations <- df_jobs %>%
+  select(country, sector, competence) %>%
+  group_by(country, sector, competence) %>%
+  summarise(n = n())
+
+df_nations_wide <- df_cl_nations %>% 
+  rename(place = country) %>%
+  pivot_wider(names_from = "competence", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+  
+
+mtrx_nations <- as.matrix(df_nations_wide %>% select(-place, -sector))
+
+wss_nation <- map_dbl(2:34, function(k){
+  km <- kmeans(x= mtrx_nations, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_knee <- tibble(k = 2:34, wss = wss_nation)
+
+df_knee %>% 
+  ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
+  scale_x_continuous(breaks = 2:34)
+ggsave("figs/nation/kmean_kneen.png")
+
+sil_width_nation <- map_dbl(2:34, function(k){
+  pam_k <- pam(x = mtrx_nations, k = k)
+  pam_k$silinfo$avg.width
+}) 
+
+df_sil <- tibble(k = 2:34, sil_width = sil_width_nation)
+
+df_sil %>% ggplot(aes(k, sil_width)) + geom_line() + 
+  geom_point()+
+  scale_x_continuous(breaks = 2:34)
+ggsave("figs/nation/sil_widthn.png")
+```
+
+```{r}
+set.seed(123456789)
+KM_2n <- kmeans(mtrx_nations,2)
+set.seed(123456789)
+KM_3n <- kmeans(mtrx_nations,3)
+set.seed(123456789)
+KM_4n <- kmeans(mtrx_nations,4)
+set.seed(123456789)
+KM_5n <- kmeans(mtrx_nations,5)
+set.seed(123456789)
+KM_6n <- kmeans(mtrx_nations,6)
+set.seed(123456789)
+KM_7n <- kmeans(mtrx_nations,7)
+set.seed(123456789)
+KM_8n <- kmeans(mtrx_nations,8)
+set.seed(123456789)
+KM_9n <- kmeans(mtrx_nations,9)
+set.seed(123456789)
+KM_10n <- kmeans(mtrx_nations,10)
+
+
+# Evaluate
+## With plots
+png("figs/nation/k-mean_2n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_2n,mtrx_nations,frame=TRUE)
+dev.off()  # Close the device
+png("figs/nation/k-mean_3n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_3n,mtrx_nations,frame=TRUE)
+dev.off()  # Close the device
+png("figs/nation/k-mean_4n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_4n,mtrx_nations,frame=TRUE)
+dev.off()  # Close the device
+png("figs/nation/k-mean_5n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_5n,mtrx_nations,frame=TRUE)
+dev.off()
+png("figs/nation/k-mean_6n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_6n,mtrx_nations,frame=TRUE)
+dev.off()  # Close the device
+png("figs/nation/k-mean_7n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_7n,mtrx_nations,frame=TRUE)
+dev.off()  # Close the device
+png("figs/nation/k-mean_8n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_8n,mtrx_nations,frame=TRUE)
+dev.off()  # Close the device
+png("figs/nation/k-mean_9n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_9n,mtrx_nations,frame=TRUE)
+dev.off()
+png("figs/nation/k-mean_10n.png", width = 800, height = 600)  # Open a PNG device
+autoplot(KM_10n,mtrx_nations,frame=TRUE)
+dev.off()
+
+
+## After evaluation with plots and centers it seems like 2-4 clusters show best result
+## Now evaluate with scores
+data <- mtrx_nations
+
+sil <- c()
+wcs <- c()
+dun <- c()
+dav <- c()
+
+for (i in 2:10) {
+  set.seed(123456789)
+  kmeans_result <- kmeans(data,i)
+  
+  ### Silhouette Score
+  silhouette_score <- silhouette(kmeans_result$cluster, dist(data))
+  mean_silhouette_score <- mean(silhouette_score[, 3])
+
+  # Within-Cluster Sum of Squares (WCSS)
+  wcss <- sum(kmeans_result$withinss)
+
+  # Dunn Index
+  dunn_index <- dunn(clusters = kmeans_result$cluster, Data = data)
+
+  # Davies-Bouldin Index
+  davies_bouldin_index <- index.DB(data, kmeans_result$cluster)$DB
+  
+  sil <- c(sil,mean_silhouette_score)
+  wcs <- c(wcs,wcss)
+  dun <- c(dun,dunn_index)
+  dav <- c(dav,davies_bouldin_index)
+  print(paste("The scores for k = ",as.character(i)))
+  print(paste("Mean Silhouette Score:", mean_silhouette_score))
+  print(paste("WCSS:", wcss))
+  print(paste("Dunn Index:", dunn_index))
+  print(paste("Davies-Bouldin Index:", davies_bouldin_index))
+}
+max(sil) # k=
+min(wcs) # k=
+max(dun) # k=
+min(dav) # k=
+
+```
+
+```{r}
+cl_2n <- KM_2n$cluster
+cl_3n <- KM_3n$cluster
+cl_4n <- KM_4n$cluster
+cl_5n <- KM_5n$cluster
+cl_6n <- KM_6n$cluster
+
+df_hcl_2_nations <- df_nations_wide %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_2n) %>% 
+  relocate(cl, .after = "id") # look at this data and the cluster plot to make sense of clusters. Sort on each cluster
+df_hcl_3_nations <- df_nations_wide %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_3n) %>% 
+  relocate(cl, .after = "id")
+df_hcl_4_nations <- df_nations_wide %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_4n) %>% 
+  relocate(cl, .after = "id")
+df_hcl_5_nations <- df_nations_wide %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_5n) %>% 
+  relocate(cl, .after = "id")
+df_hcl_6_nations <- df_nations_wide %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_6n) %>% 
+  relocate(cl, .after = "id")
+
+# Summary stat
+sum_stat_2_nations <- df_hcl_2_nations %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_3_nations <- df_hcl_3_nations %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_4_nations <- df_hcl_4_nations %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_5_nations <- df_hcl_5_nations %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_6_nations <- df_hcl_6_nations %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
+
+df_hcl_long_2_nations <- df_hcl_2_nations %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_3_nations <- df_hcl_3_nations %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_4_nations <- df_hcl_4_nations %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_5_nations <- df_hcl_5_nations %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_6_nations <- df_hcl_6_nations %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+
+#Place
+pl_cl_2_nations <- df_hcl_long_2_nations %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_3_nations <- df_hcl_long_3_nations %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_4_nations <- df_hcl_long_4_nations %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_5_nations <- df_hcl_long_5_nations %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_6_nations <- df_hcl_long_6_nations %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+#Sector
+se_cl_2_nations <- df_hcl_long_2_nations %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_3_nations <- df_hcl_long_3_nations %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_4_nations <- df_hcl_long_4_nations %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_5_nations <- df_hcl_long_5_nations %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_6_nations <- df_hcl_long_6_nations %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+```
+
+# Hierarchical clustering on mtrx
+
+```{r}
+dist_cl <- dist(mtrx)
+hcl_w <- hclust(dist_cl, method = "ward.D2")
+hcl_a <- hclust(dist_cl, method = "average")
+
+# Get the heights at which the merges occur
+merge_heights_ward <- hcl_w$height
+merge_heights_average <- hcl_a$height
+
+# Plot and save dendrograms with potential cut points
+png("figs/dend_ward.png", width = 800, height = 600)  # Open a PNG device
+plot(hcl_w, main = "Ward's Method Dendrogram")
+abline(h = mean(merge_heights_ward), col = "red", lty = 2)  # Add a horizontal line at the mean merge height
+dev.off()
+
+png("figs/dend_average.png", width = 800, height = 600)  # Open a PNG device
+plot(hcl_a, main = "Average Method Dendrogram")
+abline(h = mean(merge_heights_average), col = "red", lty = 2)  # Add a horizontal line at the mean merge height
+dev.off()
+
+
+png("figs/dend_ward_heights.png", width = 800, height = 600)  # Open a PNG device
+plot(merge_heights_ward, main = "Heights")
+dev.off()
+
+png("figs/dend_average_heights.png", width = 800, height = 600)  # Open a PNG device
+plot(merge_heights_average, main = "Heights")
+dev.off()
+
+
+plot(merge_heights_ward[135:168], main = "Heights")
+
+plot(merge_heights_average[145:168], main = "Heights")
 
 
 
 
 
 
+hcl_obj <- as.dendrogram(hcl_a)
 
 
+dend_color <- color_branches(hcl_obj, k = 5)
 
 
+plot(dend_color)  
+abline(h = mean(13.5), col = "black", lty = 2)  # Add a horizontal line at the mean merge height
 
 
+# Save the plot to a file
+png("figs/dend_14_ward.png", width = 800, height = 600)  # Open a PNG device
+plot(dend_color)
+dev.off()  # Close the device
+```
+
+```{r}
+cut_height_ward <- 16
+cut_height_average <- 18
+
+# Cut the dendrogram at the specified height
+clusters_ward <- cutree(hcl_w, h = cut_height_ward)
+clusters_average <- cutree(hcl_a, h = cut_height_average)
+
+# Get the number of clusters
+num_clusters_ward <- length(unique(clusters_ward))
+num_clusters_average <- length(unique(clusters_average))
+
+```
+
+```{r}
+cluster_plot_new <- function(hc_obj, mtrx, k, method) {
+  # Cut the hierarchical clustering tree
+  clusters <- cutree(hc_obj, k = k)
+  
+  # Convert matrix to data frame
+  df_data <- as.data.frame(mtrx)
+  
+  # Extract cluster assignments into a data frame
+  df_clusters <- data.frame(id = seq_along(clusters), cl = clusters)
+  
+  # Create a color palette with at least k colors
+  cluster_colors <- if (k <= 3) {
+    brewer.pal(3, "Set1")[1:k]
+  } else if (k <= 9) {
+    brewer.pal(9, "Set1")[1:k]
+  } else {
+    colorRampPalette(brewer.pal(9, "Set1"))(k)
+  }
+  
+  # Create a named vector for cluster colors to ensure consistency
+  cluster_colors_named <- setNames(cluster_colors, as.character(sort(unique(clusters))))
+  
+  # Visualize dendrogram
+  dend_plot <- fviz_dend(hc_obj, 
+                         k = k,
+                         show_labels = TRUE, 
+                         main = paste("K:", k, " Method:", method),
+                         cex = 0.4,
+                         rect = TRUE,
+                         rect_fill = TRUE,
+                         rect_col = cluster_colors_named[clusters])
+  ggsave(paste0("figs/clust/k_", k, "_", method, "_dend.png"), plot = dend_plot)
+  
+  # Visualize cluster
+  cluster_plot <- fviz_cluster(list(data = df_data, cluster = df_clusters$cl), 
+                               geom = "point", 
+                               ellipse.type = "convex", 
+                               repel = FALSE,
+                               labelsize = 8,
+                               main = paste("K:", k, " Method:", method),
+                               ggtheme = theme_grey()) +
+    scale_color_manual(values = cluster_colors_named)
+  
+  ggsave(paste0("figs/clust/k_", k, "_", method, "_cl.png"), plot = cluster_plot)
+  
+  # Return both plots and clusters as a list
+  list(dend_plot = dend_plot, cluster_plot = cluster_plot, clusters = clusters)
+}
+
+k_range <- 2:20
+
+dist_cl <- dist(mtrx)
+hcl_w <- hclust(dist_cl, method = "ward.D2")
+hcl_a <- hclust(dist_cl, method = "average")
+
+clusters_ward_list <- list()
+clusters_average_list <- list()
+df_hcl_dendo_average_list <- list()
+df_hcl_dendo_ward_list <- list()
+sum_stat_dendo_average_list <- list()
+sum_stat_dendo_ward_list <- list()
+df_hcl_long_dendo_average_list <- list()
+df_hcl_long_dendo_ward_list <- list()
+pl_cl_dendo_average_list <- list()
+pl_cl_dendo_ward_list <- list()
+se_cl_dendo_average_list <- list()
+se_cl_dendo_ward_list <- list()
+
+  # Loop through different values of i
+for (i in k_range) {
+  # Cut the dendrogram to get the specified number of clusters
+  clusters_ward <- cutree(hcl_w, k = i)
+  clusters_average <- cutree(hcl_a, k = i)
+    # Store clusters
+  clusters_ward_list[[i]] <- clusters_ward
+  clusters_average_list[[i]] <- clusters_average
+    # Create dataframes with cluster assignments
+  df_hcl_dendo_average <- df_wide_cl %>% 
+    rowid_to_column("id") %>%
+    mutate(cl = clusters_average) %>% 
+    relocate(cl, .after = "id")
+  df_hcl_dendo_ward <- df_wide_cl %>% 
+    rowid_to_column("id") %>%
+    mutate(cl = clusters_ward) %>% 
+    relocate(cl, .after = "id")
+
+  # Store dataframes
+  df_hcl_dendo_average_list[[i]] <- df_hcl_dendo_average
+  df_hcl_dendo_ward_list[[i]] <- df_hcl_dendo_ward
+
+    # Summary statistics
+  sum_stat_dendo_average <- df_hcl_dendo_average %>% 
+    group_by(cl) %>% 
+    summarise(across(Engineering:PhD, mean))
+  sum_stat_dendo_ward <- df_hcl_dendo_ward %>% 
+    group_by(cl) %>% 
+    summarise(across(Engineering:PhD, mean))
+
+    # Store summary statistics
+  sum_stat_dendo_average_list[[i]] <- sum_stat_dendo_average
+  sum_stat_dendo_ward_list[[i]] <- sum_stat_dendo_ward
+
+    # Long format dataframes
+  df_hcl_long_dendo_average <- df_hcl_dendo_average %>%
+    pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+  df_hcl_long_dendo_ward <- df_hcl_dendo_ward %>%
+    pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+
+    # Store long format dataframes
+  df_hcl_long_dendo_average_list[[i]] <- df_hcl_long_dendo_average
+  df_hcl_long_dendo_ward_list[[i]] <- df_hcl_long_dendo_ward
+
+    # Place summary
+  pl_cl_dendo_average <- df_hcl_long_dendo_average %>% 
+    group_by(cl, place) %>% 
+    summarise(n = n()) %>% 
+    arrange(desc(cl))
+  pl_cl_dendo_ward <- df_hcl_long_dendo_ward %>% 
+    group_by(cl, place) %>% 
+    summarise(n = n()) %>% 
+    arrange(desc(cl))
+
+    # Store place summaries
+  pl_cl_dendo_average_list[[i]] <- pl_cl_dendo_average
+  pl_cl_dendo_ward_list[[i]] <- pl_cl_dendo_ward
+
+    # Sector summary
+  se_cl_dendo_average <- df_hcl_long_dendo_average %>% 
+    group_by(cl, sector) %>% 
+    summarise(n = n()) %>% 
+    arrange(desc(cl))
+  se_cl_dendo_ward <- df_hcl_long_dendo_ward %>% 
+    group_by(cl, sector) %>% 
+    summarise(n = n()) %>% 
+    arrange(desc(cl))
+
+    # Store sector summaries
+  se_cl_dendo_average_list[[i]] <- se_cl_dendo_average
+  se_cl_dendo_ward_list[[i]] <- se_cl_dendo_ward
+
+  ward_plot <- cluster_plot_new(hcl_w, mtrx, k = i, method = "ward.D2")
+  average_plot <- cluster_plot_new(hcl_a, mtrx, k = i, method = "average")
+  
+  print(paste0("Finnished with k = ",as.character(i)))
+}
+
+```
+
+### View result
+
+```{r}
+
+i <- 4
+
+df_hcl_dendo_ward <- df_hcl_dendo_ward_list[[i]]
+sum_stat_dendo_ward <- sum_stat_dendo_ward_list[[i]]
+pl_cl_dendo_ward <- pl_cl_dendo_ward_list[[i]]
+se_cl_dendo_ward <- se_cl_dendo_ward_list[[i]]
+long_ward_hcl 
+    
+View(df_hcl_dendo_ward)
+View(sum_stat_dendo_ward)
+View(pl_cl_dendo_ward)
+View(se_cl_dendo_ward)
+
+df_hcl_dendo_average <- df_hcl_dendo_average_list[[i]]
+sum_stat_dendo_average <- sum_stat_dendo_average_list[[i]]
+pl_cl_dendo_average <- pl_cl_dendo_average_list[[i]]
+se_cl_dendo_average <- se_cl_dendo_average_list[[i]]
+  
+View(df_hcl_dendo_average)
+View(sum_stat_dendo_average)
+View(pl_cl_dendo_average)
+View(se_cl_dendo_average)
+```
+
+# Important companies
+
+```{r}
+df_ImpComp <- jobs %>%
+  left_join(companies, by =c("Company" = "Name")) %>% 
+  select(company = Company,country = nation,region, sector= Industry_Sector, competence = job_role) %>%   na.omit() %>% 
+  unite(place, c("region", "country"), sep = ", ") %>%
+  group_by(company, place, sector, competence) %>%
+  summarise(n = n()) %>% 
+  pivot_wider(names_from = "competence", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+
+mtrx_comp <- as.matrix(df_ImpComp %>% select(-place, -sector,-company))
+
+# K-means
+wss_comp <- map_dbl(2:60, function(k){
+  km <- kmeans(x= mtrx_comp, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_knee_comp <- tibble(k = 2:60, wss = wss_comp)
+
+df_knee_comp %>% 
+  ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/company_clusters/kmean_elbow.png")
+# => 
+
+# Silhouete
+sil_width_comp <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = mtrx_comp, k = k)
+  pam_k$silinfo$avg.width
+}) 
+
+df_sil_comp <- tibble(k = 2:60, sil_width = sil_width_comp)
+
+df_sil_comp %>% ggplot(aes(k, sil_width)) + geom_line() + 
+  geom_point()+
+  scale_x_continuous(breaks = 2:60)
+ggsave("figs/company_clusters/sil_width_.png")
+
+```
+
+```{r}
+norwegian_engineering <- df_hcl_2 %>%
+  filter(cl == 1) %>%
+  left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
+  select(cl, place, sector, company) %>%
+  unique()
+
+capital_headquarters <- df_hcl_4 %>%
+  filter(cl == 2) %>%
+  left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
+  select(cl, place, sector, company) %>%
+  unique()
+
+nonswedish_researcher <- df_hcl_6 %>%
+  filter(cl == 4) %>%
+  left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
+  select(cl, place, sector, company) %>%
+  unique()
+
+broad_energy <- df_hcl_dendo_ward %>%
+  filter(cl == 3) %>%
+  left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
+  select(cl, place, sector, company) %>%
+  unique()
+
+# Print the companies
+for (i in 1){
+  print("Norwegian Engineering:")
+  norwegian_engineering %>% 
+    select(company) %>% unique() %>%
+    print(n = 100)
+  print("\n Management and Finance/Business development in Oslo and Hovedstaden :")
+  capital_headquarters %>% 
+    select(company) %>% unique() %>%
+    print(n = 100)
+  print("\n Danish and Norwegian Research:")
+  nonswedish_researcher %>% 
+    select(company) %>% unique() %>%
+    print(n = 100)
+  print("\n Broad Energy:")
+  broad_energy %>% 
+    select(company) %>% unique() %>%
+    print(n = 100)
+  }
+```
+
+```{r}
+set.seed(123456789)
+comp_clust_5 <- kmeans(mtrx_comp,5)
+set.seed(123456789)
+comp_clust_6 <- kmeans(mtrx_comp,6)
+
+# Evaluate
+## With plots
+
+png("figs/company_clusters/Kmean_5.png", width = 800, height = 600)  # Open a PNG device
+autoplot(comp_clust_5,mtrx_comp,frame=TRUE)
+dev.off()  # Close the device
+png("figs/company_clusters/Kmean_6.png", width = 800, height = 600)  # Open a PNG device
+autoplot(comp_clust_6,mtrx_comp,frame=TRUE)
+dev.off()  # Close the device
 
 
+cl_5_comp <- comp_clust_5$cluster
+cl_6_comp <- comp_clust_6$cluster
 
+
+df_hcl_5_comp <- df_ImpComp %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_5_comp) %>% 
+  relocate(cl, .after = "id")
+df_hcl_6_comp <- df_ImpComp %>%
+  rowid_to_column("id") %>%
+  mutate(cl = cl_6_comp) %>% 
+  relocate(cl, .after = "id")
+
+# Summary stat
+sum_stat_5_comp <- df_hcl_5_comp %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = "IT/Data Science":"Public administration", .fns = mean))
+sum_stat_6_comp <- df_hcl_6_comp %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = "IT/Data Science":"Public administration", .fns = mean))
+
+
+df_hcl_long_5_comp <- df_hcl_5_comp %>%
+  pivot_longer(-c(id, place, sector,company, cl), names_to = "competence", values_to = "n")
+df_hcl_long_6_comp <- df_hcl_6_comp %>%
+  pivot_longer(-c(id, place, sector,company, cl), names_to = "competence", values_to = "n")
+
+#Place
+pl_cl_5_comp <- df_hcl_long_5_comp %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+#Sector
+se_cl_5_comp <- df_hcl_long_5_comp %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+
+#Company
+co_cl_5_comp <- df_hcl_long_5_comp %>% group_by(cl, company) %>% summarise(n =n()) %>% arrange(desc(cl))
+co_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, company) %>% summarise(n =n()) %>% arrange(desc(cl))
+```
