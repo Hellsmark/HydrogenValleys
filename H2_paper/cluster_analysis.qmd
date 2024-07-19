@@ -25,6 +25,7 @@ library(cluster)
 library(stats)
 library(ggplot2)
 library(RColorBrewer)
+library(viridis)
 
 ```
 
@@ -1523,8 +1524,134 @@ co_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, company) %>% summarise(n =n(
 
 # Plots and Visualisation
 
-```{r}
+## Jobs over time
 
+Jobs over time with clusters instead of nations - Using k = 6 on seed = 123456789
+
+This is without taking the companies into account
+
+```{r}
+cluster_place_sector <- df_hcl_6 %>% 
+  select(cluster = cl, place, sector)
+
+jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and should be regarded as one "the rest"-cluster
+  mutate(year = lubridate::year(Scrape_date), month = lubridate::month(Scrape_date)) %>%
+  left_join(companies, by =c("Company" = "Name")) %>%
+  select(id = ID, country = nation, region, company = Company , sector = Industry_Sector, competence = job_role, year, month) %>%
+  na.omit() %>%
+  unite(place, c("region", "country"), sep = ", ") %>%
+  merge(cluster_place_sector, by = c("place", "sector"), all.x = TRUE) %>%
+  select(id, cluster, place, company, sector, competence, year, month)
+
+jobs_over_time_clusters <- jobs_clustered %>%
+  mutate(cluster = case_when(
+    cluster == 1 ~ "Norwegian Engineering",
+    cluster == 2 ~ "Others",
+    cluster == 3 ~ "Others",
+    cluster == 4 ~ "Central offices in Oslo/Copenhagen",
+    cluster == 5 ~ "Danish and Norwegian Research",
+    cluster == 6 ~ "Nordic Broad Energy",
+    TRUE ~ as.character(cluster)
+  )) %>%
+  group_by(year, month, cluster) %>%
+  summarise(n =n()) %>%
+  unite("ym", year:month, sep = "-") %>%
+  ungroup() %>%
+  mutate(ym = as_factor(ym))
+  
+cluster_overtime_plot <- jobs_over_time_clusters %>% 
+  ggplot(aes(ym, n, fill= cluster)) + 
+  geom_col() + 
+  scale_fill_colorblind("Groups")+
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(x= "", y= "Nr. of new jobs") #+
+  #theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
+
+cluster_overtime_plot
+
+ggsave(filename = "figs/cluster_paper_plots/cluster_overtime_plot.png", plot = cluster_overtime_plot, limitsize = FALSE, width = 12, height = 7)
+
+```
+
+## Regions and sector plots
+
+Region and sector plots
+
+```{r}
+sector_per_region <- jobs_clustered %>%
+  group_by(place,sector) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(sector), 
+             fill = place)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Region", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+sector_per_region
+
+ggsave(filename = "figs/cluster_paper_plots/sector_per_region.png", plot = sector_per_region, limitsize = FALSE, width = 14, height = 7)
+
+# Not sure how informative this is. So many regions, makes it difficult to see difference between the colors. 
+```
+
+```{r}
+jobrole_per_region <- jobs_clustered %>%
+  group_by(place,competence) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(competence), 
+             fill = place)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Region", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per job role")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+jobrole_per_region
+
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region.png", plot = jobrole_per_region, limitsize = FALSE, width = 15, height = 6)
+
+
+# Not sure how informative this is. So many regions, makes it difficult to see difference between the colors. 
+```
+
+```{r}
+jobrole_per_sector <- jobs_clustered %>%
+  group_by(sector,competence) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(competence), 
+             fill = sector)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Sector", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per job role")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+jobrole_per_sector
+
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_sector.png", plot = jobrole_per_sector, limitsize = FALSE, width = 16, height = 6)
+
+```
+
+## Cluster plots
+
+Using the groups
+
+```{r}
 
 
 
