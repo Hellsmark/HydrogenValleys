@@ -75,7 +75,7 @@ max(jobs$Scrape_date)
 companies <- df_companies
 ```
 
-# Selecting categories
+## Selecting categories
 
 -   Country, region, sector, job_role
 -   Remove all na
@@ -92,9 +92,7 @@ df_cl <- df_jobs %>%
 
 ```
 
-# cluster analysis
-
-## creating cluster df: df_wide and a matrix
+## Prepping for clustering - creating cluster df: df_wide and a matrix
 
 ```{r}
 
@@ -108,6 +106,8 @@ df_wide_cl <- df_cl %>%
 
 mtrx <- as.matrix(df_wide_cl %>% select(-place, -sector))
 ```
+
+# Hans clustering
 
 ## deciding on nr of clusters
 
@@ -218,6 +218,8 @@ print(plots)
 # => k=3 appears to generate least overlaps
 
 ```
+
+# Viktor take-over
 
 ## When decided on number of clusters and best method. Connect clusters with data, (there's probably a better method for this)
 
@@ -728,6 +730,7 @@ min(dav) # k=2
 cl_2 <- KM_2$cluster
 cl_3 <- KM_3$cluster
 cl_4 <- KM_4$cluster
+cl_5 <- KM_5$cluster
 cl_6 <- KM_6$cluster
 
 df_hcl_2 <- df_wide_cl %>% 
@@ -741,6 +744,10 @@ df_hcl_3 <- df_wide_cl %>%
 df_hcl_4 <- df_wide_cl %>% 
   rowid_to_column("id") %>%
   mutate(cl = cl_4) %>% 
+  relocate(cl, .after = "id")
+df_hcl_5 <- df_wide_cl %>% 
+  rowid_to_column("id") %>%
+  mutate(cl = cl_5) %>% 
   relocate(cl, .after = "id")
 df_hcl_6 <- df_wide_cl %>% 
   rowid_to_column("id") %>%
@@ -757,6 +764,9 @@ sum_stat_3 <- df_hcl_3 %>%
 sum_stat_4 <- df_hcl_4 %>% 
   group_by(cl) %>% 
   summarise(across(.col = Engineering:PhD, .fns = mean))
+sum_stat_5 <- df_hcl_5 %>% 
+  group_by(cl) %>% 
+  summarise(across(.col = Engineering:PhD, .fns = mean))
 sum_stat_6 <- df_hcl_6 %>% 
   group_by(cl) %>% 
   summarise(across(.col = Engineering:PhD, .fns = mean))
@@ -767,6 +777,8 @@ df_hcl_long_3 <- df_hcl_3 %>%
   pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
 df_hcl_long_4 <- df_hcl_4 %>%
   pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+df_hcl_long_5 <- df_hcl_5 %>%
+  pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
 df_hcl_long_6 <- df_hcl_6 %>%
   pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
 
@@ -774,12 +786,14 @@ df_hcl_long_6 <- df_hcl_6 %>%
 pl_cl_2 <- df_hcl_long_2 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
 pl_cl_3 <- df_hcl_long_3 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
 pl_cl_4 <- df_hcl_long_4 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+pl_cl_5 <- df_hcl_long_5 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
 pl_cl_6 <- df_hcl_long_6 %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
 
 #Sector
 se_cl_2 <- df_hcl_long_2 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
 se_cl_3 <- df_hcl_long_3 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
 se_cl_4 <- df_hcl_long_4 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+se_cl_5 <- df_hcl_long_5 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
 se_cl_6 <- df_hcl_long_6 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
 
 ```
@@ -1503,4 +1517,15 @@ se_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, sector) %>% summarise(n =n()
 #Company
 co_cl_5_comp <- df_hcl_long_5_comp %>% group_by(cl, company) %>% summarise(n =n()) %>% arrange(desc(cl))
 co_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, company) %>% summarise(n =n()) %>% arrange(desc(cl))
+```
+
+-   The final clusters used should be those in k=6 for both with/without the companies. However two of the clusters are not very informative, these can be regarded as "the rest".
+
+# Plots and Visualisation
+
+```{r}
+
+
+
+
 ```

@@ -129,11 +129,11 @@ jobs_over_time %>%
 
 ## New jobs and country stats
 
--   simple comparision of main stats between countries
+-   simple comparison of main stats between countries
 
 ```{r}
 
-comp <- jobs %>% 
+comp <- jobs %>% # Number på companies in advertising in each country (not country of joblocation)
   select(Country, Company) %>% 
   unique() %>% 
   group_by(Country) %>% 

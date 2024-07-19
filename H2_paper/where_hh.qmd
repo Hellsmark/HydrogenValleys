@@ -77,8 +77,6 @@ companies <- df_companies %>% slice(-1)
 
 ```
 
-
-
 ```{r}
 
 location_all <- jobs %>% 
@@ -92,8 +90,9 @@ location_all <- jobs %>%
 
 ```
 
-### lm new jobs ~ locations - all countries
-- linear model of all new jobs in all three countries (red line)
+### lm new jobs \~ locations - all countries
+
+-   linear model of all new jobs in all three countries (red line)
 
 ```{r}
 lm_location <- lm(new_jobs ~ loc_pop, data = location_all)
@@ -106,8 +105,9 @@ r2_p_all <- paste("R2:", round(lm_gl$r.squared, 2), "&\n", ifelse(lm_gl$p.value 
 
 ```
 
-### lm new jobs ~ locations - per country
-- same as above but per country
+### lm new jobs \~ locations - per country
+
+-   same as above but per country
 
 ```{r}
 lm_data <- location_all %>% 
@@ -140,8 +140,7 @@ outliers <- lm_data %>%
 
 ```
 
-### Plot between location and new jobs
-- 
+## \### Plot between location and new jobs
 
 ```{r}
 location_all %>% 
@@ -169,18 +168,19 @@ location_all %>%
   theme_minimal() +
   guides(size = "none")+
   theme(legend.position = "top") 
-#ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
+ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
 ```
 
 -   For all three countries it appears to be a linear relationship
 -   It appears to be more outliers in Norway and Denmark than in Sweden. However, some locations are close to another and part of a larger region
 
-### lm new jobs ~ region
+### lm new jobs \~ region
 
--   now same thing but on a regional level. 
-- I think we keep this one in favor of "location" since its easier to allocate the different locations to a region compared to finding a consistent "location" 
+-   now same thing but on a regional level.
+-   I think we keep this one in favor of "location" since its easier to allocate the different locations to a region compared to finding a consistent "location"
 
-#### lm new jobs ~ region, all countries
+#### lm new jobs \~ region, all countries
+
 ```{r}
 region_new_jobs <- location_all %>% 
   group_by(region, reg_pop, country) %>%
@@ -199,7 +199,7 @@ r2_p_all <- paste("R2:", round(lm_gl$r.squared, 2), "&\n", ifelse(lm_gl$p.value 
 
 ```
 
-#### lm new jobs ~ region per country
+#### lm new jobs \~ region per country
 
 ```{r}
 
@@ -237,7 +237,7 @@ outliers_reg <- lm_data_reg %>%
 
 ### Plot between region and new jobs
 
-- note: only names of outlier mentioned in graph
+-   note: only names of outlier mentioned in graph
 
 ```{r}
 region_new_jobs <- location_all %>% 
@@ -275,4 +275,3 @@ ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 
 
 ```
-
