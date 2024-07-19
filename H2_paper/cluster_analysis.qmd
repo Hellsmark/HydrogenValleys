@@ -9,7 +9,6 @@ editor_options:
 # libraries
 
 ```{r}
-
 set.seed(123456789)
 library(conflicted)
 library(tidyverse)
@@ -26,6 +25,8 @@ library(stats)
 library(ggplot2)
 library(RColorBrewer)
 library(viridis)
+library(ggthemes)
+library(gt)
 
 ```
 
@@ -1522,13 +1523,7 @@ co_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, company) %>% summarise(n =n(
 
 -   The final clusters used should be those in k=6 for both with/without the companies. However two of the clusters are not very informative, these can be regarded as "the rest".
 
-# Plots and Visualisation
-
-## Jobs over time
-
-Jobs over time with clusters instead of nations - Using k = 6 on seed = 123456789
-
-This is without taking the companies into account
+# Plots and Visualization
 
 ```{r}
 cluster_place_sector <- df_hcl_6 %>% 
@@ -1543,7 +1538,7 @@ jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and s
   merge(cluster_place_sector, by = c("place", "sector"), all.x = TRUE) %>%
   select(id, cluster, place, company, sector, competence, year, month)
 
-jobs_over_time_clusters <- jobs_clustered %>%
+jobs_cluster_nicename <- jobs_clustered %>%
   mutate(cluster = case_when(
     cluster == 1 ~ "Norwegian Engineering",
     cluster == 2 ~ "Others",
@@ -1552,7 +1547,17 @@ jobs_over_time_clusters <- jobs_clustered %>%
     cluster == 5 ~ "Danish and Norwegian Research",
     cluster == 6 ~ "Nordic Broad Energy",
     TRUE ~ as.character(cluster)
-  )) %>%
+  ))
+```
+
+## Jobs over time
+
+Jobs over time with clusters instead of nations - Using k = 6 on seed = 123456789
+
+This is without taking the companies into account
+
+```{r}
+jobs_over_time_clusters <- jobs_cluster_nicename %>%
   group_by(year, month, cluster) %>%
   summarise(n =n()) %>%
   unite("ym", year:month, sep = "-") %>%
@@ -1649,10 +1654,69 @@ ggsave(filename = "figs/cluster_paper_plots/jobrole_per_sector.png", plot = jobr
 
 ## Cluster plots
 
-Using the groups
+Using the groups on competence
+
+```{r}
+jobrole_per_cluster <- jobs_cluster_nicename %>%
+  group_by(cluster,competence) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(competence), 
+             fill = cluster)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_colorblind("Groups")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))+
+    labs(x= "", y = "", title = "Total jobs per job role")
+
+jobrole_per_cluster
+
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_cluster.png", plot = jobrole_per_cluster, limitsize = FALSE, width = 16, height = 6)
+```
+
+What next?
 
 ```{r}
 
+
+```
+
+Maps???
+
+```{r}
+# Load libraries
+
+library(ggplot2)
+
+
+mapdata <- map_data("world", region = c("Norway(?!:Svalbard)(?!:Jan Mayen)","Sweden","Denmark"))
+
+map1 <- ggplot(data=se_dk_no, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = region), color="white")+
+  coord_fixed(1.8) + 
+  theme_void() +
+  scale_fill_manual(values=c("Sweden" = "darkolivegreen3", "Denmark" = "cornflowerblue", "Norway" = "khaki1"))
+
+
+```
+
+```{r}
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+admin1 <- ne_states(country = c("Sweden", "Norway", "Denmark"), returnclass = "sf")
+
+
+
+combined <- rbind(sweden, norway, denmark)
+
+map2 <- ggplot(data = combined) +
+  geom_sf(aes(fill = NAME), color = "white") +
+  theme_minimal() +
+  labs(title = "Map of Sweden, Norway, and Denmark")
 
 
 ```
