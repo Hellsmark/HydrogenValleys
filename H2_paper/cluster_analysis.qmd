@@ -26,8 +26,9 @@ library(ggplot2)
 library(RColorBrewer)
 library(viridis)
 library(ggthemes)
+library(gtsummary)
 library(gt)
-
+library(gtExtras)
 ```
 
 ```{r}
@@ -221,8 +222,6 @@ print(plots)
 
 ```
 
-# Viktor take-over
-
 ## When decided on number of clusters and best method. Connect clusters with data, (there's probably a better method for this)
 
 Tycker följande ser intressanta ut \_ k3: complete - k5: complete - k6: average/complete
@@ -271,6 +270,8 @@ df_hcl_long %>%
 ggsave("figs/heat_ave_k3.png")
 
 ```
+
+# Viktor take-over
 
 ## Trying ward dendogram on h2_dataset - with new matrix encoding
 
@@ -1680,6 +1681,142 @@ ggsave(filename = "figs/cluster_paper_plots/jobrole_per_cluster.png", plot = job
 What next?
 
 ```{r}
+# I will have to do this seperately for sectors and then for the jobroles
+cluster_tbl_data <- jobs_cluster_nicename %>%
+  select(Group = cluster, Region = place, Sectors = sector, Job_Roles = competence) %>%
+  unique() %>%
+  pivot_wider(names_from = "Job_Roles",
+              values_from = Job_Roles) %>%
+  unite("Job_Roles", "Administration","Engineering", "Environmental/Sustainability",
+        "Finance/Business development","HR", "IT/Data Science", "Law", "Management/CEO", "Manufacturing/Maintenance/Industrial work/Technicians", "Other", "PhD", "Procurement/Supply Chain Management/Logistics", "Project managment", "Public administration", "Quality Assurance", "Researcher", "Sales/Marketing/Customer Service",
+        sep = ", ", na.rm = TRUE) %>%
+  pivot_wider(names_from = "Sectors",
+              values_from = Sectors) %>%
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy Utility", "Government/Public sector", "Hydrogen technology manufacturer", "Iron/steel/mining","Legal/HR/Economics", "Oil/gas/refinery","Other", "Other manufacturing","Research/Education",   "Transport",
+        sep = ", ", na.rm = TRUE)
+
+
+
+df_h2 <- df_h2 %>%
+  mutate(across(place:competence, as.character))
+
+df_long_h2 <- df_h2 %>%
+  pivot_longer(cols = place:competence, names_to = "Topic", values_to = "Category")
+
+
+####
+df_united_h2_1 <- df_long_h2 %>%
+  unite("Topic_Category", Topic, Category, sep = "_") %>%
+  mutate(value = 1)
+####
+df_wide_cl <- df_cl %>% 
+  unite(place, c("region", "country"), sep = ", ") %>%
+  pivot_wider(names_from = "competence", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+```
+
+Table trials
+
+```{r}
+cluster_tbl <- jobs_cluster_nicename %>%
+  gt(rowname_col = "")
+
+
+
+gt_tbl_country_comp <- tbl_country_comp %>% 
+  gt(rowname_col = "Country") %>%
+  tab_stubhead(label = "Country") %>%
+  grand_summary_rows(
+    columns = -Country,
+    fns = list(
+      Total ~sum(.)
+    )
+  ) %>% 
+  fmt_number(decimals = 0) %>%
+  tab_spanner(
+    columns = c(Jobs, perc),
+    label = "New Jobs"
+  ) %>%
+  tab_spanner(columns = c(nr_comp, perc_c),
+              label = "Organisations") %>%
+  tab_spanner(columns = c(Workforce, GDP_total_billion_USD, GDP_per_capita_kUSD),
+              label = "Country Statistics") %>%
+  cols_label(
+    Jobs ~ "Nr.",
+    perc ~ "(%)",
+    nr_comp ~ "Nr.",
+    perc_c ~ "(%)",
+    Workforce ~ "Labour<br>(mil.)",
+    GDP_total_billion_USD ~ "GDP<br>(b$)",
+    GDP_per_capita_kUSD ~ "GDP/Cap.<br>(k$)",
+    .fn = md
+  ) %>% gt_theme_espn()
+gt_tbl_country_comp
+```
+
+```{r}
+data <- tibble(
+  Groups = c("Nordic", "Nordic", "Nordic", "Middle", "Southern", "Southern"),
+  Region = c("Boden", "Luleå", "Umeå", "Stockholm", "Göteborg", "Malmö"),
+  Sectors = c("Finance, Energy", "Finance, Steel", "Finance, Energy, Steel", "Government", "Research", "Research, IT")
+)
+
+# Function to add border conditionally
+add_border <- function(data, group_col, group_val) {
+  data %>%
+    gt() %>%
+    tab_header(
+      title = "Regions and Sectors by Group"
+    ) %>%
+    cols_label(
+      Groups = "Groups",
+      Region = "Region",
+      Sectors = "Sectors"
+    ) %>%
+    tab_options(
+      table.font.size = px(12),
+      heading.align = "left"
+    ) %>%
+    tab_style(
+      style = cell_borders(
+        sides = "right",
+        color = "black",
+        weight = px(1)
+      ),
+      locations = cells_body(
+        columns = vars(Groups, Region)
+      )
+    ) %>%
+    tab_style(
+      style = cell_borders(
+        sides = "bottom",
+        color = "white",
+        weight = px(1)
+      ),
+      locations = cells_body(
+        rows = data[[group_col]] == group_val
+      )
+    )
+}
+
+# Apply the function to the data
+table <- add_border(data, "Groups", "Nordic")
+
+
+# Print the table
+table
+
+```
+
+```{r}
+data %>% 
+  gt() %>%
+  tab_header(
+    title = md("The groups"),
+    subtitle = md("Sectors listed to their presence in corresponding region in group")
+  )
 
 
 ```
