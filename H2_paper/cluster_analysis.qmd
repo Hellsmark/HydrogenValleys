@@ -29,6 +29,7 @@ library(ggthemes)
 library(gtsummary)
 library(gt)
 library(gtExtras)
+library(stringr)
 ```
 
 ```{r}
@@ -1585,7 +1586,11 @@ ggsave(filename = "figs/cluster_paper_plots/cluster_overtime_plot.png", plot = c
 Region and sector plots
 
 ```{r}
+
+
+
 sector_per_region <- jobs_clustered %>%
+  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>% # change order of nation and region to make plot more readable
   group_by(place,sector) %>%
   summarise(n =n()) %>%
   ggplot(aes(x= n, y= fct_rev(sector), 
@@ -1609,6 +1614,7 @@ ggsave(filename = "figs/cluster_paper_plots/sector_per_region.png", plot = secto
 
 ```{r}
 jobrole_per_region <- jobs_clustered %>%
+  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>%
   group_by(place,competence) %>%
   summarise(n =n()) %>%
   ggplot(aes(x= n, y= fct_rev(competence), 
@@ -1852,6 +1858,18 @@ cluster_tbl_short
 
 # Save table
 cluster_tbl_short %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short.png")
+```
+
+```{r}
+# most important sector/job for each region also company?
+most_important_for_region <- jobs_cluster_nicename %>%
+  group_by(place, sector) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(place) %>%
+  filter(n == max(n)) %>% ungroup()
+
+
+
 ```
 
 Maps???
