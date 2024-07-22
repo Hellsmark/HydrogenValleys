@@ -233,6 +233,18 @@ outliers_reg <- lm_data_reg %>%
   relocate(region, .after = "country") %>%
   filter(outlier)
 
+outliers_reg_1_2_std <- lm_data_reg %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+
 ```
 
 ### Plot between region and new jobs
