@@ -1860,16 +1860,168 @@ cluster_tbl_short
 cluster_tbl_short %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short.png")
 ```
 
+Most important thing for each region
+
 ```{r}
 # most important sector/job for each region also company?
-most_important_for_region <- jobs_cluster_nicename %>%
+most_important_for_region <- merge(
+  jobs_cluster_nicename %>%
   group_by(place, sector) %>%
   summarise(n = n()) %>% ungroup() %>%
   group_by(place) %>%
-  filter(n == max(n)) %>% ungroup()
+  filter(n == max(n)) %>% 
+  summarise(
+    sector = paste(sector, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup(),
+  jobs_cluster_nicename %>%
+  group_by(place, competence) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(place) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    competence = paste(competence, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup(),
+  by = "place", all.x = TRUE
+) %>%
+  select(Region = place, "Most important sector" = sector, "n (sector)" = n.x,
+         "Most important job role" = competence, "n (job role)" = n.y)
+  
+
+most_important_for_region_tbl <- most_important_for_region %>%
+  gt() %>%
+  tab_header(
+    title = "Most important sector/job role by Region"
+  ) %>%
+  cols_label(
+    Region = "Region",
+    "Most important sector" = "Most important sector",
+    "n (sector)" = "n (sector)",
+    "Most important job role" = "Most important job role",
+    "n (job role)" = "n (job role)"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Region, "Most important sector", "n (sector)", "Most important job role",
+                  "n (job role)")
+    )
+  ) %>%
+  cols_width(
+    Region ~ 160,
+    "Most important sector" ~ 250,
+    "n (sector)" ~ 50,
+    "Most important job role" ~ 250,
+    "n (job role)" ~ 50
+  )
+  
+most_important_for_region_tbl
+
+gtsave(
+  data = most_important_for_region_tbl,
+  filename = "figs/cluster_paper_plots/most_important_for_region_tbl.png",
+  expand = 20  # Expand margins around the image
+)
+```
+
+Most important for each cluster
+
+```{r}
+most_important_for_cluster <- merge(
+  jobs_cluster_nicename %>%
+  group_by(cluster, place) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(cluster) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    place = paste(place, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup(),
+  jobs_cluster_nicename %>%
+  group_by(cluster, sector) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(cluster) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    sector = paste(sector, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup(),
+  by = "cluster", all.x = TRUE
+) %>%
+  merge(
+    jobs_cluster_nicename %>%
+  group_by(cluster, competence) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(cluster) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    competence = paste(competence, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup(),
+  by = "cluster", all.x = TRUE
+  ) %>%
+  select(Group = cluster, "Most important region" = place, "n (region)" = n.x, 
+         "Most important sector" = sector, "n (sector)" = n.y,
+         "Most important job role" = competence, "n (job role)" = n)
 
 
 
+most_important_for_cluster_tbl <- most_important_for_cluster %>%
+  gt() %>%
+  tab_header(
+    title = "Most important region/sector/job role by Group"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Group, "Most important region", "n (region)", "Most important sector", 
+                  "n (sector)", "Most important job role", "n (job role)")
+    )
+  ) #%>%
+  cols_width(
+    Region ~ 160,
+    "Most important sector" ~ 250,
+    "n (sector)" ~ 50,
+    "Most important job role" ~ 250,
+    "n (job role)" ~ 50
+  )
+  
+most_important_for_cluster_tbl
+
+gtsave(
+  data = most_important_for_cluster_tbl,
+  filename = "figs/cluster_paper_plots/most_important_for_cluster_tbl.png",
+  expand = 20  # Expand margins around the image
+)
 ```
 
 Maps???
