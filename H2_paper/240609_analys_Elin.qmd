@@ -71,7 +71,7 @@ jobs <- df_main_raw %>%
 
 max(jobs$Scrape_date)
 
-companies <- df_companies %>% slice(-1)
+companies <- df_companies 
 
 
 ## keyword 
@@ -188,15 +188,56 @@ gt_tbl_country_comp
 ```{r}
 
 companies_overview <- jobs %>%
-  group_by(Country, Company) %>%
+  group_by(nation, Company) %>%
   summarise(n=n()) %>%
   arrange(desc(n)) %>%
   mutate(share = n/sum(n)*100) %>%
-  ungroup()
+  ungroup() %>%
+  filter(nation %in% c("DK","NO","SE"))
+
+top10_companies_perCountry <- jobs %>%
+  group_by(country, Company) %>%
+  summarise(n=n()) %>%
+  arrange(desc(n)) %>%
+  mutate(share = n/sum(n)*100, share_tot = n/tot_jobs*100) %>%
+  ungroup() %>%
+  group_by(country) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 10) %>%
+  ungroup() %>%
+  filter(country %in% c("Norway","Denmark","Sweden")) %>%
+  select(country,Company,n)
+
+top10_companies_perCountry_table <- top10_companies_perCountry %>%
+  gt(rowname_col = "Company",
+     groupname_col = "country") %>%
+  summary_rows(
+    columns = n,
+    fns = list(
+    Total ~ sum(.)
+    ),
+    fmt = ~ fmt_number(., decimals = 0),
+  ) %>%
+  grand_summary_rows(
+    columns = n,
+    fns = list(
+      Total ~ sum(.),
+      Min ~ min(.),
+      Max ~ max(.),
+      Average ~ mean(.),
+      Nr_org. ~ length(.)
+      ),
+    fmt = ~ fmt_number(., decimals = 0)
+    ) %>%
+  cols_label(
+    n ~ "New Jobs",
+  )
+
+
 
 long_table <- companies_overview %>%
   gt(rowname_col = "Company",
-     groupname_col = "Country") %>%
+     groupname_col = "nation") %>%
   summary_rows(
     columns = c(n, share),
     fns = list(
@@ -311,6 +352,58 @@ se
 #gtsave(se, filename = "tables/se_comp.png")
 ```
 
+Viktor changes
+
+```{r}
+top10_companies_perCountry
+
+top10_new <- function(cc){
+  
+  ll <- case_when(
+    cc== "DK" ~ "Denmark",
+    cc== "SE" ~ "Sweden",
+    cc == "NO" ~"Norway"
+  )
+  
+  top10_companies_perCountry %>% 
+  filter(country == ll) %>%
+  select(-country) %>%
+  gt(rowname_col = "Company") %>%
+  tab_stubhead(label = "Organisations") %>%
+  grand_summary_rows(
+    columns = c(n, share, share_tot),
+    fns = list(
+      Total = ~ sum(.)
+    ), 
+    fmt = ~fmt_number(., columns = share_tot, decimals = 1)) %>%
+  fmt_number(columns = c(share, share_tot), decimals = 1) %>%
+  tab_spanner(
+    columns = everything(),
+    label = ll
+  ) %>% 
+  cols_label(
+    n~"New jobs",
+    share ~ "(%)",
+    share_tot ~ "Total(%)"
+  ) %>%
+  gt_theme_espn()
+}
+
+dk_tbl <- top10_new("DK")
+no_tbl <- top10_new("NO")
+se_tbl <- top10_new("SE")
+
+dk_tbl 
+no_tbl 
+se_tbl
+
+dk_tbl %>% gtsave("figs/cluster_paper_plots/dk_tbl_top10_companies.png")
+no_tbl %>% gtsave("figs/cluster_paper_plots/no_tbl_top10_companies.png")
+se_tbl %>% gtsave("figs/cluster_paper_plots/se_tbl_top10_companies.png")
+
+
+```
+
 ## Distribution - add to table above later?
 
 ```{r}
@@ -345,25 +438,38 @@ df_distribution %>%
 ## What type of actors are reqruiting?
 
 ```{r}
-
 types <- companies %>% 
   select(Name, Multinational, Organisation_type, Ownership_type, Industry_Sector, Hydrogen_specialist, Location_of_jobs) %>%
-  mutate(multi_Nordic = ifelse(str_length(Location_of_jobs)>2, TRUE, FALSE))
+  separate(Location_of_jobs, into = paste0("location_", 1:5), sep = ", ", fill = "right") %>%
+  mutate(
+    multi_Nordic = rowSums(across(location_1:location_5, ~ . %in% 
+                                    c("DK","NO","SE", "DK ","NO ","SE ",
+                                      " DK"," NO"," SE", " DK "," NO "," SE "))) >= 2
+  )
+  
+  
+  
+ # filter(location_2 %in% c("DK","NO","SE", "DK ","NO ","SE ", " DK"," NO"," SE") | is.na(location_2)) #  mutate(multi_Nordic = ifelse(str_length(Location_of_jobs)>2, TRUE, FALSE))
 
 company_types <- jobs %>% 
-  group_by(Company, Country) %>% 
+  filter(nation %in% c("DK","NO","SE")) %>%
+  group_by(Company, nation) %>% 
   summarise(n = n()) %>%
   left_join(types, by = c("Company" = "Name")) %>%
+  select(Company, nation, n, Multinational, Organisation_type, Ownership_type,
+         Industry_Sector, Hydrogen_specialist, multi_Nordic) %>%
   na.omit()
 
 company_types_clean <- company_types %>% 
   rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic")
 
+
+
 ppf <- function(vr_name) {
   y <- sym(vr_name)
   pl <- company_types_clean %>% 
   ggplot(aes(x = n, y = !!y , 
-             fill = Country)) + 
+             fill = nation)) + 
   geom_col(drop = F)+
     scale_x_continuous(limits = c(0, 1600))+
     scale_fill_colorblind("Country")+
@@ -390,7 +496,7 @@ multi_pl <-plot_list[[2]] + sml_pl +
   theme(legend.position="bottom", 
         text = element_text(size = 14)) 
 multi_pl
-#ggsave(filename = "figs/multi_pl.png", dpi = 1200, width = 12, height = 8)
+ggsave(filename = "figs/multi_pl.png", dpi = 1200, width = 12, height = 8)
 
 
 
@@ -404,10 +510,19 @@ multi_pl
 
 types <- companies %>% 
   select(Name, Multinational, Organisation_type, Ownership_type, Industry_Sector, Hydrogen_specialist, Location_of_jobs) %>%
-  mutate(multi_Nordic = ifelse(str_length(Location_of_jobs)>2, TRUE, FALSE)) %>% rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic")
+  separate(Location_of_jobs, into = paste0("location_", 1:5), sep = ", ", fill = "right") %>%
+  mutate(
+    multi_Nordic = rowSums(across(location_1:location_5, ~ . %in% 
+                                    c("DK","NO","SE", "DK ","NO ","SE ",
+                                      " DK"," NO"," SE", " DK "," NO "," SE "))) >= 2
+  ) %>% 
+  rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic") %>% 
+  select(-location_1,-location_2,-location_3,-location_4,-location_5)
+  
 
 df_gs <- jobs %>% 
-  count(Company, Country, name = "weight") %>% 
+    filter(nation %in% c("DK","NO","SE")) %>%
+  count(Company, nation, name = "weight") %>% 
   filter(!Company == "!!!NEW_COMPANY!!!") %>%
   left_join(types, by =c("Company" = "Name")) %>% 
   na.omit() %>% 
@@ -418,8 +533,8 @@ nr_jobs_comp <- jobs %>% count(Company, name = "jobs") %>%
   rename(name = Company)
 
 nr_jobs_country <- jobs %>% 
-  count(Country, name = "jobs") %>% 
-  rename(name = Country)
+  count(nation, name = "jobs") %>% 
+  rename(name = nation)
 node_data <- bind_rows(nr_jobs_comp, nr_jobs_country)
 
 gs <- df_gs %>% 
@@ -456,12 +571,81 @@ ggraph(gs, layout = "nicely") +
 #ggsave("figs/two_mode_countries.png", dpi = 1200, width = 12, height = 8)
 ```
 
+```{r}
+top_10_MultiNordic <- df_gs %>%
+  select(Company, n = weight, MultiNordic) %>%
+  # Group by country to perform operations within each country
+  group_by(MultiNordic) %>%
+  # Arrange by descending n within each group
+  arrange(desc(n), .by_group = TRUE) %>%
+  # Create a new column to identify top 10 companies considering ties
+  mutate(Rank = rank(-n, ties.method = "first")) %>%
+  # Adjust Company name, keeping top 10 and any ties at the 10th place, lump the rest as 'Other'
+  mutate(Company = ifelse(Rank <= 10, Company, "Other")) %>%
+  # Regroup to combine 'Other' entries
+  group_by(MultiNordic, Company) %>%
+  # Summarize to aggregate counts for each company or 'Other'
+  summarize(n = sum(n)) %>%
+  mutate(share = n/sum(n)*100, share_tot = n/tot_jobs*100) %>%
+  # Arrange within each country to ensure 'Other' appears last and companies are sorted by n
+  arrange(MultiNordic, desc(n)) %>%
+  mutate(Company = fct_infreq(Company) %>% fct_relevel("Other", after = Inf)) %>%
+  # Final arrange to ensure 'Other' is last
+  arrange(MultiNordic, Company == "Other") %>%
+  ungroup() %>%
+  mutate(Company = as.character(Company)) %>%
+  mutate(Company = str_trunc(Company, width =20, ellipsis = "."))
+
+top_10_nordic_company <- function(cc){
+  
+  ll <- case_when(
+    cc== TRUE ~ "MultiNordic",
+    cc== FALSE ~ "MonoNordic"
+  )
+  
+  top_10_MultiNordic %>% 
+  filter(MultiNordic == cc) %>%
+  select(-MultiNordic) %>%
+  gt(rowname_col = "Company") %>%
+  tab_stubhead(label = "Companies") %>%
+  grand_summary_rows(
+    columns = c(n, share, share_tot),
+    fns = list(
+      Total = ~ sum(.)
+    ), 
+    fmt = ~fmt_number(., columns = share_tot, decimals = 1)) %>%
+  fmt_number(columns = c(share, share_tot), decimals = 1) %>%
+  tab_spanner(
+    columns = everything(),
+    label = ll
+  ) %>% 
+  cols_label(
+    n~"New jobs",
+    share ~ "(%)",
+    share_tot ~ "Total(%)"
+  ) %>%
+  gt_theme_espn()
+}
+
+
+
+top_multi <- top_10_nordic_company(TRUE)
+top_solo <- top_10_nordic_company(FALSE)
+
+top_multi
+top_solo
+
+gtsave(top_multi, filename = "tables/multi_nordic_comp.png")
+gtsave(top_solo, filename = "tables/mono_nordic_comp.png")
+```
+
 # Sectors - Elin
 
 ## Overview: Jobs per sector - tbl
 
 ```{r}
 tbl <- jobs %>%
+  filter(nation %in% c("DK","NO","SE")) %>%
   inner_join(df_companies %>% 
                select(Name, Industry_Sector), by = c("Company"="Name")) %>%
   rename(Sector = Industry_Sector) %>%
@@ -505,15 +689,16 @@ tbl %>%
 ## Deviation plot - Sectors
 
 ```{r}
-sectors_norm <- tbl %>% group_by(Sector, Country) %>%
+sectors_norm <- tbl %>% 
+  group_by(Sector, nation) %>%
   summarise(n_job = n(), .groups = 'drop') %>%
-  complete(Sector, Country, fill = list(n_job = 0)) 
+  complete(Sector, nation, fill = list(n_job = 0)) 
 
-jobs_total <- aggregate(n_job ~ Country, data = sectors_norm, sum)
+jobs_total <- aggregate(n_job ~ nation, data = sectors_norm, sum)
 
 sector_total <- aggregate(n_job ~ Sector, data = sectors_norm, sum)
 
-sectors_norm <- merge(sectors_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+sectors_norm <- merge(sectors_norm, jobs_total, by = "nation", suffixes = c("", "_country"))
 sectors_norm <- merge(sectors_norm, sector_total, by = "Sector", suffixes = c("", "_sector"))
 
 sectors_norm$n_norm <- sectors_norm$n_job / sectors_norm$n_job_country
@@ -521,7 +706,7 @@ sectors_norm$mean <- sectors_norm$n_job_sector / sum(jobs_total$n_job)
 sectors_norm$diff <- sectors_norm$n_norm - sectors_norm$mean
 
 sector_deviation_plot <- ggplot(sectors_norm, aes(x = str_wrap(Sector, 20, whitespace_only = FALSE), y = diff*100)) +
-  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+  geom_col(aes(fill = nation), width = 0.5, position = position_dodge(width = 0.5)) +
   scale_fill_colorblind("Country") +
   theme(legend.position = "top") +
   labs(y = "Deviation from mean", x = "") +
@@ -529,7 +714,7 @@ sector_deviation_plot <- ggplot(sectors_norm, aes(x = str_wrap(Sector, 20, white
   theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
 sector_deviation_plot
 
-#ggsave(filename = "figs/jobroles/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+ggsave(filename = "figs/jobroles/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
 
 ```
 
@@ -538,11 +723,29 @@ sector_deviation_plot
 -   Would be nice if the y-axis match in the combined plot
 
 ```{r}
-p1 <- tbl %>% 
-  group_by(Country, Sector) %>%
-  summarise(n =n()) %>%
+tbl_sectors <- tbl %>% 
+  group_by(nation, Sector) %>%
+  summarise(n =n())
+
+#
+# Determine the common order for sectors
+sector_order <- tbl_sectors %>%
+  group_by(Sector) %>%
+  summarise(total_n = sum(n)) %>%
+  arrange(desc(total_n)) %>%
+  pull(Sector)
+
+# Set the factor levels for Sector in both data frames
+tbl_sectors <- tbl_sectors %>%
+  mutate(Sector = factor(Sector, levels = sector_order))
+
+sectors_norm <- sectors_norm %>%
+  mutate(Sector = factor(Sector, levels = sector_order))
+#
+
+p1 <- tbl_sectors %>%
   ggplot(aes(x= n, y= fct_rev(Sector), 
-             fill = Country)) + 
+             fill = nation)) + 
   geom_col(drop = F)+
     scale_x_continuous()+
     scale_fill_colorblind("Country")+
@@ -552,18 +755,20 @@ p1 <- tbl %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-p2 <- ggplot(sectors_norm, aes(x = diff*100, y = str_wrap(Sector, 20, whitespace_only = FALSE))) +
-  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+p2 <- ggplot(sectors_norm, aes(x = diff*100, y = fct_rev(Sector))) +
+  geom_col(aes(fill = nation), width = 0.5, position = position_dodge(width = 0.5)) +
   scale_fill_colorblind("Country") +
-  theme(legend.position = "top") +
+  #theme(legend.position = "top") +
   labs(y = "", x = "", title = "Deviation from mean") +
   theme_minimal()+
-    theme(legend.position = "none", 
+    theme( 
       text = element_text(size = 14), 
-      plot.title = element_text(size = 12)) 
-
-combined_sectors <- p1 + p2
-#ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors, limitsize = FALSE, width = 12, height = 7)
+      plot.title = element_text(size = 12),
+      axis.text.y = element_blank(),  # Remove y-axis text from the second plot
+      axis.ticks.y = element_blank()  # Remove y-axis ticks from the second plot) 
+    )
+combined_sectors <- p1 + p2 + plot_layout(guides = "collect")
+ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors, limitsize = FALSE, width = 12, height = 7)
 ```
 
 ## Trading/non-trading

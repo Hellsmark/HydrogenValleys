@@ -1439,7 +1439,7 @@ nonswedish_researcher <- df_hcl_6 %>%
   select(cl, place, sector, company) %>%
   unique()
 
-broad_energy <- df_hcl_dendo_ward %>%
+broad_energy <- df_hcl_6 %>%
   filter(cl == 3) %>%
   left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
   select(cl, place, sector, company) %>%
@@ -1534,11 +1534,11 @@ cluster_place_sector <- df_hcl_6 %>%
 jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and should be regarded as one "the rest"-cluster
   mutate(year = lubridate::year(Scrape_date), month = lubridate::month(Scrape_date)) %>%
   left_join(companies, by =c("Company" = "Name")) %>%
-  select(id = ID, country = nation, region, company = Company , sector = Industry_Sector, competence = job_role, year, month) %>%
+  select(id = ID, country = nation, region, company = Company , sector = Industry_Sector, competence = job_role, year, month, nation = country) %>%
   na.omit() %>%
   unite(place, c("region", "country"), sep = ", ") %>%
   merge(cluster_place_sector, by = c("place", "sector"), all.x = TRUE) %>%
-  select(id, cluster, place, company, sector, competence, year, month)
+  select(id, cluster, place, company, sector, competence, year, month, nation)
 
 jobs_cluster_nicename <- jobs_clustered %>%
   mutate(cluster = case_when(
@@ -2024,7 +2024,65 @@ gtsave(
 )
 ```
 
-Maps???
+### More tables
+
+Most important company in region/group/sector/job role
+
+```{r}
+imprtant_company_for_country <- jobs_cluster_nicename %>%
+  group_by(nation, company) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(nation) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    company = paste(company, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup()
+
+imprtant_company_for_region <- jobs_cluster_nicename %>%
+  group_by(place, company) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(place) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    company = paste(company, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup()
+
+imprtant_company_for_cluster <- jobs_cluster_nicename %>%
+  group_by(cluster, company) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(cluster) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    company = paste(company, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup() %>%
+  slice(-n())
+
+imprtant_company_for_sector <- jobs_cluster_nicename %>%
+  group_by(sector, company) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(sector) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    company = paste(company, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup()
+
+imprtant_company_for_jobrole <- jobs_cluster_nicename %>%
+  group_by(competence, company) %>%
+  summarise(n = n()) %>% ungroup() %>%
+  group_by(competence) %>%
+  filter(n == max(n)) %>% 
+  summarise(
+    company = paste(company, collapse = ", "),
+    n = first(n)
+  ) %>% ungroup()
+
+```
+
+### Maps???
 
 ```{r}
 # Load libraries
@@ -2059,4 +2117,102 @@ map2 <- ggplot(data = combined) +
   labs(title = "Map of Sweden, Norway, and Denmark")
 
 
+```
+
+# Any sector/region/company/competence which only holds 1 job?
+
+```{r}
+only1_sector <- jobs_cluster_nicename %>%
+  group_by(sector) %>%
+  summarise(n = n()) %>% 
+  ungroup()
+  
+
+only1_region <- jobs_cluster_nicename %>%
+  group_by(place) %>%
+  summarise(n = n()) %>% 
+  ungroup()
+
+only1_company <- jobs_cluster_nicename %>%
+  group_by(company) %>%
+  summarise(n = n()) %>% 
+  ungroup()
+
+only1_competence <- jobs_cluster_nicename %>%
+  group_by(competence) %>%
+  summarise(n = n()) %>% 
+  ungroup()
+
+# This was not very interesting
+
+
+```
+
+# More plots
+
+```{r}
+numberOf_jobsPer_region <- jobs_cluster_nicename %>%
+  group_by(nation, place) %>%
+  summarise(n =n()) %>%
+  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1"))
+
+nrJobs_perRegion_plot <- numberOf_jobsPer_region %>%
+  ggplot(aes(x= n, y= fct_rev(place),
+             fill = nation)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+  scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per region")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+  
+nrJobs_perRegion_plot
+
+ggsave(filename = "figs/cluster_paper_plots/nrJobs_perRegion_plot.png", plot = nrJobs_perRegion_plot, limitsize = FALSE, width = 16, height = 8)
+
+
+```
+
+Biggest companies
+
+```{r}
+(jobs_cluster_nicename %>% group_by(nation, company) %>% summarise(n =n()) %>% 
+         ungroup() %>% arrange(desc(n)) %>% select(n) %>% sum())*3/4
+
+jobs_cluster_nicename %>% group_by(nation, company) %>% summarise(n =n()) %>% 
+         ungroup() %>% arrange(desc(n)) %>% head(52) %>% select(n) %>% sum()
+
+biggest_companies <- jobs_cluster_nicename %>%
+  group_by(nation, company) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  arrange(desc(n)) %>%
+  head(33)
+
+# 12 > 50%
+# 33 > 66%
+# 52 > 75%
+
+
+
+
+biggest_companies_plot <- biggest_companies %>%
+  ggplot(aes(x= n, y= fct_rev(company),
+             fill = nation)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+  scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per most recruiting companies (responsible for 67% of all jobs)")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+  
+biggest_companies_plot
+
+ggsave(filename = "figs/cluster_paper_plots/biggest_companies_plot.png", plot = biggest_companies_plot, limitsize = FALSE, width = 16, height = 8)
 ```
