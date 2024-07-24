@@ -781,11 +781,11 @@ tbl$Trading <- ifelse(tbl$Sector %in% c("Energy Utility", "Oil/gas/refinery", "C
 trading <- tbl %>% filter(Trading == "Trading")
 nontrading <- tbl %>% filter(Trading == "Non-trading")
 
-tbl %>% 
-  group_by(Country, Sector, Trading) %>%
+trading_or_not <- tbl %>% 
+  group_by(nation, Sector, Trading) %>%
   summarise(n =n(), .groups = 'drop') %>%
   ggplot(aes(x= n, y= fct_rev(Sector), 
-             fill = Country)) + 
+             fill = nation)) + 
   geom_col()+
     scale_x_continuous()+
     scale_fill_colorblind("Country")+
@@ -797,7 +797,51 @@ tbl %>%
       plot.title = element_text(size = 12)) +
   facet_wrap(~Trading)
 
+ggsave(filename = "figs/trading_or_not.png", plot = trading_or_not, limitsize = FALSE, width = 12, height = 7)
+```
 
+```{r}
+# Summarize data to calculate n and x_value
+trading_nontrading_summary <- tbl %>%
+  mutate(Trading = ifelse(Sector %in% c("Energy Utility", "Oil/gas/refinery", "Chemicals", "Iron/steel/mining", "Transport"), "Trading", "Non-trading")) %>%
+  group_by(nation, Sector, Trading) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  mutate(x_value = ifelse(Trading == "Trading", n, -n)) # Calculate x_value
+
+# Aggregate job counts by Sector across all countries
+sector_aggregates <- trading_nontrading_summary %>%
+  group_by(Sector, Trading) %>%
+  summarise(total_jobs = sum(n), .groups = 'drop') %>%
+  mutate(x_value = ifelse(Trading == "Trading", total_jobs, -total_jobs)) # Aggregate values
+
+# Find max value for setting axis limits based on aggregated totals
+max_x_value <- max(abs(sector_aggregates$x_value), na.rm = TRUE)
+
+# Calculate maximum y-value for plotting
+max_y_value <- length(unique(trading_nontrading_summary$Sector)) + 1.5
+
+# Create the plot with adjusted y-axis limits and annotation positions
+trading_nontrading_plot <- ggplot(trading_nontrading_summary, aes(x = x_value, y = fct_rev(Sector), fill = nation)) + 
+  geom_col() +
+  scale_x_continuous(labels = abs, limits = c(-max_x_value, max_x_value), expand = c(0, 0)) + # Set x-axis limits to center y-axis
+  scale_fill_colorblind("Country") +
+  labs(x = "Number of Jobs", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 14),
+    plot.title = element_text(size = 12),
+    plot.margin = margin(1, 1, 1, 1, "cm") # Adjust margins to avoid clipping
+  ) +
+  annotate("text", x = -max_x_value / 2, y = max_y_value-0.5, 
+           label = "Non-trading", size = 5, hjust = 0.5) +
+  annotate("text", x = max_x_value / 2, y = max_y_value-0.5, 
+           label = "Trading", size = 5, hjust = 0.5) +
+  coord_cartesian(ylim = c(0, max_y_value-1.5), clip = "off") 
+
+trading_nontrading_plot
+
+ggsave(filename = "figs/trading_nontrading_plot.png", plot = trading_nontrading_plot, limitsize = FALSE, width = 12, height = 8)
 ```
 
 # Job roles - Elin
