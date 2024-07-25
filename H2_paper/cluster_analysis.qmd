@@ -1586,10 +1586,7 @@ ggsave(filename = "figs/cluster_paper_plots/cluster_overtime_plot.png", plot = c
 Region and sector plots
 
 ```{r}
-
-
-
-sector_per_region <- jobs_clustered %>%
+sector_per_region_plot <- jobs_clustered %>%
   mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>% # change order of nation and region to make plot more readable
   group_by(place,sector) %>%
   summarise(n =n()) %>%
@@ -1605,15 +1602,201 @@ sector_per_region <- jobs_clustered %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-sector_per_region
+sector_per_region_plot
 
-ggsave(filename = "figs/cluster_paper_plots/sector_per_region.png", plot = sector_per_region, limitsize = FALSE, width = 14, height = 7)
+ggsave(filename = "figs/cluster_paper_plots/sector_per_region.png", plot = sector_per_region_plot, limitsize = FALSE, width = 14, height = 7)
 
 # Not sure how informative this is. So many regions, makes it difficult to see difference between the colors. 
 ```
 
+Try to make more informative by splitting it between countries and let sectors be colors instead
+
 ```{r}
-jobrole_per_region <- jobs_clustered %>%
+sector_per_region <- jobs_clustered %>%
+  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>% # change order of nation and region to make plot more readable
+  group_by(place,sector) %>%
+  summarise(n =n()) %>%
+  separate(place, into = c("country", "region"), sep = ", ")
+
+sector_per_region_dk <- sector_per_region %>%
+  filter(country == "DK") %>%
+  rbind(data.frame(country = c("DK","DK"), region = c("Hovedstaden","Hovedstaden"), sector = c("Iron/steel/mining","Transport"), n = c(0,0)))
+sector_per_region_no <- sector_per_region %>%
+  filter(country == "NO")
+sector_per_region_se <- sector_per_region %>%
+  filter(country == "SE") %>%
+  rbind(data.frame(country = c("SE","SE"), region = c("Dalarna","Dalarna"), sector = c("Chemicals","Oil/gas/refinery"), n = c(0,0)))
+
+sector_per_region_plot_dk <- sector_per_region_dk %>%
+  ggplot(aes(x= n, y= fct_rev(region), 
+             fill = sector)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Sector", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per region")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_dk.png", plot = sector_per_region_plot_dk, limitsize = FALSE, width = 14, height = 7)
+
+
+sector_per_region_plot_no <- sector_per_region_no %>%
+  ggplot(aes(x= n, y= fct_rev(region), 
+             fill = sector)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Sector", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per region")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+sector_per_region_plot_se <- sector_per_region_se %>%
+  ggplot(aes(x= n, y= fct_rev(region), 
+             fill = sector)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Sector", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per region")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_no.png", plot = sector_per_region_plot_no, limitsize = FALSE, width = 14, height = 7)
+ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_se.png", plot = sector_per_region_plot_se, limitsize = FALSE, width = 14, height = 7)
+
+### Patch together
+
+max_value <- sector_per_region %>%
+  group_by(country, region) %>%
+  summarise(total_jobs = sum(n)) %>%
+  ungroup() %>%
+  summarise(max_jobs = max(total_jobs)) %>%
+  pull(max_jobs)
+
+combined_margins <- c(0, 0, 0, 0) # t, r, b, l
+
+# Create plots with a shared x-axis scale
+sector_per_region_plot_dk <- sector_per_region_dk %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = sector)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Sector", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Denmark")
+
+sector_per_region_plot_no <- sector_per_region_no %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = sector)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Sector", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Norway")
+
+sector_per_region_plot_se <- sector_per_region_se %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = sector)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Sector", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Sweden")
+
+# Combine plots using patchwork and display a single legend
+sector_per_region_plot_combined <- (sector_per_region_plot_dk / 
+                 sector_per_region_plot_no / 
+                 sector_per_region_plot_se) + 
+                 plot_layout(guides = "collect", heights = c(1.5, 3, 1.5*18/5)) & 
+                 theme(legend.position = "bottom")
+
+# Display the combined plot
+print(sector_per_region_plot_combined)
+
+ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_combined.png", plot = sector_per_region_plot_combined, limitsize = FALSE, width = 20, height = 10)
+
+```
+
+Doing it in opposite direction - After second thoughts, this is not very nice, use previous
+
+```{r}
+region_per_sector_plot_dk <- sector_per_region_dk %>%
+  ggplot(aes(x= n, y= fct_rev(sector), 
+             fill = region)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Region", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_dk.png", plot = region_per_sector_plot_dk, limitsize = FALSE, width = 14, height = 7)
+
+region_per_sector_plot_no <- sector_per_region_no %>%
+  ggplot(aes(x= n, y= fct_rev(sector), 
+             fill = region)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Region", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_no.png", plot = region_per_sector_plot_no, limitsize = FALSE, width = 14, height = 7)
+
+
+region_per_sector_plot_se <- sector_per_region_se %>%
+  ggplot(aes(x= n, y= fct_rev(sector), 
+             fill = region)) + 
+    geom_col()+
+    scale_x_continuous()+
+    scale_fill_viridis_d("Region", option = "turbo")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_se.png", plot = region_per_sector_plot_se, limitsize = FALSE, width = 14, height = 7)
+
+
+```
+
+```{r}
+jobrole_per_region_plot <- jobs_clustered %>%
   mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>%
   group_by(place,competence) %>%
   summarise(n =n()) %>%
@@ -1629,12 +1812,154 @@ jobrole_per_region <- jobs_clustered %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-jobrole_per_region
+jobrole_per_region_plot
 
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region.png", plot = jobrole_per_region, limitsize = FALSE, width = 15, height = 6)
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot.png", plot = jobrole_per_region_plot, limitsize = FALSE, width = 15, height = 6)
 
 
 # Not sure how informative this is. So many regions, makes it difficult to see difference between the colors. 
+```
+
+```{r}
+jobrole_per_region <- jobs_clustered %>%
+  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>%
+  group_by(place,competence) %>%
+  summarise(n =n())%>%
+  separate(place, into = c("country", "region"), sep = ", ")
+
+jobrole_per_region_dk <- jobrole_per_region %>%
+  filter(country == "DK") #%>%
+#  rbind(data.frame(country = c("DK","DK"), region = c("Hovedstaden","Hovedstaden"), sector = c("Iron/steel/mining","Transport"), n = c(0,0)))
+jobrole_per_region_no <- jobrole_per_region %>%
+  filter(country == "NO")
+jobrole_per_region_se <- jobrole_per_region %>%
+  filter(country == "SE") %>%
+  rbind(data.frame(country = c("SE"), region = c("Dalarna"), competence = c("Law"), n = c(0)))
+
+### Patch together
+
+max_value_roles <- jobrole_per_region %>%
+  group_by(country, region) %>%
+  summarise(total_jobs = sum(n)) %>%
+  ungroup() %>%
+  summarise(max_jobs = max(total_jobs)) %>%
+  pull(max_jobs)
+
+combined_margins <- c(0, 0, 0, 0) # t, r, b, l
+
+# Create plots with a shared x-axis scale
+jobrole_per_region_plot_dk <- jobrole_per_region_dk %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = competence)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Job role", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Denmark")
+
+jobrole_per_region_plot_no <- jobrole_per_region_no %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = competence)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Job role", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Norway")
+
+jobrole_per_region_plot_se <- jobrole_per_region_se %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = competence)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Job role", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Sweden")
+
+# Combine plots using patchwork and display a single legend
+jobrole_per_region_plot_combined <- (jobrole_per_region_plot_dk / 
+                 jobrole_per_region_plot_no / 
+                 jobrole_per_region_plot_se) + 
+                 plot_layout(guides = "collect", heights = c(1.5, 3, 1.5*18/5)) & 
+                 theme(legend.position = "bottom")
+
+# Display the combined plot
+print(jobrole_per_region_plot_combined)
+
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_combined.png", plot = jobrole_per_region_plot_combined, limitsize = FALSE, width = 20, height = 10)
+```
+
+```{r}
+# TESTING
+jobrole_per_region_plot_dk <- jobrole_per_region_dk %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = competence)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Job role", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Denmark")
+
+jobrole_per_region_plot_no <- jobrole_per_region_no %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = competence)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Job role", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Norway")
+
+jobrole_per_region_plot_se <- jobrole_per_region_se %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = competence)) + 
+  geom_col() +
+  scale_x_continuous(limits = c(0, max_value)) +
+  scale_fill_viridis_d("Job role", option = "turbo") +
+  labs(x = "", y = "") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 14),
+    plot.margin = margin(t = combined_margins[1], r = combined_margins[2],
+                         b = combined_margins[3], l = combined_margins[4])
+  ) +
+  ggtitle("Sweden")
+
+
+
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_dk.png", plot = jobrole_per_region_plot_dk, limitsize = FALSE, width = 20, height = 10)
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_no.png", plot = jobrole_per_region_plot_no, limitsize = FALSE, width = 20, height = 10)
+ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_se.png", plot = jobrole_per_region_plot_se, limitsize = FALSE, width = 20, height = 10)
+
+
 ```
 
 ```{r}

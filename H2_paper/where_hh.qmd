@@ -459,3 +459,64 @@ if ("osm_polygons" %in% names(osm_data)) {
   print("No polygons found in the OSM data.")
 }
 ```
+
+Most successful attempt...
+
+```{r}
+# this script creates a map of bus stops in the la candelaria neighbourhood
+library(ggspatial)
+library(osmdata)
+library(sf)
+library(tidyverse)
+
+swedish_regions <- read_sf("https://raw.githubusercontent.com/okfse/sweden-geojson/master/swedish_regions.geojson") %>%
+  janitor::clean_names() %>%
+  select(name)
+
+regions_of_interest_se <- c("Norrbotten", "Västra Götaland", "Uppsala", "Södermanland",
+                         "Halland", "Dalarna", "Östergötland", "Gotland", "Gävleborg",
+                         "Skåne", "Värmland", "Västernorrland", "Kalmar", "Västerbotten",
+                         "Stockholm", "Västmanland", "Kronoberg", "Jämtland")
+
+specific_regions_se <- swedish_regions %>%
+  filter(name %in% regions_of_interest_se)
+
+
+#bus_stops <- specific_regions_se %>% 
+ # st_bbox() %>%
+  #opq() %>%
+#  add_osm_feature(key = "highway", value = "bus_stop") %>%
+ # osmdata_sf()
+
+#bus_stop_points <- bind_rows(
+ # pluck(bus_stops,"osm_points"),
+  #st_centroid(pluck(bus_stops,"osm_polygons"))
+#)
+
+region_map_se <- ggplot() + 
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = specific_regions_se, colour = "grey40", fill = NA, linewidth = 1.5) +
+  theme_void()
+```
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(lubridate)
+library(openintro)
+library(maps)
+library(ggmap)
+library(ggthemes)
+gs4_deauth()
+
+
+
+
+swedish_map <- get_stadiamap(
+  bbox = c(left = 10.6, bottom = 54.5, right = 24.7, top = 69.2),
+  zoom = 5
+)
+
+ggmap(swedish_map)
+
+```
