@@ -285,5 +285,177 @@ region_new_jobs %>%
   theme(legend.position = "top")
 ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 
+```
 
+# Trying to make maps...
+
+```{r}
+library(rnaturalearth)
+library(rnaturalearthdata)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+admin1 <- ne_states(country = c("Sweden", "Norway", "Denmark"), returnclass = "sf")
+
+
+regionsss <- location_all %>% select(nation,region) %>% unique()
+# Viken, Vestland, 
+# Troms og Finnmark, Agder 
+```
+
+```{r}
+library(osmdata)
+library(sf)
+library(ggplot2)
+
+# Define the Swedish regions of interest
+regions_of_interest <- c("Norrbotten", "Västra Götaland", "Uppsala", "Södermanland",
+                         "Halland", "Dalarna", "Östergötland", "Gotland", "Gävleborg",
+                         "Skåne", "Värmland", "Västernorrland", "Kalmar", "Västerbotten",
+                         "Stockholm", "Västmanland", "Kronoberg", "Jämtland")
+
+# Define a function to get OSM data for a specific region by bounding box
+get_region_data <- function(region) {
+  place_name <- paste(region, "Sweden", sep = ", ")
+  
+  # Get the bounding box for the place
+  bbox <- getbb(place_name, format_out = "data.frame")
+  
+  if (is.null(bbox)) {
+    print(paste("No bounding box found for:", region))
+    return(NULL)
+  }
+  
+  # Create the OSM query
+  query <- opq(bbox = bbox) %>%
+    add_osm_feature(key = "boundary", value = "administrative") %>%
+    add_osm_feature(key = "name", value = region)
+  
+  # Fetch the data
+  osm_data <- osmdata_sf(query)
+  
+  # Check if osm_polygons are available
+  if ("osm_polygons" %in% names(osm_data)) {
+    polygons <- osm_data$osm_polygons
+    
+    # Ensure the polygons have a name column
+    if (nrow(polygons) > 0) {
+      polygons$name <- region
+      return(polygons)
+    } else {
+      print(paste("No data for region:", region))
+      return(NULL)
+    }
+  } else {
+    print(paste("osm_polygons not found for region:", region))
+    return(NULL)
+  }
+}
+
+# Initialize an empty list to store region data
+region_boundaries <- list()
+
+# Retrieve data for each region
+for (region in regions_of_interest) {
+  print(paste("Fetching data for region:", region))
+  region_data <- get_region_data(region)
+  if (!is.null(region_data)) {
+    region_boundaries[[region]] <- region_data
+  }
+}
+
+# Combine all region boundaries into a single spatial object
+if (length(region_boundaries) > 0) {
+  all_regions <- do.call(rbind, region_boundaries)
+  
+  # Plot the regions using ggplot2
+  ggplot(data = all_regions) +
+    geom_sf(aes(fill = name), color = "black") +
+    theme_minimal() +
+    labs(title = "Map of Selected Swedish Regions") +
+    theme(
+      plot.title = element_text(size = 14, face = "bold"),
+      legend.position = "right"
+    )
+} else {
+  print("No data retrieved for the specified regions.")
+}
+```
+
+```{r}
+retrieve_region_data <- function(region,boundary_choice) {
+  place_name <- paste(region, "Sweden", sep = ", ")
+  
+  # Get the bounding box for the place
+  bbox <- getbb(place_name, format_out = "data.frame")
+  
+  if (is.null(bbox)) {
+    print(paste("No bounding box found for:", region))
+    return(NULL)
+  }
+  
+  # Create the OSM query
+  query <- opq(bbox = bbox) %>%
+    add_osm_feature(key = "boundary", value = boundary_choice) %>%
+    add_osm_feature(key = "name", value = region)
+  
+  # Fetch the data
+  osm_data <- osmdata_sf(query)
+  
+  # Check if osm_polygons are available
+  if ("osm_polygons" %in% names(osm_data)) {
+    polygons <- osm_data$osm_polygons
+    
+    # Ensure the polygons have a name column
+    if (nrow(polygons) > 0) {
+      polygons$name <- region
+      return(polygons)
+    } else {
+      print(paste("No data for region:", region))
+      return(NULL)
+    }
+  } else {
+    print(paste("osm_polygons not found for region:", region))
+    return(NULL)
+  }
+}
+
+norrbotten <- retrieve_region_data("Norrbotten","historic")
+
+```
+
+```{r}
+
+
+ #Define the bounding box for Norrbotten, Sweden
+# You may need to adjust these coordinates to fit Norrbotten accurately.
+bbox <- c(left = 18.0, bottom = 64.0, right = 22.5, top = 70.0)
+
+# Create the OSM query
+query <- opq(bbox = bbox) %>%
+  add_osm_feature(key = "name", value = "Norrbotten") %>%
+  add_osm_feature(key = "historic", value = "boundary")  # Specify historic boundary if applicable
+
+# Fetch the data
+osm_data <- osmdata_sf(query)
+
+# Check if osm_polygons are available
+if ("osm_polygons" %in% names(osm_data)) {
+  norrbotten <- osm_data$osm_polygons
+  
+  # Check if the polygons have data
+  if (nrow(norrbotten) > 0) {
+    # Plot the data
+    ggplot(data = norrbotten) +
+      geom_sf(fill = "lightblue", color = "black") +
+      theme_minimal() +
+      labs(title = "Boundary of Norrbotten, Sweden") +
+      theme(
+        plot.title = element_text(size = 14, face = "bold"),
+        legend.position = "bottom"
+      )
+  } else {
+    print("No data found for Norrbotten.")
+  }
+} else {
+  print("No polygons found in the OSM data.")
+}
 ```

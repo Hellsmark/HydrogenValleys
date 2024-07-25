@@ -993,7 +993,83 @@ combined_engineers <- engineers_plot + engineers_deviation_plot
 ggsave(filename = "figs/jobroles/combined_engineers.png", plot = combined_engineers, limitsize = FALSE, width = 10, height = 6) 
 ```
 
-# Where - places - Hans
+Refined combine
+
+```{r}
+# Calculate total jobs per engineer type for ordering
+engineers_n <- tbl %>%
+  filter(job_role == "Engineering") %>%
+  group_by(Type_2) %>%
+  summarise(total_n = n())
+
+# Set the order for Type_2 based on total number of jobs
+type_order <- engineers_n %>%
+  arrange(desc(total_n)) %>%
+  pull(Type_2)
+
+# Create the first plot (engineers_plot) with consistent ordering
+engineers_plot <- tbl %>%
+  filter(job_role == "Engineering") %>%
+  group_by(Country, Type_2) %>%
+  summarise(n = n()) %>%
+  left_join(engineers_n, by = "Type_2") %>%
+  mutate(Type_2 = factor(Type_2, levels = type_order)) %>%
+  ggplot(aes(x = n, y = fct_rev(Type_2), fill = Country)) + 
+  geom_col() +
+  scale_x_continuous() +
+  scale_fill_colorblind("Country") +
+  labs(x= "", y = "", title = "Total jobs per type of engineer") +
+  theme_minimal() +
+  theme(
+    legend.position = "none", 
+    text = element_text(size = 14), 
+    plot.title = element_text(size = 12)
+  )
+
+# Prepare data for the second plot (engineers_deviation_plot)
+engineers_norm <- tbl %>%
+  filter(job_role == "Engineering") %>%
+  group_by(Type_2, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(Type_2, Country, fill = list(n_job = 0))
+
+jobs_total <- aggregate(n_job ~ Country, data = engineers_norm, sum)
+
+engineer_total <- aggregate(n_job ~ Type_2, data = engineers_norm, sum)
+
+engineers_norm <- merge(engineers_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+engineers_norm <- merge(engineers_norm, engineer_total, by = "Type_2", suffixes = c("", "_type"))
+
+engineers_norm$n_norm <- engineers_norm$n_job / engineers_norm$n_job_country
+engineers_norm$mean <- engineers_norm$n_job_type / sum(jobs_total$n_job)
+engineers_norm$diff <- engineers_norm$n_norm - engineers_norm$mean
+
+# Create the second plot (engineers_deviation_plot) with consistent ordering
+engineers_deviation_plot <- engineers_norm %>%
+  mutate(Type_2 = factor(Type_2, levels = type_order)) %>%
+  ggplot(aes(x = diff * 100, y = fct_rev(Type_2), fill = Country)) +
+  geom_col(width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  labs(y = "", x = "", title = "Deviation from mean") +
+  theme_minimal() +
+  theme(
+    #legend.position = "top",
+    text = element_text(size = 14), 
+    plot.title = element_text(size = 12),
+    axis.text.y = element_blank(),  # Remove y-axis text from the second plot
+    axis.ticks.y = element_blank()  # Remove y-axis ticks from the second plot
+  )
+
+# Combine the plots
+combined_engineers <- engineers_plot + engineers_deviation_plot + plot_layout(guides = "collect") #& theme(legend.position = "top")
+
+# Print the combined plot
+print(combined_engineers)
+
+ggsave(filename = "figs/jobroles/combined_engineers.png", plot = combined_engineers, limitsize = FALSE, width = 10, height = 6) 
+```
+
+# Where - places - Hans - not updated
 
 ## Correlation between jobs and populations in specific locations and in regions
 
@@ -1007,9 +1083,14 @@ location_new_jobs <- jobs %>%
   group_by(Location) %>%
   summarise(new_jobs = n()) %>% rename(location = Location)
 
-location_all <- location_region_pop %>% 
-  left_join(location_new_jobs) %>%
-  filter(!is.na(new_jobs)) # there is some na's since the file pop_ai reads locations from sheet "geo_locations_raw" without checking if there are jobs in the harmonized time period. 
+location_all <- jobs %>% 
+  group_by(Location) %>%
+  summarise(new_jobs = n()) %>% 
+  left_join(geo, by = c("Location" ="municipality_city")) %>%
+  na.omit() %>%
+  rename("location" = "Location") %>%
+  select(-new_name) %>%
+  unique() 
 
 
 ```
