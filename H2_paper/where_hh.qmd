@@ -184,7 +184,8 @@ ggsave("figs/location_new_jobs.png", dpi = 600, width = 8, height = 4)
 ```{r}
 region_new_jobs <- location_all %>% 
   group_by(region, reg_pop, country) %>%
-  summarise(new_jobs = sum(new_jobs))
+  summarise(new_jobs = sum(new_jobs)) %>%
+  ungroup()
 
 lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
 
@@ -254,7 +255,8 @@ outliers_reg_1_2_std <- lm_data_reg %>%
 ```{r}
 region_new_jobs <- location_all %>% 
   group_by(region, reg_pop, country) %>%
-  summarise(new_jobs = sum(new_jobs))
+  summarise(new_jobs = sum(new_jobs)) %>%
+  ungroup()
 
 
 region_new_jobs %>% 
@@ -285,6 +287,143 @@ region_new_jobs %>%
   theme(legend.position = "top")
 ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 
+```
+
+# GDP DATA
+
+```{r}
+regional_GDP <- data.frame(
+  region = c("Agder","Dalarna","Gotland","Gävleborg","Halland",
+             "Hovedstaden","Jämtland","Kalmar","Kronoberg","Midtjylland",
+             "Møre og Romsdal","Nordjylland","Nordland","Norrbotten","Oslo",
+             "Rogaland","Sjælland","Skåne","Stockholm","Syddanmark",
+             "Södermanland","Troms og Finnmark","Trøndelag","Uppsala","Vestfold og Telemark",
+             "Vestland","Viken","Värmland","Västerbotten","Västernorrland",
+             "Västmanland","Västra Götaland","Östergötland"),
+  GDP_per_capita = c(43875.66, 37230, 33200.4, 35740.8, 35828.4, 
+                     90115.2, 36967.2, 35565.6, 44500.8, 56322,
+                     47459.64, 48678.3, 47400.87, 56764.8, 89641.92,
+                     57537.98, 39827.7, 39682.8, 63860.4, 53908.2,
+                     33112.8, 48124.87, 48796.7, 42223.2, 42657.43,
+                     50329.07, 43203.05, 37317.6, 41434.8, 40996.8,
+                     36354, 45289.2, 40646.4)
+  ) %>%
+  left_join(region_new_jobs) %>%
+  select(country,region,reg_pop,GDP_per_capita,new_jobs)
+
+#Info from
+#https://www.dst.dk/en/Statistik/emner/oekonomi/nationalregnskab/regionalfordelt-nationalregnskab
+#https://en.wikipedia.org/wiki/List_of_Norwegian_counties_by_GDP
+#https://en.wikipedia.org/wiki/List_of_Swedish_counties_by_GDP
+#https://www.exchangerates.org.uk/SEK-EUR-spot-exchange-rates-history-2024.html
+```
+
+```{r}
+krone_to_EUR <- function(kr,country){
+  kr_EUR <- data.frame(land = c("DK","NO","SE"), exchange = c(0.1341,0.0868,0.0876)) %>% 
+    filter(land == country)
+  rate <- kr_EUR$exchange
+  EUR <- kr*rate
+  return(EUR)
+}
+
+krone_to_EUR(464000										, "SE")
+```
+
+lm
+
+```{r}
+
+lm_regions_gdp <- lm(new_jobs ~ GDP_per_capita, data = regional_GDP)
+
+# looking at mdl results
+glance(lm_regions_gdp)
+summary(lm_regions_gdp)
+tidy(lm_regions_gdp)
+
+# extract data for annotating the plot
+lm_gl_gdp <- glance(lm_regions_gdp)
+r2_p_gdp_all <- paste("R2:", round(lm_gl_gdp$r.squared, 2), "&\n", ifelse(lm_gl_gdp$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+###
+
+lm_data_reg_gdp <- regional_GDP %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ GDP_per_capita, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_gdp_dk <- lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_gdp_se <- lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_gdp_no <- lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_gdp_dk <- paste("R2:", round(lm_gdp_dk$r.squared, 2), 
+                     "&\n", ifelse(lm_gdp_dk$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_gdp_se <- paste("R2:", round(lm_gdp_se$r.squared, 2), 
+                     "&\n", ifelse(lm_gdp_se$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_gdp_no <- paste("R2:", round(lm_gdp_no$r.squared, 2), 
+                     "&\n", ifelse(lm_gdp_no$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+outliers_reg_gdp <- lm_data_reg_gdp %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+outliers_reg_1_2_std_gdp <- lm_data_reg_gdp %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+
+###
+
+gdp_jobs_plot <- regional_GDP %>% 
+  ggplot(aes(round(GDP_per_capita/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(GDP_per_capita/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg_gdp)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "GDP per capita in kEUR", y= "Nr. of new jobs") +
+  annotate("text", x=75, y =300, label = r2_p_gdp_no)+
+  annotate("text", x=90, y =205, label = r2_p_gdp_dk)+
+  annotate("text", x=92, y =295, label = r2_p_gdp_all)+
+  annotate("text", x=68, y =50, label = r2_p_gdp_se)+
+  theme_minimal() +
+  theme(legend.position = "top")
+
+gdp_jobs_plot
+ggsave(filename = "figs/gdp_jobs_plot.png", plot = gdp_jobs_plot, limitsize = FALSE, width = 8, height = 5)
 ```
 
 # Trying to make maps...
@@ -419,7 +558,6 @@ retrieve_region_data <- function(region,boundary_choice) {
 }
 
 norrbotten <- retrieve_region_data("Norrbotten","historic")
-
 ```
 
 ```{r}
@@ -460,6 +598,27 @@ if ("osm_polygons" %in% names(osm_data)) {
 }
 ```
 
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(lubridate)
+library(openintro)
+library(maps)
+library(ggmap)
+library(ggthemes)
+gs4_deauth()
+
+
+
+
+swedish_map <- get_stadiamap(
+  bbox = c(left = 10.6, bottom = 54.5, right = 24.7, top = 69.2),
+  zoom = 5
+)
+
+ggmap(swedish_map)
+```
+
 Most successful attempt...
 
 ```{r}
@@ -497,26 +656,96 @@ region_map_se <- ggplot() +
   annotation_map_tile(type = "cartolight", zoomin = 0) +
   geom_sf(data = specific_regions_se, colour = "grey40", fill = NA, linewidth = 1.5) +
   theme_void()
+
+###
+
+norwegian_regions <- read_sf("https://raw.githubusercontent.com/ivanhjel/counties_norway_2024/main/counties_norway_2024.geojson") %>%
+  janitor::clean_names() %>%
+  select(name = navn)
+
+regions_of_interest_no <- c("Agder", "Møre og Romsdal", "Nordland", "Oslo", "Rogaland",
+                            "Troms og Finnmark", "Troms", "Finnmark", "Trøndelag", 
+                            "Vestfold og Telemark", "Vestfold", "Telemark",
+                            "Vestland", "Viken")
+
+specific_regions_no <- norwegian_regions %>%
+  filter(name %in% regions_of_interest_no)
+
+region_map_no <- ggplot() + 
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = norwegian_regions, colour = "grey40", fill = NA, linewidth = 1.5) +
+  theme_void()
+
+
+
+
+###
+
+danish_regions <- read_sf("https://raw.githubusercontent.com/ok-dk/dagi/master/geojson/regioner.geojson") %>%
+  janitor::clean_names() %>%
+  select(name = regionnavn)
+
+regions_of_interest_dk <- c("Region Hovedstaden", "Region Nordjylland", "Region Syddanmark",
+                            "Region Sjælland", "Region Midtjylland")
+
+specific_regions_dk <- norwegian_regions %>%
+  filter(name %in% regions_of_interest_no)
+
+region_map_dk <- ggplot() + 
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = danish_regions, 
+          aes(fill = case_when(
+            name == "Region Hovedstaden" ~ "red",
+            name == "Region Nordjylland" ~ "blue",  # Replace with the actual region name
+            TRUE ~ NA_character_  # Default to no fill
+          )), 
+          colour = "grey40", linewidth = 0.5) +
+  scale_fill_identity() +  # Use scale_fill_identity for direct color mapping
+  theme_void()
+
+
+###
+
+
+all_regions <- bind_rows(
+  swedish_regions %>% mutate(country = "Sweden"),
+  norwegian_regions %>% mutate(country = "Norway"),
+  danish_regions_2d %>% mutate(country = "Denmark")
+)
+
+# Plot the combined map
+combined_map <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = all_regions, aes(fill = country), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("Sweden" = "lightblue", "Norway" = "lightgreen", "Denmark" = "lightpink")) +
+  theme_void()
+
+combined_map
 ```
 
 ```{r}
-library(tidyverse)
-library(googlesheets4)
-library(lubridate)
-library(openintro)
-library(maps)
-library(ggmap)
-library(ggthemes)
-gs4_deauth()
+# Function to check and repair geometries
+repair_geometries <- function(data) {
+  # Check validity
+  if (!all(st_is_valid(data))) {
+    # Repair invalid geometries
+    data <- st_make_valid(data)
+  }
+  return(data)
+}
 
+# Apply the function to each dataset
+swedish_regions <- repair_geometries(swedish_regions)
+norwegian_regions <- repair_geometries(norwegian_regions)
+danish_regions <- repair_geometries(danish_regions)
 
+# Function to convert 3D geometries to 2D by removing Z-dimension
+convert_to_2d <- function(data) {
+  st_transform(data, crs = st_crs(4326)) %>%  # Ensure CRS is WGS84
+    st_zm(drop = TRUE, what = "ZM")  # Remove Z-dimension
+}
 
-
-swedish_map <- get_stadiamap(
-  bbox = c(left = 10.6, bottom = 54.5, right = 24.7, top = 69.2),
-  zoom = 5
-)
-
-ggmap(swedish_map)
+# Convert Danish geometries to 2D
+danish_regions_2d <- convert_to_2d(danish_regions)
 
 ```

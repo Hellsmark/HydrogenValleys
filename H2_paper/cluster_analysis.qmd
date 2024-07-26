@@ -1540,13 +1540,13 @@ jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and s
   merge(cluster_place_sector, by = c("place", "sector"), all.x = TRUE) %>%
   select(id, cluster, place, company, sector, competence, year, month, nation)
 
-jobs_cluster_nicename <- jobs_clustered %>%
+jobs_cluster_nicename <- jobs_clustered %>% # NOTICE the names and numbers may not work with current run
   mutate(cluster = case_when(
     cluster == 1 ~ "Norwegian Engineering",
     cluster == 2 ~ "Others",
-    cluster == 3 ~ "Others",
-    cluster == 4 ~ "Central offices in Oslo/Copenhagen",
-    cluster == 5 ~ "Danish and Norwegian Research",
+    cluster == 3 ~ "Danish and Norwegian Research",
+    cluster == 4 ~ "Others",
+    cluster == 5 ~ "Central offices in Oslo/Copenhagen",
     cluster == 6 ~ "Nordic Broad Energy",
     TRUE ~ as.character(cluster)
   ))
@@ -2082,28 +2082,9 @@ Short table
 ```{r}
 cluster_tbl_data_short <- merge(
   cluster_tbl_data %>% select(Group, Regions = Region) %>% unique() %>%
+    mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
     pivot_wider(names_from = "Regions", 
                 values_from = Regions) %>%
-    select(Group, "Agder (NO)" = "Agder, NO", "Dalarna (SE)" = "Dalarna, SE",
-           "Gotland (SE)" = "Gotland, SE", "Gävleborg (SE)" = "Gävleborg, SE",
-           "Halland (SE)" = "Halland, SE", "Hovedstaden (DK)" = "Hovedstaden, DK", 
-           "Jämtland (SE)" = "Jämtland, SE", "Kalmar (SE)" = "Kalmar, SE", 
-           "Kronoberg (SE)" = "Kronoberg, SE", "Midtjylland (DK)" = "Midtjylland, DK", 
-           "Møre og Romsdal (NO)" = "Møre og Romsdal, NO", 
-           "Nordjylland (DK)" = "Nordjylland, DK", "Nordland (NO)" = "Nordland, NO",
-           "Norrbotten (SE)" = "Norrbotten, SE", "Oslo (NO)" = "Oslo, NO", 
-           "Rogaland (NO)" = "Rogaland, NO", "Sjælland (DK)" = "Sjælland, DK", 
-           "Skåne (SE)" = "Skåne, SE", "Stockholm (SE)" = "Stockholm, SE", 
-           "Syddanmark (DK)" = "Syddanmark, DK", "Södermanland (SE)" = "Södermanland, SE",
-           "Troms og Finnmark (NO)" = "Troms og Finnmark, NO", 
-           "Trøndelag (NO)" = "Trøndelag, NO", "Uppsala (SE)" = "Uppsala, SE", 
-           "Vestfold og Telemark (NO)" = "Vestfold og Telemark, NO", 
-           "Vestland (NO)" = "Vestland, NO", "Viken (NO)" = "Viken, NO", 
-           "Värmland (SE)" = "Värmland, SE", "Västerbotten (SE)" = "Västerbotten, SE",
-           "Västernorrland (SE)" = "Västernorrland, SE", 
-           "Västmanland (SE)" = "Västmanland, SE", 
-           "Västra Götaland (SE)" = "Västra Götaland, SE", 
-           "Östergötland (SE)" = "Östergötland, SE") %>%
     unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Gävleborg (SE)", 
           "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", "Kalmar (SE)", 
           "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
@@ -2143,6 +2124,8 @@ cluster_tbl_data_short <- merge(
   )
 
   
+
+
 
 
 # Create the gt table
@@ -2540,4 +2523,104 @@ biggest_companies_plot <- biggest_companies %>%
 biggest_companies_plot
 
 ggsave(filename = "figs/cluster_paper_plots/biggest_companies_plot.png", plot = biggest_companies_plot, limitsize = FALSE, width = 16, height = 8)
+```
+
+## Table of companies in clusters
+
+```{r}
+cl_tbl_org <- df_hcl_6_comp %>% 
+  select(cluster = cl, place, sector)
+
+
+
+
+
+
+
+########
+cluster_place_sector <- df_hcl_6 %>% 
+  select(cluster = cl, place, sector)
+
+jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and should be regarded as one "the rest"-cluster
+  mutate(year = lubridate::year(Scrape_date), month = lubridate::month(Scrape_date)) %>%
+  left_join(companies, by =c("Company" = "Name")) %>%
+  select(id = ID, country = nation, region, company = Company , sector = Industry_Sector, competence = job_role, year, month, nation = country) %>%
+  na.omit() %>%
+  unite(place, c("region", "country"), sep = ", ") %>%
+  merge(cluster_place_sector, by = c("place", "sector"), all.x = TRUE) %>%
+  select(id, cluster, place, company, sector, competence, year, month, nation)
+
+jobs_cluster_nicename <- jobs_clustered %>% # NOTICE the names and numbers may not work with current run
+  mutate(cluster = case_when(
+    cluster == 1 ~ "Norwegian Engineering",
+    cluster == 2 ~ "Others",
+    cluster == 3 ~ "Danish and Norwegian Research",
+    cluster == 4 ~ "Others",
+    cluster == 5 ~ "Central offices in Oslo/Copenhagen",
+    cluster == 6 ~ "Nordic Broad Energy",
+    TRUE ~ as.character(cluster)
+  ))
+
+cluster_tbl_sectors <- jobs_cluster_nicename %>%
+  select(Group = cluster, Region = place, Sectors = sector) %>%
+  unique() %>%
+  pivot_wider(names_from = "Sectors",
+              values_from = Sectors) %>%
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy Utility", "Government/Public sector", "Hydrogen technology manufacturer", "Iron/steel/mining","Legal/HR/Economics", "Oil/gas/refinery","Other", "Other manufacturing","Research/Education",   "Transport",
+        sep = ", ", na.rm = TRUE)
+  
+cluster_tbl_jobroles <- jobs_cluster_nicename %>%
+  select(Group = cluster, Region = place, Job_roles = competence) %>%
+  unique() %>%
+  pivot_wider(names_from = "Job_roles",
+              values_from = Job_roles) %>%
+  unite("Job_Roles", "Administration","Engineering", "Environmental/Sustainability",
+        "Finance/Business development","HR", "IT/Data Science", "Law", "Management/CEO", "Manufacturing/Maintenance/Industrial work/Technicians", "Other", "PhD", "Procurement/Supply Chain Management/Logistics", "Project managment", "Public administration", "Quality Assurance", "Researcher", "Sales/Marketing/Customer Service",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_data <- cluster_tbl_sectors %>%
+  merge(cluster_tbl_jobroles, by = c("Group", "Region"), all.x = TRUE)
+
+cluster_tbl_data_short <- merge(
+  cluster_tbl_data %>% select(Group, Regions = Region) %>% unique() %>%
+    mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
+    pivot_wider(names_from = "Regions", 
+                values_from = Regions) %>%
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Gävleborg (SE)", 
+          "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", "Kalmar (SE)", 
+          "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
+          "Nordland (NO)", "Norrbotten (SE)", "Oslo (NO)", "Rogaland (NO)", "Sjælland (DK)", 
+          "Skåne (SE)", "Stockholm (SE)", "Syddanmark (DK)", "Södermanland (SE)", 
+          "Troms og Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
+          "Vestfold og Telemark (NO)", "Vestland (NO)", "Viken (NO)", "Värmland (SE)", 
+          "Västerbotten (SE)", "Västernorrland (SE)", "Västmanland (SE)", 
+          "Västra Götaland (SE)", "Östergötland (SE)",
+          sep = ", ", na.rm = TRUE),
+  jobs_cluster_nicename %>%
+    select(Group = cluster, Sectors = sector) %>%
+    unique() %>%
+    pivot_wider(names_from = "Sectors",
+                values_from = Sectors) %>%
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer",
+          "Energy Utility", "Government/Public sector", "Hydrogen technology manufacturer",
+          "Iron/steel/mining","Legal/HR/Economics", "Oil/gas/refinery","Other", 
+          "Other manufacturing","Research/Education",   "Transport",
+          sep = ", ", na.rm = TRUE),
+  by = "Group", all.x = TRUE
+  ) %>%
+  merge(
+    jobs_cluster_nicename %>%
+    select(Group = cluster, Job_roles = competence) %>%
+    unique() %>%
+    pivot_wider(names_from = "Job_roles",
+                values_from = Job_roles) %>%
+    unite("Job_Roles", "Administration","Engineering", "Environmental/Sustainability",
+          "Finance/Business development","HR", "IT/Data Science", "Law", "Management/CEO",
+          "Manufacturing/Maintenance/Industrial work/Technicians", "Other", "PhD",
+          "Procurement/Supply Chain Management/Logistics", "Project managment", 
+          "Public administration", "Quality Assurance", "Researcher", 
+          "Sales/Marketing/Customer Service",
+          sep = ", ", na.rm = TRUE),
+    by = "Group", all.x = TRUE
+  )
 ```
