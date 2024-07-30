@@ -857,8 +857,6 @@ gt_tbl <- tbl %>% rename("Type of job" = job_role) %>%
 #gt_tbl %>% gtsave("figs/jobrole_country.png")
 gt_tbl
 
-
-
 ```
 
 ## Overview: job roles - plot
@@ -914,6 +912,75 @@ jobroles_deviation_plot
 
 #ggsave(filename = "figs/jobroles/jobroles_deviation.png", plot = jobroles_deviation_plot, limitsize = FALSE, width = 10, height = 7)
 
+```
+
+#### Combination
+
+```{r}
+
+jobs_norm <- tbl %>% group_by(job_role, nation) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(job_role, nation, fill = list(n_job = 0)) 
+
+jobs_total <- aggregate(n_job ~ nation, data = jobs_norm, sum)
+
+jobrole_total <- aggregate(n_job ~ job_role, data = jobs_norm, sum)
+
+jobs_norm <- merge(jobs_norm, jobs_total, by = "nation", suffixes = c("", "_country"))
+jobs_norm <- merge(jobs_norm, jobrole_total, by = "job_role", suffixes = c("", "_jobrole"))
+
+jobs_norm$n_norm <- jobs_norm$n_job / jobs_norm$n_job_country
+jobs_norm$mean <- jobs_norm$n_job_jobrole / sum(jobs_total$n_job)
+jobs_norm$diff <- jobs_norm$n_norm - jobs_norm$mean
+########## -----------------------------------
+tbl_job_role <- tbl %>% 
+  group_by(nation, job_role) %>%
+  summarise(n =n()) %>%
+  na.omit()
+  
+
+#
+# Determine the common order for sectors
+job_role_order <- tbl_job_role %>%
+  group_by(job_role) %>%
+  summarise(total_n = sum(n)) %>%
+  arrange(desc(total_n)) %>%
+  pull(job_role)
+
+# Set the factor levels for Sector in both data frames
+tbl_job_role <- tbl_job_role %>%
+  mutate(job_role = factor(job_role, levels = job_role_order))
+
+jobs_norm <- jobs_norm %>%
+  mutate(job_role = factor(job_role, levels = job_role_order))
+#
+
+p1j <- tbl_job_role %>%
+  ggplot(aes(x= n, y= fct_rev(job_role), 
+             fill = nation)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per job role")+
+    theme_minimal()+
+    theme(legend.position = "none", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12))
+
+p2j <- ggplot(jobs_norm, aes(x = diff*100, y = fct_rev(job_role))) +
+  geom_col(aes(fill = nation), width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  #theme(legend.position = "top") +
+  labs(y = "", x = "", title = "Deviation from mean") +
+  theme_minimal()+
+    theme( 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_blank(),  # Remove y-axis text from the second plot
+      axis.ticks.y = element_blank()  # Remove y-axis ticks from the second plot) 
+    )
+combined_jobe_roles <- p1j + p2j + plot_layout(guides = "collect")
+ggsave(filename = "figs/jobroles/combined_jobe_roles.png", plot = combined_jobe_roles, limitsize = FALSE, width = 12, height = 7)
 ```
 
 ## Type of engineers

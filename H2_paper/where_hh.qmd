@@ -289,6 +289,63 @@ ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 
 ```
 
+#### Outlier tables
+
+```{r}
+outlier_tbl <- function(df,std_size){
+  
+  df %>%
+  gt() %>%
+  tab_header(
+    title = paste0("Regions diverting ",as.character(std_size)," standard deviation",ifelse(std_size==1,"","s")," from mdoel")
+  ) %>%
+  cols_label(
+    region = "Region",
+    country = "Country",
+    reg_pop = "Population",
+    new_jobs = "Number of new jobs",
+    fitted = "Fitted number of jobs",
+    residual = "Residual"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(region, country, reg_pop, new_jobs, fitted, residual)
+    )
+  )
+}
+
+# Title: Regions diverting 2 standard deviations from mdoel
+# Country # Region # Population # New jobs # Fitted number # Residuals
+
+reg_2_std <- outliers_reg %>% select(region, country,reg_pop,new_jobs,fitted = .fitted, residual = .resid) %>% ungroup() %>% arrange(desc(abs(residual)))
+
+reg_2_std_tbl <- outlier_tbl(reg_2_std,2)
+
+# Title: Regions diverting 1 standard deviations from mdoel
+# Country # Region # Population # New jobs # Fitted number # Residuals
+reg_1_std <- outliers_reg_1_2_std %>% select(region, country,reg_pop,new_jobs,fitted = .fitted, residual = .resid) %>% ungroup() %>% arrange(desc(abs(residual)))
+
+reg_1_std_tbl <- outlier_tbl(reg_1_std,1)
+
+reg_2_std_tbl %>% gtsave("figs/cluster_paper_plots/reg_2_std_tbl.png")
+reg_1_std_tbl %>% gtsave("figs/cluster_paper_plots/reg_1_std_tbl.png")
+```
+
 # GDP DATA
 
 ```{r}
@@ -627,6 +684,12 @@ library(ggspatial)
 library(osmdata)
 library(sf)
 library(tidyverse)
+library(ggpattern)
+
+#Maps collected from
+#SE - https://github.com/okfse/sweden-geojson/blob/master/swedish_regions.geojson
+#NO - https://github.com/ivanhjel/counties_norway_2024/blob/main/counties_norway_2024.geojson
+#DK - https://github.com/ok-dk/dagi/blob/master/geojson/regioner.geojson
 
 swedish_regions <- read_sf("https://raw.githubusercontent.com/okfse/sweden-geojson/master/swedish_regions.geojson") %>%
   janitor::clean_names() %>%
@@ -706,6 +769,9 @@ region_map_dk <- ggplot() +
 
 ###
 
+```
+
+```{r}
 
 all_regions <- bind_rows(
   swedish_regions %>% mutate(country = "Sweden"),
@@ -713,17 +779,125 @@ all_regions <- bind_rows(
   danish_regions_2d %>% mutate(country = "Denmark")
 )
 
-# Plot the combined map
+
+
+all_regions <- all_regions %>%
+  mutate(
+    region_type = ifelse(name %in% highlight_regions, paste(country, "Highlighted"), country)
+  )
+
+# Define color mapping for both countries and highlighted regions
+color_mapping <- c(
+  "Sweden" = "lightblue",
+  "Norway" = "lightgreen",
+  "Denmark" = "lightpink",
+  "Sweden Highlighted" = "orange",
+  "Norway Highlighted" = "orange",
+  "Denmark Highlighted" = "orange"
+)
+
+# Plot the combined map with specific regions highlighted
 combined_map <- ggplot() +
-  annotation_map_tile(type = "cartolight", zoomin = 0) +
-  geom_sf(data = all_regions, aes(fill = country), colour = "grey40", linewidth = 0.5) +
-  scale_fill_manual(values = c("Sweden" = "lightblue", "Norway" = "lightgreen", "Denmark" = "lightpink")) +
+  #annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = all_regions, aes(fill = region_type), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = color_mapping) +
+  guides(fill = FALSE) +
   theme_void()
 
 combined_map
 ```
 
+### Region colored
+
 ```{r}
+# Define your group memberships
+regions_for_groups <- jobs_cluster_nicename %>%
+  separate(place, into = c("region", "country"), sep = ", ") %>%
+  select(region,cluster)
+  
+group_definitions <- list(
+  Group1 = regions_for_groups %>% 
+    filter(cluster == "Norwegian Engineering") %>% unique() %>% pull(region),
+  Group2 = regions_for_groups %>% 
+    filter(cluster == "Central offices in Oslo/Copenhagen") %>% unique() %>% pull(region),
+  Group3 = regions_for_groups %>% 
+    filter(cluster == "Danish and Norwegian Research") %>% unique() %>% pull(region),
+  Group4 = regions_for_groups %>% 
+    filter(cluster == "Nordic Broad Energy") %>% unique() %>% pull(region)
+)
+
+# Assign colors to groups, using "0" for non-grouped regions
+group_colors <- c(
+  "0" = "grey", "1" = "lightblue", "2" = "lightpink", "3" = "lightgreen", "4" = "lightyellow"
+)
+
+# Create a new column for group pattern
+all_regions <- all_regions %>%
+  rowwise() %>%
+  mutate(
+    group_pattern = paste0(
+      ifelse(name %in% group_definitions$Group1, "1", ""),
+      ifelse(name %in% group_definitions$Group2, "2", ""),
+      ifelse(name %in% group_definitions$Group3, "3", ""),
+      ifelse(name %in% group_definitions$Group4, "4", "")
+    ),
+    # Assign "0" for non-grouped regions
+    group_pattern = ifelse(group_pattern == "", "0", group_pattern)
+  ) %>%
+  ungroup()
+
+# Function to get stripe colors for overlaps
+get_stripe_colors <- function(pattern) {
+  colors <- unlist(strsplit(pattern, ""))
+  return(group_colors[colors])
+}
+
+# Build color mapping for overlaps
+overlap_colors <- unique(all_regions$group_pattern)
+stripe_colors <- lapply(overlap_colors, get_stripe_colors)
+
+names(stripe_colors) <- overlap_colors
+
+# Create the plot
+combined_map <- ggplot() +
+  # Use geom_sf for solid regions
+  geom_sf(
+    data = all_regions %>% filter(nchar(group_pattern) <= 1),
+    aes(fill = group_pattern),
+    colour = "grey40",
+    linewidth = 0.5
+  ) +
+  # Use geom_sf_pattern for striped regions
+  geom_sf_pattern(
+    data = all_regions %>% filter(nchar(group_pattern) > 1),
+    aes(pattern = group_pattern, pattern_fill = group_pattern),
+    colour = "grey40",
+    linewidth = 0.5,
+    pattern_density = 0.5,
+    pattern_spacing = 0.05
+  ) +
+  # Scale for solid fill colors
+  scale_fill_manual(values = group_colors) +
+  # Scale for striped pattern fill colors
+  scale_pattern_manual(values = rep("stripe", length(overlap_colors))) +
+  scale_pattern_fill_manual(values = stripe_colors) +
+  theme_void() +
+  theme(legend.position = "none")
+
+combined_map
+```
+
+```{r}
+# Plot the combined map
+combined_map <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = all_regions, aes(fill = country), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("Sweden" = "lightblue", "Norway" = "lightgreen", "Denmark" = "lightpink")) +
+ theme_void()
+
+
+
+
 # Function to check and repair geometries
 repair_geometries <- function(data) {
   # Check validity
