@@ -919,6 +919,8 @@ se_cl_6_seeds <- df_hcl_long_6_seeds %>% group_by(cl, sector) %>% summarise(n =n
 
 ## National comparison
 
+Here I investigated what clusters we would have with only nation-sector basis.
+
 ```{r}
 df_cl_nations <- df_jobs %>%
   select(country, sector, competence) %>%
@@ -1377,6 +1379,8 @@ View(se_cl_dendo_average)
 
 # Important companies
 
+Here we both look at what companies are part of the sectors in given regions in the clusters - but also do a new clustering with region/company instead of region/sector
+
 ```{r}
 df_ImpComp <- jobs %>%
   left_join(companies, by =c("Company" = "Name")) %>% 
@@ -1526,6 +1530,8 @@ co_cl_6_comp <- df_hcl_long_6_comp %>% group_by(cl, company) %>% summarise(n =n(
 -   The final clusters used should be those in k=6 for both with/without the companies. However two of the clusters are not very informative, these can be regarded as "the rest".
 
 # Plots and Visualization
+
+Wrangle before plots
 
 ```{r}
 cluster_place_sector <- df_hcl_6 %>% 
@@ -2168,7 +2174,7 @@ cluster_tbl_short
 cluster_tbl_short %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short.png")
 ```
 
-Most important thing for each region
+Most important thing for each region - tried out some different tables to highlight most important/key/iconic factors/parts of the regions/sectors/clusters
 
 ```{r}
 # most important sector/job for each region also company?
@@ -2332,8 +2338,6 @@ gtsave(
 )
 ```
 
-### More tables
-
 Most important company in region/group/sector/job role
 
 ```{r}
@@ -2392,6 +2396,8 @@ imprtant_company_for_jobrole <- jobs_cluster_nicename %>%
 
 ### Maps???
 
+Trying to create maps to visualise clusters without much success
+
 ```{r}
 # Load libraries
 
@@ -2423,35 +2429,6 @@ map2 <- ggplot(data = combined) +
   geom_sf(aes(fill = NAME), color = "white") +
   theme_minimal() +
   labs(title = "Map of Sweden, Norway, and Denmark")
-
-
-```
-
-# Any sector/region/company/competence which only holds 1 job?
-
-```{r}
-only1_sector <- jobs_cluster_nicename %>%
-  group_by(sector) %>%
-  summarise(n = n()) %>% 
-  ungroup()
-  
-
-only1_region <- jobs_cluster_nicename %>%
-  group_by(place) %>%
-  summarise(n = n()) %>% 
-  ungroup()
-
-only1_company <- jobs_cluster_nicename %>%
-  group_by(company) %>%
-  summarise(n = n()) %>% 
-  ungroup()
-
-only1_competence <- jobs_cluster_nicename %>%
-  group_by(competence) %>%
-  summarise(n = n()) %>% 
-  ungroup()
-
-# This was not very interesting
 
 
 ```
@@ -2530,10 +2507,6 @@ ggsave(filename = "figs/cluster_paper_plots/biggest_companies_plot.png", plot = 
 ```{r}
 cl_tbl_org <- df_hcl_6_comp %>% 
   select(cluster = cl, place, sector)
-
-
-
-
 
 
 

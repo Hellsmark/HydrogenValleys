@@ -289,7 +289,7 @@ ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
 
 ```
 
-#### Outlier tables
+# Outlier tables
 
 ```{r}
 outlier_tbl <- function(df,std_size){
@@ -297,7 +297,7 @@ outlier_tbl <- function(df,std_size){
   df %>%
   gt() %>%
   tab_header(
-    title = paste0("Regions diverting ",as.character(std_size)," standard deviation",ifelse(std_size==1,"","s")," from mdoel")
+    title = paste0("Regions diverting ",as.character(std_size)," or more standard deviation",ifelse(std_size==1,"","s")," from model")
   ) %>%
   cols_label(
     region = "Region",
@@ -346,7 +346,7 @@ reg_2_std_tbl %>% gtsave("figs/cluster_paper_plots/reg_2_std_tbl.png")
 reg_1_std_tbl %>% gtsave("figs/cluster_paper_plots/reg_1_std_tbl.png")
 ```
 
-# GDP DATA
+# GDP DATA and regression
 
 ```{r}
 regional_GDP <- data.frame(
@@ -484,6 +484,8 @@ ggsave(filename = "figs/gdp_jobs_plot.png", plot = gdp_jobs_plot, limitsize = FA
 ```
 
 # Trying to make maps...
+
+Once again trying to visualize data on maps without any good result
 
 ```{r}
 library(rnaturalearth)
@@ -676,7 +678,7 @@ swedish_map <- get_stadiamap(
 ggmap(swedish_map)
 ```
 
-Most successful attempt...
+Most successful attempt
 
 ```{r}
 # this script creates a map of bus stops in the la candelaria neighbourhood
@@ -773,47 +775,82 @@ region_map_dk <- ggplot() +
 
 ```{r}
 
+
+# Function to check and repair geometries
+repair_geometries <- function(data) {
+  # Check validity
+  if (!all(st_is_valid(data))) {
+    # Repair invalid geometries
+    data <- st_make_valid(data)
+  }
+  return(data)
+}
+
+# Apply the function to each dataset
+swedish_regions <- repair_geometries(swedish_regions)
+norwegian_regions <- repair_geometries(norwegian_regions)
+danish_regions <- repair_geometries(danish_regions)
+
+# Function to convert 3D geometries to 2D by removing Z-dimension
+convert_to_2d <- function(data) {
+  st_transform(data, crs = st_crs(4326)) %>%  # Ensure CRS is WGS84
+    st_zm(drop = TRUE, what = "ZM")  # Remove Z-dimension
+}
+
+# Convert Danish geometries to 2D
+danish_regions_2d <- convert_to_2d(danish_regions) %>%
+  mutate(name = sub("^Region ", "", name))
+
 all_regions <- bind_rows(
   swedish_regions %>% mutate(country = "Sweden"),
   norwegian_regions %>% mutate(country = "Norway"),
   danish_regions_2d %>% mutate(country = "Denmark")
 )
 
-
-
-all_regions <- all_regions %>%
-  mutate(
-    region_type = ifelse(name %in% highlight_regions, paste(country, "Highlighted"), country)
-  )
-
-# Define color mapping for both countries and highlighted regions
-color_mapping <- c(
-  "Sweden" = "lightblue",
-  "Norway" = "lightgreen",
-  "Denmark" = "lightpink",
-  "Sweden Highlighted" = "orange",
-  "Norway Highlighted" = "orange",
-  "Denmark Highlighted" = "orange"
-)
-
-# Plot the combined map with specific regions highlighted
+# Plot the combined map
 combined_map <- ggplot() +
-  #annotation_map_tile(type = "cartolight", zoomin = 0) +
-  geom_sf(data = all_regions, aes(fill = region_type), colour = "grey40", linewidth = 0.5) +
-  scale_fill_manual(values = color_mapping) +
-  guides(fill = FALSE) +
-  theme_void()
-
-combined_map
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = all_regions, aes(fill = country), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("Sweden" = "lightblue", "Norway" = "lightgreen", "Denmark" = "lightpink")) +
+ theme_void()
 ```
 
 ### Region colored
 
 ```{r}
 # Define your group memberships
+all_regions <- bind_rows(
+  swedish_regions %>% mutate(country = "Sweden"),
+  norwegian_regions %>% mutate(country = "Norway"),
+  danish_regions_2d %>% mutate(country = "Denmark")
+)
+
 regions_for_groups <- jobs_cluster_nicename %>%
   separate(place, into = c("region", "country"), sep = ", ") %>%
-  select(region,cluster)
+  select(region,cluster) %>% unique()
+
+norwegian_region_update <- data.frame(
+  region = c("Østfold", "Østfold", "Østfold", 
+             "Akershus", "Akershus", "Akershus", 
+             "Buskerud", "Buskerud", "Buskerud",
+             "Vestfold", "Vestfold", 
+             "Telemark", "Telemark", 
+             "Troms", "Troms",
+             "Finnmark", "Finnmark"
+             ),  
+  cluster = c("Norwegian Engineering", "Others", "Nordic Broad Energy", 
+              "Norwegian Engineering", "Others", "Nordic Broad Energy",
+              "Norwegian Engineering", "Others", "Nordic Broad Energy",
+              "Others", "Nordic Broad Energy",
+              "Others", "Nordic Broad Energy",
+              "Others", "Nordic Broad Energy",
+              "Others", "Nordic Broad Energy"
+              )
+  )
+
+# Add new rows to the existing DataFrame using pipes
+regions_for_groups <- regions_for_groups %>%
+  bind_rows(norwegian_region_update)
   
 group_definitions <- list(
   Group1 = regions_for_groups %>% 
@@ -873,8 +910,8 @@ combined_map <- ggplot() +
     aes(pattern = group_pattern, pattern_fill = group_pattern),
     colour = "grey40",
     linewidth = 0.5,
-    pattern_density = 0.5,
-    pattern_spacing = 0.05
+    pattern_density = 1,
+    pattern_spacing = 0.01
   ) +
   # Scale for solid fill colors
   scale_fill_manual(values = group_colors) +
@@ -885,41 +922,14 @@ combined_map <- ggplot() +
   theme(legend.position = "none")
 
 combined_map
+
+
+ggsave(filename = "figs/combined_map.png", plot = combined_map, limitsize = FALSE, width = 8, height = 5)
 ```
 
 ```{r}
-# Plot the combined map
-combined_map <- ggplot() +
-  annotation_map_tile(type = "cartolight", zoomin = 0) +
-  geom_sf(data = all_regions, aes(fill = country), colour = "grey40", linewidth = 0.5) +
-  scale_fill_manual(values = c("Sweden" = "lightblue", "Norway" = "lightgreen", "Denmark" = "lightpink")) +
- theme_void()
 
 
 
-
-# Function to check and repair geometries
-repair_geometries <- function(data) {
-  # Check validity
-  if (!all(st_is_valid(data))) {
-    # Repair invalid geometries
-    data <- st_make_valid(data)
-  }
-  return(data)
-}
-
-# Apply the function to each dataset
-swedish_regions <- repair_geometries(swedish_regions)
-norwegian_regions <- repair_geometries(norwegian_regions)
-danish_regions <- repair_geometries(danish_regions)
-
-# Function to convert 3D geometries to 2D by removing Z-dimension
-convert_to_2d <- function(data) {
-  st_transform(data, crs = st_crs(4326)) %>%  # Ensure CRS is WGS84
-    st_zm(drop = TRUE, what = "ZM")  # Remove Z-dimension
-}
-
-# Convert Danish geometries to 2D
-danish_regions_2d <- convert_to_2d(danish_regions)
 
 ```
