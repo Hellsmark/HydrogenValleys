@@ -1,0 +1,108 @@
+---
+title: "Analysis"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Libraries
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+
+
+```
+
+# Changes to company analysis
+
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+file_companies <- read_sheet(ss, sheet = "CompanyAnalysis")
+file_mainpage <- read_sheet(ss, sheet = "Main")
+file_locations <- read_sheet(ss, sheet = "locations_coord")
+```
+
+## Fixes
+
+Each "fix" has been done at separate occasions.
+
+### Update sector names
+
+```{r}
+# Replace old to new name for sectors
+file_companies_updated <- file_companies %>% 
+  mutate(Industry_Sector = recode(Industry_Sector,
+                           "Research/Education" = "Research & Education",
+                           "Legal/HR/Economics" = "Legal & Economics",
+                           "Government/Public sector" = "Government & Public sector",
+                           "Iron/steel/mining" = "Metals & Mining",
+                           "Oil/gas/refinery" = "Fossil fuel & Refinery",
+                           "Energy Utility" = "Energy utility"))
+```
+
+### Fix incorrect entries in Location of jobs
+
+```{r}
+jobs_and_locations <- file_mainpage %>% 
+  left_join(file_locations, by = c("Location"="New_name"), relationship = "many-to-many") %>%
+  select(Company, Country_code) %>%
+  unique() %>%
+  na.omit() %>%
+  group_by(Company) %>%
+  summarise(Country_code = paste(sort(unique(Country_code)), collapse = ", ")) %>%
+  ungroup()
+
+file_companies_updated <- file_companies %>%
+  left_join(jobs_and_locations, by = c("Name" = "Company")) %>%
+  select(Name, Description, Number_of_adds, Location_of_jobs = Country_code, Multinational, Organisation_type, Ownership_type, Industry_Sector, Hydrogen_relevance, Hydrogen_relevance_motivation, Hydrogen_specialist, Nationality, Founded_year)
+  
+```
+
+## Upload new version
+
+```{r}
+write_sheet(file_companies_updated, ss, sheet = "CompanyAnalysis")
+```
+
+# Changes to job role
+
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+file_jobrole <- read_sheet(ss, sheet = "Job_roles")
+```
+
+## Fixes
+
+Replace old to new name for job roles
+
+```{r}
+file_jobrole_updated <- file_jobrole %>% 
+  mutate(Job_role = recode(Job_role,
+                           "Manufacturing/Maintenance/Industrial work/Technicians" = "Technician & Maintenance",
+                           "Procurement/Supply Chain Management/Logistics" = "Procurement & Logistics",
+                           "Management/CEO" = "Other management",
+                           "Sales/Marketing/Customer Service" = "Sales & Customer Service",
+                           "IT/Data Science" = "IT & Data Science",
+                           "Finance/Business development" = "Finance & Business development",
+                           "Environmental/Sustainability" = "Environmental"))
+
+file_jobrole_updated <- file_jobrole %>% 
+  mutate(Job_role = recode(Job_role,
+                           "IT & Data Science" = "IT & Data science",
+                           "Sales & Customer Service" = "Sales & Customer service",
+                           "Quality Assurance" = "Quality assurance"))
+```
+
+## Upload new version
+
+```{r}
+write_sheet(file_jobrole_updated, ss, sheet = "Job_roles")
+```
