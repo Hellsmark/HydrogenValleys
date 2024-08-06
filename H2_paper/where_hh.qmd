@@ -62,7 +62,7 @@ job_roles <- df_job_roles %>%
 
 jobs <- df_main_raw %>% 
   inner_join(geo, by = c("Location"="new_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
-  mutate(Country = case_when(
+  mutate(publish_country = case_when(
     str_detect(ID, pattern ="^1") ~ "SE", 
     str_detect(ID, pattern ="^2") ~ "NO",
     str_detect(ID, pattern ="^3") ~ "DK"
@@ -494,7 +494,7 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 admin1 <- ne_states(country = c("Sweden", "Norway", "Denmark"), returnclass = "sf")
 
 
-regionsss <- location_all %>% select(nation,region) %>% unique()
+regionsss <- location_all %>% select(Country_code,region) %>% unique()
 # Viken, Vestland, 
 # Troms og Finnmark, Agder 
 ```

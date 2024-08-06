@@ -65,7 +65,7 @@ job_roles <- df_job_roles %>%
 
 jobs <- df_main_raw %>% 
   inner_join(geo, by = c("Location"="new_name")) %>% # obs multi-multi konflikt. Åtgärda sedan
-  mutate(Country = case_when(
+  mutate(publish_country = case_when(
     str_detect(ID, pattern ="^1") ~ "SE", 
     str_detect(ID, pattern ="^2") ~ "NO",
     str_detect(ID, pattern ="^3") ~ "DK"
@@ -87,7 +87,7 @@ companies <- df_companies
 ```{r}
 df_jobs <- jobs %>% 
   left_join(companies, by =c("Company" = "Name")) %>%
-  select(country = nation, region, sector= Industry_Sector, competence= job_role) %>%
+  select(country = country_code, region, sector= Industry_Sector, competence= job_role) %>%
   na.omit()
 
 df_cl <- df_jobs %>%
@@ -128,7 +128,7 @@ df_knee <- tibble(k = 2:60, wss = wss)
 df_knee %>% 
   ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/kmean_knee.png")
+#ggsave("figs/kmean_knee.png")
 # => k= 6, k=8, k = 12, k = 14
 ```
 
@@ -146,7 +146,7 @@ df_sil <- tibble(k = 2:60, sil_width = sil_width)
 df_sil %>% ggplot(aes(k, sil_width)) + geom_line() + 
   geom_point()+
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/sil_width.png")
+#ggsave("figs/sil_width.png")
 # => k=2, 3, 6
 
 ```
@@ -161,13 +161,13 @@ hcl_obj <- as.dendrogram(hcl)
 
 plot(hcl_obj)
 
-dend_color <- color_branches(hcl_obj, k = 14)
+dend_color <- color_branches(hcl_obj, k = 6)
 
 plot(dend_color)  
 # Save the plot to a file
-png("figs/dend_14_ward.png", width = 800, height = 600)  # Open a PNG device
-plot(dend_color)
-dev.off()  # Close the device
+#png("figs/dend_14_ward.png", width = 800, height = 600)  # Open a PNG device
+#plot(dend_color)
+#dev.off()  # Close the device
 
 ```
 
@@ -195,7 +195,7 @@ cluster_plot <- fviz_cluster(hc.cut,
                                main = paste("K:", k, " Method:", mm),
                                ggtheme = theme_grey())
   
-  ggsave(paste0("figs/clust/k", k, "_", mm, "_cl.png"), plot = cluster_plot)
+  #ggsave(paste0("figs/clust/k", k, "_", mm, "_cl.png"), plot = cluster_plot)
   
   # Return both plots as a list
   list(dend_plot = dend_plot, cluster_plot = cluster_plot)
@@ -281,7 +281,7 @@ ggsave("figs/heat_ave_k3.png")
 # Data frame
 df_h2 <- jobs %>% 
   left_join(companies, by =c("Company" = "Name")) %>%
-  select(id = ID, country = Country, region, sector= Industry_Sector, competence= job_role) %>%
+  select(id = ID, country = country_code, region, sector= Industry_Sector, competence= job_role) %>%
   na.omit() %>%
   unite(place, c("region", "country"), sep = ", ")
 
@@ -364,7 +364,7 @@ df_knee_1hot <- tibble(k = 2:60, wss = wss_1hot)
 df_knee_1hot %>% 
   ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/kmean_knee_1hot.png")
+#ggsave("figs/kmean_knee_1hot.png")
 # => 
 
 # Silhouete
@@ -378,7 +378,7 @@ df_sil_1hot <- tibble(k = 2:60, sil_width = sil_width_1hot)
 df_sil_1hot %>% ggplot(aes(k, sil_width)) + geom_line() + 
   geom_point()+
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/sil_width_1hot.png")
+#ggsave("figs/sil_width_1hot.png")
 # => 
 ```
 
@@ -1384,7 +1384,8 @@ Here we both look at what companies are part of the sectors in given regions in 
 ```{r}
 df_ImpComp <- jobs %>%
   left_join(companies, by =c("Company" = "Name")) %>% 
-  select(company = Company,country = nation,region, sector= Industry_Sector, competence = job_role) %>%   na.omit() %>% 
+  select(company = Company,country = country_code,region, sector= Industry_Sector, competence = job_role) %>%   
+  na.omit() %>% 
   unite(place, c("region", "country"), sep = ", ") %>%
   group_by(company, place, sector, competence) %>%
   summarise(n = n()) %>% 
@@ -1425,29 +1426,37 @@ ggsave("figs/company_clusters/sil_width_.png")
 ```
 
 ```{r}
-norwegian_engineering <- df_hcl_2 %>%
-  filter(cl == 1) %>%
+norwegian_engineering <- df_hcl_6 %>%
+  filter(cl == 1) %>% 
+  select(cl, place, sector) %>%
   left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
-  select(cl, place, sector, company) %>%
-  unique()
+  rowwise() %>% 
+  mutate(total_jobs = sum(c_across(c(5:21)), na.rm = T)) %>%
+  relocate(total_jobs, .after = company)
 
-capital_headquarters <- df_hcl_4 %>%
-  filter(cl == 2) %>%
+capital_headquarters <- df_hcl_6 %>%
+  filter(cl == 6) %>%
+  select(cl, place, sector) %>%
   left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
-  select(cl, place, sector, company) %>%
-  unique()
+  rowwise() %>% 
+  mutate(total_jobs = sum(c_across(c(5:21)), na.rm = T)) %>%
+  relocate(total_jobs, .after = company)
 
 nonswedish_researcher <- df_hcl_6 %>%
   filter(cl == 4) %>%
+  select(cl, place, sector) %>%
   left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
-  select(cl, place, sector, company) %>%
-  unique()
+  rowwise() %>% 
+  mutate(total_jobs = sum(c_across(c(5:21)), na.rm = T)) %>%
+  relocate(total_jobs, .after = company)
 
 broad_energy <- df_hcl_6 %>%
   filter(cl == 3) %>%
+  select(cl, place, sector) %>%
   left_join(df_ImpComp, by =c("place" = "place","sector" = "sector")) %>%
-  select(cl, place, sector, company) %>%
-  unique()
+  rowwise() %>% 
+  mutate(total_jobs = sum(c_across(c(5:21)), na.rm = T)) %>%
+  relocate(total_jobs, .after = company)
 
 # Print the companies
 for (i in 1){
@@ -1540,7 +1549,7 @@ cluster_place_sector <- df_hcl_6 %>%
 jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and should be regarded as one "the rest"-cluster
   mutate(year = lubridate::year(Scrape_date), month = lubridate::month(Scrape_date)) %>%
   left_join(companies, by =c("Company" = "Name")) %>%
-  select(id = ID, country = nation, region, company = Company , sector = Industry_Sector, competence = job_role, year, month, nation = country) %>%
+  select(id = ID, country = country_code, region, company = Company , sector = Industry_Sector, competence = job_role, year, month, nation = country) %>%
   na.omit() %>%
   unite(place, c("region", "country"), sep = ", ") %>%
   merge(cluster_place_sector, by = c("place", "sector"), all.x = TRUE) %>%
@@ -1548,14 +1557,28 @@ jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and s
 
 jobs_cluster_nicename <- jobs_clustered %>% # NOTICE the names and numbers may not work with current run
   mutate(cluster = case_when(
-    cluster == 1 ~ "Norwegian Engineering",
+    cluster == 1 ~ "Norwegian Energy Engineering",
     cluster == 2 ~ "Others",
-    cluster == 3 ~ "Danish and Norwegian Research",
-    cluster == 4 ~ "Others",
-    cluster == 5 ~ "Central offices in Oslo/Copenhagen",
-    cluster == 6 ~ "Nordic Broad Energy",
+    cluster == 3 ~ "Nordic Broad Energy",
+    cluster == 4 ~ "Danish & Norwegian Research",
+    cluster == 5 ~ "Others",
+    cluster == 6 ~ "Management & Finance in Oslo & Copenhagen",
     TRUE ~ as.character(cluster)
   ))
+
+df_hcl_nicename_long <- df_hcl_6 %>% # NOTICE the names and numbers may not work with current run
+  mutate(cluster = case_when(
+    cl == 1 ~ "Norwegian Energy Engineering",
+    cl == 2 ~ "Others",
+    cl == 3 ~ "Nordic Broad Energy",
+    cl == 4 ~ "Danish & Norwegian Research",
+    cl == 5 ~ "Others",
+    cl == 6 ~ "Management & Finance in Oslo & Copenhagen",
+    TRUE ~ as.character(cl)
+  )) %>%
+  relocate(cluster, .after = cl) %>%
+  pivot_longer(-c(id, place, sector, cl, cluster), names_to = "competence", values_to = "n")
+
 ```
 
 ## Jobs over time
@@ -2023,7 +2046,7 @@ cluster_tbl_sectors <- jobs_cluster_nicename %>%
   unique() %>%
   pivot_wider(names_from = "Sectors",
               values_from = Sectors) %>%
-  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy Utility", "Government/Public sector", "Hydrogen technology manufacturer", "Iron/steel/mining","Legal/HR/Economics", "Oil/gas/refinery","Other", "Other manufacturing","Research/Education",   "Transport",
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
         sep = ", ", na.rm = TRUE)
   
 cluster_tbl_jobroles <- jobs_cluster_nicename %>%
@@ -2031,8 +2054,8 @@ cluster_tbl_jobroles <- jobs_cluster_nicename %>%
   unique() %>%
   pivot_wider(names_from = "Job_roles",
               values_from = Job_roles) %>%
-  unite("Job_Roles", "Administration","Engineering", "Environmental/Sustainability",
-        "Finance/Business development","HR", "IT/Data Science", "Law", "Management/CEO", "Manufacturing/Maintenance/Industrial work/Technicians", "Other", "PhD", "Procurement/Supply Chain Management/Logistics", "Project managment", "Public administration", "Quality Assurance", "Researcher", "Sales/Marketing/Customer Service",
+  unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Other management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
         sep = ", ", na.rm = TRUE)
 
 cluster_tbl_data <- cluster_tbl_sectors %>%
@@ -2106,10 +2129,7 @@ cluster_tbl_data_short <- merge(
     unique() %>%
     pivot_wider(names_from = "Sectors",
                 values_from = Sectors) %>%
-    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer",
-          "Energy Utility", "Government/Public sector", "Hydrogen technology manufacturer",
-          "Iron/steel/mining","Legal/HR/Economics", "Oil/gas/refinery","Other", 
-          "Other manufacturing","Research/Education",   "Transport",
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
           sep = ", ", na.rm = TRUE),
   by = "Group", all.x = TRUE
   ) %>%
@@ -2119,12 +2139,8 @@ cluster_tbl_data_short <- merge(
     unique() %>%
     pivot_wider(names_from = "Job_roles",
                 values_from = Job_roles) %>%
-    unite("Job_Roles", "Administration","Engineering", "Environmental/Sustainability",
-          "Finance/Business development","HR", "IT/Data Science", "Law", "Management/CEO",
-          "Manufacturing/Maintenance/Industrial work/Technicians", "Other", "PhD",
-          "Procurement/Supply Chain Management/Logistics", "Project managment", 
-          "Public administration", "Quality Assurance", "Researcher", 
-          "Sales/Marketing/Customer Service",
+    unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Other management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
           sep = ", ", na.rm = TRUE),
     by = "Group", all.x = TRUE
   )
@@ -2173,6 +2189,176 @@ cluster_tbl_short
 # Save table
 cluster_tbl_short %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short.png")
 ```
+
+Remake of shorter table with highlighted regions/sectors/competences
+
+```{r}
+
+cluster_names <- c("Danish & Norwegian Research", "Management & Finance in Oslo & Copenhagen", "Nordic Broad Energy", "Norwegian Energy Engineering", "Others" )
+
+cluster_tbl_data_short_WITH_bold <- data.frame(
+  Group = character(),
+  Regions = character(),
+  Sectors = character(),
+  Job_Roles = character(),
+  stringsAsFactors = FALSE
+)
+
+# Function to bold multiple words in a string
+bold_words <- function(text, words) {
+  for (word in words) {
+    #print(paste0("Bold word: ", word))  # Debug print
+    #print(paste0("Before: ", text))     # Debug print
+    text <- gsub(word, paste0("<b>", word, "</b>"), text, fixed = TRUE)
+    #print(paste0("After: ", text))      # Debug print
+  }
+  return(text)
+}
+
+for (i in 1:5) {
+  cl_name <- cluster_names[i]
+  
+  total_jobs <- jobs_cluster_nicename %>%
+    filter(cluster == cl_name) %>% 
+    nrow()
+  
+  minimum_jobs <- total_jobs*.1
+  
+  bold_regions <- jobs_cluster_nicename %>% 
+    filter(cluster == cl_name) %>%
+    group_by(place) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(place) %>%
+    mutate(place = gsub("(.*), (.*)", "\\1 (\\2)", place))
+  
+  bold_sectors <- jobs_cluster_nicename %>% 
+    filter(cluster == cl_name) %>%
+    group_by(sector) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(sector)
+  
+  bold_job_role <- jobs_cluster_nicename %>% 
+    filter(cluster == cl_name) %>%
+    group_by(competence) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(competence)
+  
+  cluster_row <-   cluster_tbl_data_short %>%
+    filter(Group == cl_name) %>%
+    mutate(
+    Regions = bold_words(Regions, bold_regions$place),
+    Sectors = bold_words(Sectors, bold_sectors$sector),
+    Job_Roles = bold_words(Job_Roles, bold_job_role$competence)
+  )
+  # Add numbber of jobs to table
+  cluster_row <- cluster_row %>% 
+    cbind(data.frame( "n_jobs" =
+      jobs_cluster_nicename %>%
+        filter(cluster == cl_name) %>%
+        nrow()
+      )
+    )
+  
+  cluster_tbl_data_short_WITH_bold <- cluster_tbl_data_short_WITH_bold %>%
+    rbind(cluster_row)
+  
+}
+
+
+# Create the gt table with HTML content
+cluster_tbl_short_WITH_BOLD <- cluster_tbl_data_short_WITH_bold %>%
+  gt() %>%
+  tab_header(
+    title = "Regions and Sectors by Group"
+  ) %>%
+  cols_label(
+    Group = "Group",
+    Regions = "Regions",
+    Sectors = "Sectors",
+    Job_Roles = "Job roles",
+    n_jobs = "Number of jobs"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Group, Regions, Sectors, Job_Roles, n_jobs)
+    )
+  ) %>%
+  # Enable HTML rendering in the cells
+  fmt_markdown(columns = c(Regions, Sectors, Job_Roles))
+
+# Print the table
+cluster_tbl_short_WITH_BOLD
+
+cluster_tbl_short_WITH_BOLD %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short_WITH_BOLD.png")
+```
+
+#### Making a table manually
+
+```{r}
+# Create the gt table
+cluster_tbl_short <- cluster_tbl_data_short %>%
+  gt() %>%
+  tab_header(
+    title = "Regions and Sectors by Group"
+  ) %>%
+  cols_label(
+    Group = "Group",
+    Regions = "Regions",
+    Sectors = "Sectors",
+    Job_Roles = "Job roles"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Group, Regions, Sectors)
+    )
+  )
+
+# Print the table
+cluster_tbl_short
+
+# Save table
+cluster_tbl_short %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short.png")
+
+
+```
+
+#### Most important
 
 Most important thing for each region - tried out some different tables to highlight most important/key/iconic factors/parts of the regions/sectors/clusters
 
@@ -2392,6 +2578,51 @@ imprtant_company_for_jobrole <- jobs_cluster_nicename %>%
     n = first(n)
   ) %>% ungroup()
 
+```
+
+### Heatmap
+
+```{r}
+
+df_hcl_nicename_long %>% 
+  ggplot(aes(x=str_trunc(sector, width = 20, ellipsis = "."), 
+             y=str_trunc(competence, width =25, ellipsis = "."), 
+             fill = n)) +
+  geom_tile() +
+  scale_fill_viridis_c(direction=1, option = "D")+
+  facet_wrap(~cluster)+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 5), # Adjust size as needed
+    axis.text.y = element_text(size = 5), # Adjust size as needed
+    strip.text = element_text(size = 5) # Adjust size as needed for facet labels
+  ) +
+  labs(x="", y ="")
+ggsave("figs/heat_nicename_k6.png")
+
+#region competence
+df_hcl_nicename_long %>% 
+  ggplot(aes(x=str_trunc(place, width = 15, ellipsis = "."), 
+             y=str_trunc(competence, width =15, ellipsis = "."), 
+             fill = n)) +
+  geom_tile() +
+  scale_fill_viridis_c(direction=1, option = "D")+
+  facet_wrap(~cluster)+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))+
+  labs(x="", y ="")
+
+
+# region sector
+df_hcl_nicename_long %>% 
+  ggplot(aes(x=str_trunc(place, width = 15, ellipsis = "."), 
+             y=str_trunc(sector, width =15, ellipsis = "."), 
+             fill = n)) +
+  geom_tile() +
+  scale_fill_viridis_c(direction=1, option = "D")+
+  facet_wrap(~cluster)+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))+
+  labs(x="", y ="")
 ```
 
 ### Maps???
