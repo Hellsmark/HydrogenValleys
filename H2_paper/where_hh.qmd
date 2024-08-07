@@ -279,10 +279,10 @@ region_new_jobs %>%
   scale_size_continuous(range = c(1,4)) +
   guides(size = "none")+
   labs(x= "Population in thousands", y= "Nr. of new jobs") +
-  annotate("text", x=1200, y =250, label = r2_p_no)+
-  annotate("text", x=1600, y =200, label = r2_p_dk)+
-  annotate("text", x=2000, y =150, label = r2_p_all)+
-  annotate("text", x=2000, y =60, label = r2_p_se)+
+  annotate("text", x=1160, y =270, label = r2_p_no)+
+  annotate("text", x=1590, y =220, label = r2_p_dk)+
+  annotate("text", x=2020, y =170, label = r2_p_all)+
+  annotate("text", x=2010, y =70, label = r2_p_se)+
   theme_minimal() +
   theme(legend.position = "top")
 ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)

@@ -608,6 +608,61 @@ gtsave(top_solo, filename = "tables/mono_nordic_comp.png")
 
 # Sectors - Elin
 
+Simple table of the different sectors including short description
+
+```{r}
+sctr_tbl_info <- data.frame(
+  sector = c("Chemicals", "Consulting", "Energy technology manufacturer", 
+             "Energy utility", "Fossil fuel & Refinery", "Government & Public sector", 
+             "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining",
+             "Other", "Other manufacturing", "Research & Education", 
+             "Transport"),
+  description = c("Organisations working with producing and refining gases, fluids and solids used for fuel, manufacturing and other purposes.",
+                  "Consulting agencies operating and providing knowledge and services within a variety of subjects and industry.",
+                  "Organisations that manufacture components, modules or products used in other energy industries.",
+                  "Organisations which produce and provide energy.",
+                  "Organisations working with extracting or refining fosisl fuels, such as oil and natural gas.",
+                  "Organisations which are financed and driven public instances, such as municipalities, regional autorities or other public authorities.",
+                  "Organisations working with producing components, modules and products specifically to be used for either production, distribution, storage or usage of hydrogen.",
+                  "Organisations working subjects related to law or economics, such as law firms, banks and insurance companies.",
+                  "Organisations working with extracting or refining metal ores and material.",
+                  "Organisations that do not fit within any of the other 12 categories.",
+                  "Organisations working within manufacturing of components, modules or products which do not fall in under either energy- or hydrogen technology manufacturer.",
+                  "Organisations which primary business is performing research or providing with education, such as universities and research institutes.",
+                  "Organisations either working with producing vehicles or transporting goods or people.")
+)
+
+sctr_tbl <- sctr_tbl_info %>%
+  gt()  %>%
+  cols_label(
+    sector = "Sectors",
+    description = "Description"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(sector, description)
+    )
+  )
+
+sctr_tbl %>% gtsave("tables/sctr_tbl.png")
+
+```
+
 ## Overview: Jobs per sector - tbl
 
 ```{r}
@@ -812,6 +867,66 @@ trading_nontrading_plot
 ```
 
 # Job roles - Elin
+
+Simple table of the different job roles including short description
+
+```{r}
+jbrls_tbl_info <- data.frame(
+  jobroles = c("Administration", "Engineering", "Environmental",
+               "Finance & Business development", "HR", "IT & Data science",
+               "Law", "Other", "Other management", 
+               "PhD", "Procurement & Logistics", "Project management", 
+               "Public administration", "Quality assurance", "Research", 
+               "Sales & Customer service", "Technician & Maintenance"),
+  description = c("Includes jobs related to administrative or clerical work and secretaries.", 
+                  "Includes all jobs related to different engineering practices.", 
+                  "Includis jobs related to working with sustainability or environmental expert knowledge.",
+                  "Includis jobs within finance, accounting, economics as well as business development or analysis.", 
+                  "Includis jobs related to human resources and recruitment.", 
+                  "Includis jobs working with software, data management, IT and data analysis.", 
+                  "Includis jobs within law, such as lawyers and legal advisors.", 
+                  "Includes all jobs which do not fall within any of the other 16 categories.", 
+                  "Includes management jobs which are not explicitly Project management, such as CEOs, section manager, operations manager and so on.", 
+                  "Includes doctoral students.", 
+                  "Includes jobs in charge of procurement, logistics and supply chains.", 
+                  "Includes jobs for project planning and management.", 
+                  "Includes jobs working with public administration within public sector.", 
+                  "Includes jobs related to inspecting, controling or assuring qualoty of products or services.", 
+                  "Includes jobs within research, such as professors, research assistants and other scientists.", 
+                  "Includes jobs working with selling or marketing products or services as well as offering support of different kinds to customers.",
+                  "Includes jobs related to manufacturing and repairing and in other ways keeping maintaining or enabling operations, such as technicians, industrial workers, mechanics, electricians, welders and so on.")
+)
+
+jbrls_tbl <- jbrls_tbl_info %>%
+  gt()  %>%
+  cols_label(
+    jobroles = "Job roles",
+    description = "Description"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(jobroles, description)
+    )
+  )
+
+jbrls_tbl %>% gtsave("tables/jbrls_tbl.png")
+
+```
 
 ## Overview: job_roles -table
 
