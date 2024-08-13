@@ -137,12 +137,14 @@ jobs_over_time %>%
 ```{r}
 
 comp <- jobs %>% 
+  filter(country_code %in% c("DK","NO","SE")) %>%
   select(country_code, Company) %>% 
   unique() %>% 
   group_by(country_code) %>% 
   count(name="nr_comp")
 
 tbl_country_comp <- jobs %>% 
+  filter(country_code %in% c("DK","NO","SE")) %>%
   group_by(country_code) %>% 
   summarise(Jobs = n(), .groups = "drop") %>%
   mutate(perc = Jobs/sum(Jobs)*100) %>%
@@ -180,7 +182,7 @@ gt_tbl_country_comp <- tbl_country_comp %>%
   ) %>% gt_theme_espn()
 gt_tbl_country_comp
 
-#gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
+gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
 
 ```
 
@@ -363,9 +365,18 @@ df_distribution <- jobs %>%
   count(Company, country_code) %>% 
   filter(!Company == "!!!NEW_COMPANY!!!")
 
-violine <- df_distribution %>%
+violine1 <- df_distribution %>%
   rename(Country = country_code) %>%
   ggplot(aes(n, Country, fill = Country), alpha = 0.5) + 
+  geom_violin(show.legend = F) + 
+  scale_fill_colorblind() + 
+  theme_grey() +
+  coord_fixed(ratio = 60) +  # Adjust aspect ratio (reduce height)
+  labs(x = "", y = "")
+
+violine2 <- df_distribution %>%
+  rename(Country = country_code) %>%
+  ggplot(aes(Country, n, fill = Country), alpha = 0.5) + 
   geom_violin() + 
   scale_fill_colorblind() + 
   theme_grey() +
@@ -375,7 +386,41 @@ violine <- df_distribution %>%
 ggsave(filename = "figs/violine.png", width = 6, height = 4, dpi = 600)
 ```
 
-Tried adding violine together with table - but it did not look good
+Tried adding violine together with table
+
+```{r}
+img <- png::readPNG("tables/countries_jobs.png")
+
+# Create a rasterGrob
+table_grob <- grid::rasterGrob(img)
+
+# Create the table plot
+table_to_plot <- ggplot() +
+  theme_void() +
+  annotation_custom(table_grob,
+                    xmin = -Inf,
+                    xmax = Inf,
+                    ymin = -Inf,
+                    ymax = Inf)
+
+# Put the figure and table together:
+final_figure1 <- cowplot::plot_grid(violine1,
+                                                    table_to_plot,
+                                                    nrow = 1,
+                                                    ncol = 2,
+                                                    rel_heights = c(1, 1))
+
+final_figure1
+ggsave(filename = "figs/violine_table.png", width = 6, height = 4, dpi = 600)
+
+final_figure2 <- cowplot::plot_grid(violine2,
+                                                    table_to_plot,
+                                                    nrow = 1,
+                                                    ncol = 2,
+                                                    rel_heights = c(1, 1))
+```
+
+top
 
 ```{r}
 # Convert gt table to a data frame and then to a tableGrob
