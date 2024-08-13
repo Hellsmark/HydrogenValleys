@@ -621,14 +621,14 @@ sctr_tbl_info <- data.frame(
                   "Consulting agencies operating and providing knowledge and services within a variety of subjects and industry.",
                   "Organisations that manufacture components, modules or products used in other energy industries.",
                   "Organisations which produce and provide energy.",
-                  "Organisations working with extracting or refining fosisl fuels, such as oil and natural gas.",
+                  "Organisations working with extracting or refining fossil fuels, such as oil and natural gas.",
                   "Organisations which are financed and driven public instances, such as municipalities, regional autorities or other public authorities.",
                   "Organisations working with producing components, modules and products specifically to be used for either production, distribution, storage or usage of hydrogen.",
                   "Organisations working subjects related to law or economics, such as law firms, banks and insurance companies.",
                   "Organisations working with extracting or refining metal ores and material.",
                   "Organisations that do not fit within any of the other 12 categories.",
                   "Organisations working within manufacturing of components, modules or products which do not fall in under either energy- or hydrogen technology manufacturer.",
-                  "Organisations which primary business is performing research or providing with education, such as universities and research institutes.",
+                  "Organisations whose primary business is performing research or providing education, such as universities and research institutes.",
                   "Organisations either working with producing vehicles or transporting goods or people.")
 )
 
