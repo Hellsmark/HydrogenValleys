@@ -359,6 +359,7 @@ se
 
 ```{r}
 df_distribution <- jobs %>% 
+  filter(country_code %in% c("SE","NO","DK")) %>%
   count(Company, country_code) %>% 
   filter(!Company == "!!!NEW_COMPANY!!!")
 
