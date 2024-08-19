@@ -524,6 +524,92 @@ sector_plot
 #ggsave("figs/Total_jobs_per_sector.png", dpi = 1200, width = 6, height = 8)
 ```
 
+### Residual plot
+
+```{r}
+sectors_norm <- tbl %>% 
+  group_by(Sector, Country) %>%
+  summarise(n_job = n(), .groups = 'drop') %>%
+  complete(Sector, Country, fill = list(n_job = 0)) 
+
+jobs_total <- aggregate(n_job ~ Country, data = sectors_norm, sum)
+
+sector_total <- aggregate(n_job ~ Sector, data = sectors_norm, sum)
+
+sectors_norm <- merge(sectors_norm, jobs_total, by = "Country", suffixes = c("", "_country"))
+sectors_norm <- merge(sectors_norm, sector_total, by = "Sector", suffixes = c("", "_sector"))
+
+sectors_norm$n_norm <- sectors_norm$n_job / sectors_norm$n_job_country
+sectors_norm$mean <- sectors_norm$n_job_sector / sum(jobs_total$n_job)
+sectors_norm$diff <- sectors_norm$n_norm - sectors_norm$mean
+
+sector_deviation_plot <- ggplot(sectors_norm, aes(x = str_wrap(Sector, 20, whitespace_only = FALSE), y = diff*100)) +
+  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  theme(legend.position = "top") +
+  labs(y = "Deviation from mean", x = "") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1, color = "black"),
+        axis.text.y = element_text(color = "black")) 
+sector_deviation_plot
+
+ggsave(filename = "figs/jobroles/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+```
+
+### Patchwork of overview and residual plots
+
+```{r}
+tbl_sectors <- tbl %>% 
+  group_by(Country, Sector) %>%
+  summarise(n =n())
+
+#
+# Determine the common order for sectors
+sector_order <- tbl_sectors %>%
+  group_by(Sector) %>%
+  summarise(total_n = sum(n)) %>%
+  arrange(desc(total_n)) %>%
+  pull(Sector)
+
+# Set the factor levels for Sector in both data frames
+tbl_sectors <- tbl_sectors %>%
+  mutate(Sector = factor(Sector, levels = sector_order))
+
+sectors_norm <- sectors_norm %>%
+  mutate(Sector = factor(Sector, levels = sector_order))
+#
+
+p1 <- tbl_sectors %>%
+  ggplot(aes(x= n, y= fct_rev(Sector), 
+             fill = Country)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(legend.position = "none", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+p2 <- ggplot(sectors_norm, aes(x = diff*100, y = fct_rev(Sector))) +
+  geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
+  scale_fill_colorblind("Country") +
+  #theme(legend.position = "top") +
+  labs(y = "", x = "", title = "Deviation from mean") +
+  theme_minimal()+
+    theme( 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_blank(),  # Remove y-axis text from the second plot
+      axis.ticks.y = element_blank()  # Remove y-axis ticks from the second plot) 
+    )
+combined_sectors <- p1 + p2 + plot_layout(guides = "collect")
+
+combined_sectors
+ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors, limitsize = FALSE, width = 12, height = 7)
+```
+
 # What
 
 # Where
