@@ -6,7 +6,11 @@ editor_options:
   chunk_output_type: console
 ---
 
+# Intro
+
 This script includes all code for analysis, calculations, plots and tables used in the H2 paper as well as Nordic Hub meeting in Helsinki presentation.
+
+NOTE: There are many tables and plots from previous scripts which are not included here regarding sectors, job roles, population size of cities and attempts at making maps.
 
 # Libraries
 
@@ -23,12 +27,13 @@ library(patchwork)
 library(tidygraph)
 library(ggrepel)
 library(ggraph)
+library(broom)
 
 ```
 
 # Data
 
-## From Mainfilesheet
+## From Mainfile-sheet
 
 ```{r}
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
@@ -41,6 +46,8 @@ df_job_roles_raw <- read_sheet(ss, sheet = "Job_roles")
 ```
 
 ## Other data
+
+### National information
 
 ```{r}
 # Labourforce 2023 in millions
@@ -57,7 +64,40 @@ workforce_gdp <- tribble(
   )
 ```
 
-# General wrangle
+### Regional information
+
+```{r}
+regional_GDP <- data.frame(
+  region = c("Agder","Dalarna","Gotland","Gävleborg","Halland",
+             "Hovedstaden","Jämtland","Kalmar","Kronoberg","Midtjylland",
+             "Møre og Romsdal","Nordjylland","Nordland","Norrbotten","Oslo",
+             "Rogaland","Sjælland","Skåne","Stockholm","Syddanmark",
+             "Södermanland","Troms og Finnmark","Trøndelag","Uppsala","Vestfold og Telemark",
+             "Vestland","Viken","Värmland","Västerbotten","Västernorrland",
+             "Västmanland","Västra Götaland","Östergötland"),
+  GDP_per_capita = c(44772, 41862.5, 37331.5, 40188, 40286.5, 
+                     90316.8, 41567, 39991, 50038, 56448,
+                     48412.8, 48787.2, 48412.8, 63828, 91512,
+                     58744.8, 39916.8, 44620.5, 71806.5, 54028.8,
+                     37233, 49101.6, 49790.4, 47477, 43591.2,
+                     51364.8, 44083.2, 41961, 46590.5, 46098,
+                     40877.5, 50924.5, 45704)
+  ) %>%
+  left_join(region_new_jobs) %>%
+  select(country,region,reg_pop,GDP_per_capita,new_jobs)
+
+#Info from
+#https://www.dst.dk/en/Statistik/emner/oekonomi/nationalregnskab/regionalfordelt-nationalregnskab
+#https://www.scb.se/en/finding-statistics/statistics-by-subject-area/national-accounts/national-accounts/regional-accounts/pong/statistical-news/regional-accounts-2021/
+#https://www.ssb.no/en/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/statistikk/fylkesfordelt-nasjonalregnskap
+
+#Exchange rate used from year of measurement
+#https://www.exchangerates.org.uk/DKK-EUR-spot-exchange-rates-history-2022.html
+#https://www.exchangerates.org.uk/NOK-EUR-spot-exchange-rates-history-2021.html
+#https://www.exchangerates.org.uk/SEK-EUR-spot-exchange-rates-history-2021.html
+```
+
+## General wrangle and dataselection
 
 ```{r}
 geo <- df_geo_locations_raw %>% janitor::clean_names()
@@ -130,7 +170,7 @@ gt_tbl_country_comp
 gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
 ```
 
-### Violine
+### Violin
 
 ```{r}
 df_distribution <- jobs %>% 
@@ -150,7 +190,7 @@ violine
 ggsave(filename = "figs/violine.png", plot = violine, limitsize = FALSE, width = 6, height = 4)
 ```
 
-Add table to violine
+Add table to violin
 
 ```{r}
 img <- png::readPNG("tables/countries_jobs.png")
@@ -319,7 +359,7 @@ ggsave(filename = "figs/nord_comp_tbl_plot.png", width = 6, height = 4, dpi = 60
 
 # Who
 
-## Actortypes
+## Actor types
 
 ```{r}
 types <- df_companies_raw %>% 
@@ -878,5 +918,222 @@ ggsave(filename = "figs/jobroles/combined_engineers.png", plot = combined_engine
 ```
 
 # Where
+
+## Wrangle 
+
+```{r}
+location_all <- jobs %>% 
+  group_by(Location) %>%
+  summarise(new_jobs = n()) %>% 
+  left_join(geo, by = c("Location" ="municipality_city")) %>%
+  na.omit() %>%
+  rename("location" = "Location") %>%
+  select(-new_name) %>%
+  unique()
+```
+
+## Population size
+
+Linear regression over number of jobs created depending on population size of regions.
+
+### All countries as one
+
+```{r}
+region_new_jobs <- location_all %>% 
+  group_by(region, reg_pop, country) %>%
+  summarise(new_jobs = sum(new_jobs)) %>%
+  ungroup()
+
+lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
+
+# looking at mdl results
+glance(lm_regions)
+summary(lm_regions)
+tidy(lm_regions)
+
+# extract data for annotating the plot
+lm_gl <- glance(lm_regions)
+r2_p_all <- paste("R2:", round(lm_gl$r.squared, 2), "&\n", ifelse(lm_gl$p.value < 0.05, "p< 0.05", "p>0.05"))  
+```
+
+### Countries used as a factor
+
+```{r}
+lm_data_reg <- region_new_jobs %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ reg_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_dk <- lm_data_reg %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_se <- lm_data_reg %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_no <- lm_data_reg %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_dk <- paste("R2:", round(lm_dk$r.squared, 2), "&\n", ifelse(lm_dk$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_se <- paste("R2:", round(lm_se$r.squared, 2), "&\n", ifelse(lm_se$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_no <- paste("R2:", round(lm_no$r.squared, 2), "&\n", ifelse(lm_no$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+outliers_reg <- lm_data_reg %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+outliers_reg_1_2_std <- lm_data_reg %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+```
+
+### Plot
+
+```{r}
+region_new_jobs <- location_all %>% 
+  group_by(region, reg_pop, country) %>%
+  summarise(new_jobs = sum(new_jobs)) %>%
+  ungroup()
+
+region_new_jobs %>% 
+  ggplot(aes(round(reg_pop/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(reg_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  annotate("text", x=1160, y =270, label = r2_p_no)+
+  annotate("text", x=1590, y =220, label = r2_p_dk)+
+  annotate("text", x=2020, y =170, label = r2_p_all)+
+  annotate("text", x=2010, y =70, label = r2_p_se)+
+  theme_minimal() +
+  theme(legend.position = "top")
+ggsave("figs/all_region_pop.png", dpi= 600, width = 8, height = 4)
+```
+
+## GDP per capita
+
+Linear regression over number of jobs created depending on GDP per capita for each individual region.
+
+```{r}
+lm_regions_gdp <- lm(new_jobs ~ GDP_per_capita, data = regional_GDP)
+
+# looking at mdl results
+glance(lm_regions_gdp)
+summary(lm_regions_gdp)
+tidy(lm_regions_gdp)
+
+# extract data for annotating the plot
+lm_gl_gdp <- glance(lm_regions_gdp)
+r2_p_gdp_all <- paste("R2:", round(lm_gl_gdp$r.squared, 2), "&\n", ifelse(lm_gl_gdp$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+###
+
+lm_data_reg_gdp <- regional_GDP %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ GDP_per_capita, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_gdp_dk <- lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_gdp_se <- lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_gdp_no <- lm_data_reg_gdp %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_gdp_dk <- paste("R2:", round(lm_gdp_dk$r.squared, 2), 
+                     "&\n", ifelse(lm_gdp_dk$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_gdp_se <- paste("R2:", round(lm_gdp_se$r.squared, 2), 
+                     "&\n", ifelse(lm_gdp_se$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_gdp_no <- paste("R2:", round(lm_gdp_no$r.squared, 2), 
+                     "&\n", ifelse(lm_gdp_no$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+outliers_reg_gdp <- lm_data_reg_gdp %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+outliers_reg_1_2_std_gdp <- lm_data_reg_gdp %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+
+###
+
+gdp_jobs_plot <- regional_GDP %>% 
+  ggplot(aes(round(GDP_per_capita/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(GDP_per_capita/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg_gdp)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "GDP per capita in kEUR", y= "Nr. of new jobs") +
+  annotate("text", x=75, y =300, label = r2_p_gdp_no)+
+  annotate("text", x=90, y =205, label = r2_p_gdp_all)+
+  annotate("text", x=92, y =295, label = r2_p_gdp_dk)+
+  annotate("text", x=68, y =50, label = r2_p_gdp_se)+
+  theme_minimal() +
+  theme(legend.position = "top")
+
+gdp_jobs_plot
+ggsave(filename = "figs/gdp_jobs_plot.png", plot = gdp_jobs_plot, limitsize = FALSE, width = 8, height = 5)
+```
 
 # Combined patterns

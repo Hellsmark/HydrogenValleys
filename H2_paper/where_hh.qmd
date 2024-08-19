@@ -10,19 +10,19 @@ editor_options:
 
 ```{r}
 library(tidyverse)
-library(rlang)
-library(stringr)
-library(broom)
 library(ggthemes)
 library(ggrepel)
 library(tidygraph)
 library(ggraph)
 library(googlesheets4)
-library(gtsummary)
 library(gt)
 library(gtExtras)
 library(patchwork)
+library(broom)
 
+library(rlang)
+library(stringr)
+library(gtsummary)
 ```
 
 # Data
@@ -370,9 +370,12 @@ regional_GDP <- data.frame(
 
 #Info from
 #https://www.dst.dk/en/Statistik/emner/oekonomi/nationalregnskab/regionalfordelt-nationalregnskab
-#https://en.wikipedia.org/wiki/List_of_Norwegian_counties_by_GDP
-#https://en.wikipedia.org/wiki/List_of_Swedish_counties_by_GDP
+#https://www.scb.se/en/finding-statistics/statistics-by-subject-area/national-accounts/national-accounts/regional-accounts/pong/statistical-news/regional-accounts-2021/
 #https://www.exchangerates.org.uk/SEK-EUR-spot-exchange-rates-history-2024.html
+
+# Currently using data from wikipedia for Norway - can not manage to find good for norway - also using 2024 value of currencies
+#https://en.wikipedia.org/wiki/List_of_Norwegian_counties_by_GDP
+#https://www.ssb.no/en/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/statistikk/fylkesfordelt-nasjonalregnskap
 ```
 
 ```{r}
