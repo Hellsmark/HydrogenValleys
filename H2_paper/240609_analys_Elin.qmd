@@ -9,19 +9,23 @@ editor_options:
 # Libraries
 
 ```{r}
-library(tidyverse)
-library(rlang)
-library(stringr)
-library(broom)
-library(ggthemes)
-library(ggrepel)
-library(tidygraph)
-library(ggraph)
 library(googlesheets4)
-library(gtsummary)
+library(tidyverse)
+library(ggthemes)
 library(gt)
 library(gtExtras)
 library(patchwork)
+library(tidygraph)
+library(ggrepel)
+library(ggraph)
+
+library(gtsummary)
+
+
+library(rlang)
+library(stringr)
+library(broom)
+library(ggraph)
 library(gridExtra)
 library(cowplot)
 library(scales)
@@ -182,7 +186,7 @@ gt_tbl_country_comp <- tbl_country_comp %>%
   ) %>% gt_theme_espn()
 gt_tbl_country_comp
 
-gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
+#gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
 
 ```
 
@@ -418,21 +422,6 @@ final_figure2 <- cowplot::plot_grid(violine2,
                                                     nrow = 1,
                                                     ncol = 2,
                                                     rel_heights = c(1, 1))
-```
-
-top
-
-```{r}
-# Convert gt table to a data frame and then to a tableGrob
-table_df <- as.data.frame(gt_tbl_country_comp)
-table_grob <- tableGrob(table_df)
-
-# Combine the violin plot and the table grob using cowplot
-violine_plus_table <- plot_grid(
-  violine, table_grob, 
-  ncol = 1, 
-  rel_heights = c(3, 1)  # Adjust heights as needed
-)
 ```
 
 ## Places - Map
@@ -705,7 +694,7 @@ sctr_tbl <- sctr_tbl_info %>%
     )
   )
 
-sctr_tbl %>% gtsave("tables/sctr_tbl.png")
+#sctr_tbl %>% gtsave("tables/sctr_tbl.png")
 
 ```
 
