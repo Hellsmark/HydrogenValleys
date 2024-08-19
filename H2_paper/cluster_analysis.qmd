@@ -185,7 +185,7 @@ dend_plot<- fviz_dend(hc.cut,
                       main = paste("K:", k, " Method:", mm),
                       cex=0.4,
                       rect = TRUE)
-ggsave(paste0("figs/clust/k_", k, "_", mm, "_dend.png"), plot = dend_plot)
+#ggsave(paste0("figs/clust/k_", k, "_", mm, "_dend.png"), plot = dend_plot)
 
 # Visualize cluster
 cluster_plot <- fviz_cluster(hc.cut, 
@@ -268,7 +268,7 @@ df_hcl_long %>%
   theme_minimal()+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))+
   labs(x="", y ="")
-ggsave("figs/heat_ave_k3.png")
+#ggsave("figs/heat_ave_k3.png")
 
 ```
 
@@ -332,9 +332,9 @@ dend_color_h2 <- color_branches(hcobj_h2, k = 10)
 
 plot(dend_color_h2)  
 # Save the plot to a file
-png("figs/dend_dummy_ward_.png", width = 800, height = 600)  # Open a PNG device
-plot(dend_color_h2)
-dev.off()  # Close the device
+#png("figs/dend_dummy_ward_.png", width = 800, height = 600)  # Open a PNG device
+#plot(dend_color_h2)
+#dev.off()  # Close the device
 ```
 
 ```{r}
@@ -527,7 +527,7 @@ mca_result <- MCA(df_h2[, c("place", "sector", "competence")], graph = FALSE)
 mca_dims <- dimdesc(mca_result, axes = c(1, 2), proba = 0.2)
 
 # Use transformed MCA dimensions for clustering or further analysis
-mca_data_20 <- as.data.frame(mca_result$ind$coord)
+mca_data <- as.data.frame(mca_result$ind$coord)
 
 # Now mca_data contains transformed MCA dimensions suitable for clustering
 
@@ -545,7 +545,7 @@ df_knee_mca <- tibble(k = 2:60, wss = wss_mca)
 df_knee_mca %>% 
   ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/kmean_knee_mca.png")
+#ggsave("figs/kmean_knee_mca.png")
 # => k= 9-13
 
 # Silhouete
@@ -559,7 +559,7 @@ df_sil_mca <- tibble(k = 2:60, sil_width = sil_width_mca)
 df_sil_mca %>% ggplot(aes(k, sil_width)) + geom_line() + 
   geom_point()+
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/sil_width_mca.png")
+#ggsave("figs/sil_width_mca.png")
 # => k=2, 5
 
 
@@ -617,14 +617,14 @@ best_dbscan <- fpc::dbscan(mca_data, eps = best_eps, MinPts = best_minpts)
 fviz_cluster(best_dbscan, mca_data, geom = "point")
 
 
-png("figs/kNNdist_5line.png", width = 800, height = 600)  # Open a PNG device
-kNNdistplot(mca_data,k=5)
-abline(h=5,lty=2)
-dev.off()  # Close the device
+#png("figs/kNNdist_5line.png", width = 800, height = 600)  # Open a PNG device
+#kNNdistplot(mca_data,k=5)
+#abline(h=5,lty=2)
+#dev.off()  # Close the device
 
-png("figs/dpscan5_34.png", width = 800, height = 600)  # Open a PNG device
-fviz_cluster(f, mca_data, geom = "point") 
-dev.off()  # Close the device
+#png("figs/dpscan5_34.png", width = 800, height = 600)  # Open a PNG device
+#fviz_cluster(f, mca_data, geom = "point") 
+#dev.off()  # Close the device
 
 ```
 
@@ -1407,7 +1407,7 @@ df_knee_comp <- tibble(k = 2:60, wss = wss_comp)
 df_knee_comp %>% 
   ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/company_clusters/kmean_elbow.png")
+#ggsave("figs/company_clusters/kmean_elbow.png")
 # => 
 
 # Silhouete
@@ -1421,7 +1421,7 @@ df_sil_comp <- tibble(k = 2:60, sil_width = sil_width_comp)
 df_sil_comp %>% ggplot(aes(k, sil_width)) + geom_line() + 
   geom_point()+
   scale_x_continuous(breaks = 2:60)
-ggsave("figs/company_clusters/sil_width_.png")
+#ggsave("figs/company_clusters/sil_width_.png")
 
 ```
 
@@ -1558,10 +1558,10 @@ jobs_clustered <- jobs %>% # Keep in mind that cluster 2 and 3 are unclear and s
 jobs_cluster_nicename <- jobs_clustered %>% # NOTICE the names and numbers may not work with current run
   mutate(cluster = case_when(
     cluster == 1 ~ "Norwegian Energy Engineering",
-    cluster == 2 ~ "Others1",
-    cluster == 3 ~ "Nordic Broad Energy",
+    cluster == 2 ~ "Others",
+    cluster == 3 ~ "Energy manufacturing & utilisation",
     cluster == 4 ~ "Danish & Norwegian Research",
-    cluster == 5 ~ "Others2",
+    cluster == 5 ~ "Hydrogen manufacturing & others",
     cluster == 6 ~ "Management & Finance in Oslo & Copenhagen",
     TRUE ~ as.character(cluster)
   ))
@@ -1569,10 +1569,10 @@ jobs_cluster_nicename <- jobs_clustered %>% # NOTICE the names and numbers may n
 df_hcl_nicename_long <- df_hcl_6 %>% # NOTICE the names and numbers may not work with current run
   mutate(cluster = case_when(
     cl == 1 ~ "Norwegian Energy Engineering",
-    cl == 2 ~ "Others1",
-    cl == 3 ~ "Nordic Broad Energy",
+    cl == 2 ~ "Others",
+    cl == 3 ~ "Energy manufacturing & utilisation",
     cl == 4 ~ "Danish & Norwegian Research",
-    cl == 5 ~ "Others2",
+    cl == 5 ~ "Hydrogen manufacturing & others",
     cl == 6 ~ "Management & Finance in Oslo & Copenhagen",
     TRUE ~ as.character(cl)
   )) %>%
@@ -1606,7 +1606,7 @@ cluster_overtime_plot <- jobs_over_time_clusters %>%
 
 cluster_overtime_plot
 
-ggsave(filename = "figs/cluster_paper_plots/cluster_overtime_plot.png", plot = cluster_overtime_plot, limitsize = FALSE, width = 12, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/cluster_overtime_plot.png", plot = cluster_overtime_plot, limitsize = FALSE, width = 12, height = 7)
 
 ```
 
@@ -1633,7 +1633,7 @@ sector_per_region_plot <- jobs_clustered %>%
 
 sector_per_region_plot
 
-ggsave(filename = "figs/cluster_paper_plots/sector_per_region.png", plot = sector_per_region_plot, limitsize = FALSE, width = 14, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/sector_per_region.png", plot = sector_per_region_plot, limitsize = FALSE, width = 14, height = 7)
 
 # Not sure how informative this is. So many regions, makes it difficult to see difference between the colors. 
 ```
@@ -1669,7 +1669,7 @@ sector_per_region_plot_dk <- sector_per_region_dk %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_dk.png", plot = sector_per_region_plot_dk, limitsize = FALSE, width = 14, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_dk.png", plot = sector_per_region_plot_dk, limitsize = FALSE, width = 14, height = 7)
 
 
 sector_per_region_plot_no <- sector_per_region_no %>%
@@ -1698,8 +1698,8 @@ sector_per_region_plot_se <- sector_per_region_se %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_no.png", plot = sector_per_region_plot_no, limitsize = FALSE, width = 14, height = 7)
-ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_se.png", plot = sector_per_region_plot_se, limitsize = FALSE, width = 14, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_no.png", plot = sector_per_region_plot_no, limitsize = FALSE, width = 14, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_se.png", plot = sector_per_region_plot_se, limitsize = FALSE, width = 14, height = 7)
 
 ### Patch together
 
@@ -1768,7 +1768,7 @@ sector_per_region_plot_combined <- (sector_per_region_plot_dk /
 # Display the combined plot
 print(sector_per_region_plot_combined)
 
-ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_combined.png", plot = sector_per_region_plot_combined, limitsize = FALSE, width = 20, height = 10)
+#ggsave(filename = "figs/cluster_paper_plots/sector_per_region_plot_combined.png", plot = sector_per_region_plot_combined, limitsize = FALSE, width = 20, height = 10)
 
 ```
 
@@ -1788,7 +1788,7 @@ region_per_sector_plot_dk <- sector_per_region_dk %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_dk.png", plot = region_per_sector_plot_dk, limitsize = FALSE, width = 14, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_dk.png", plot = region_per_sector_plot_dk, limitsize = FALSE, width = 14, height = 7)
 
 region_per_sector_plot_no <- sector_per_region_no %>%
   ggplot(aes(x= n, y= fct_rev(sector), 
@@ -1803,7 +1803,7 @@ region_per_sector_plot_no <- sector_per_region_no %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_no.png", plot = region_per_sector_plot_no, limitsize = FALSE, width = 14, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_no.png", plot = region_per_sector_plot_no, limitsize = FALSE, width = 14, height = 7)
 
 
 region_per_sector_plot_se <- sector_per_region_se %>%
@@ -1819,7 +1819,7 @@ region_per_sector_plot_se <- sector_per_region_se %>%
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
 
-ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_se.png", plot = region_per_sector_plot_se, limitsize = FALSE, width = 14, height = 7)
+#ggsave(filename = "figs/cluster_paper_plots/region_per_sector_plot_se.png", plot = region_per_sector_plot_se, limitsize = FALSE, width = 14, height = 7)
 
 
 ```
@@ -1843,7 +1843,7 @@ jobrole_per_region_plot <- jobs_clustered %>%
 
 jobrole_per_region_plot
 
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot.png", plot = jobrole_per_region_plot, limitsize = FALSE, width = 15, height = 6)
+#ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot.png", plot = jobrole_per_region_plot, limitsize = FALSE, width = 15, height = 6)
 
 
 # Not sure how informative this is. So many regions, makes it difficult to see difference between the colors. 
@@ -1932,7 +1932,7 @@ jobrole_per_region_plot_combined <- (jobrole_per_region_plot_dk /
 # Display the combined plot
 print(jobrole_per_region_plot_combined)
 
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_combined.png", plot = jobrole_per_region_plot_combined, limitsize = FALSE, width = 20, height = 10)
+#ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_combined.png", plot = jobrole_per_region_plot_combined, limitsize = FALSE, width = 20, height = 10)
 ```
 
 ```{r}
@@ -1984,9 +1984,9 @@ jobrole_per_region_plot_se <- jobrole_per_region_se %>%
 
 
 
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_dk.png", plot = jobrole_per_region_plot_dk, limitsize = FALSE, width = 20, height = 10)
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_no.png", plot = jobrole_per_region_plot_no, limitsize = FALSE, width = 20, height = 10)
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_se.png", plot = jobrole_per_region_plot_se, limitsize = FALSE, width = 20, height = 10)
+#ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_dk.png", plot = jobrole_per_region_plot_dk, limitsize = FALSE, width = 20, height = 10)
+#ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_no.png", plot = jobrole_per_region_plot_no, limitsize = FALSE, width = 20, height = 10)
+#ggsave(filename = "figs/cluster_paper_plots/jobrole_per_region_plot_se.png", plot = jobrole_per_region_plot_se, limitsize = FALSE, width = 20, height = 10)
 
 
 ```
@@ -2009,7 +2009,7 @@ jobrole_per_sector <- jobs_clustered %>%
 
 jobrole_per_sector
 
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_sector.png", plot = jobrole_per_sector, limitsize = FALSE, width = 16, height = 6)
+#ggsave(filename = "figs/cluster_paper_plots/jobrole_per_sector.png", plot = jobrole_per_sector, limitsize = FALSE, width = 16, height = 6)
 
 ```
 
@@ -2035,7 +2035,7 @@ jobrole_per_cluster <- jobs_cluster_nicename %>%
 
 jobrole_per_cluster
 
-ggsave(filename = "figs/cluster_paper_plots/jobrole_per_cluster.png", plot = jobrole_per_cluster, limitsize = FALSE, width = 16, height = 6)
+#ggsave(filename = "figs/cluster_paper_plots/jobrole_per_cluster.png", plot = jobrole_per_cluster, limitsize = FALSE, width = 16, height = 6)
 ```
 
 Make dataframe for table
@@ -2103,7 +2103,7 @@ cluster_tbl <- cluster_tbl_data %>%
 cluster_tbl
 
 # Save table
-cluster_tbl %>% gtsave("figs/cluster_paper_plots/cluster_tbl.png")
+#cluster_tbl %>% gtsave("figs/cluster_paper_plots/cluster_tbl.png")
 ```
 
 Short table
@@ -2194,7 +2194,7 @@ Remake of shorter table with highlighted regions/sectors/competences
 
 ```{r}
 
-cluster_names <- c("Danish & Norwegian Research", "Management & Finance in Oslo & Copenhagen", "Nordic Broad Energy", "Norwegian Energy Engineering", "Others1", "Others2" )
+cluster_names <- c("Danish & Norwegian Research", "Hydrogen manufacturing & others", "Management & Finance in Oslo & Copenhagen", "Energy manufacturing & utilisation", "Norwegian Energy Engineering", "Others")
 
 cluster_tbl_data_short_WITH_bold <- data.frame(
   Group = character(),
@@ -2353,7 +2353,7 @@ cluster_tbl_short <- cluster_tbl_data_short %>%
 cluster_tbl_short
 
 # Save table
-cluster_tbl_short %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short.png")
+#cluster_tbl_short %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short.png")
 
 
 ```
@@ -2432,11 +2432,11 @@ most_important_for_region_tbl <- most_important_for_region %>%
   
 most_important_for_region_tbl
 
-gtsave(
-  data = most_important_for_region_tbl,
-  filename = "figs/cluster_paper_plots/most_important_for_region_tbl.png",
-  expand = 20  # Expand margins around the image
-)
+#gtsave(
+#  data = most_important_for_region_tbl,
+#  filename = "figs/cluster_paper_plots/most_important_for_region_tbl.png",
+#  expand = 20  # Expand margins around the image
+#)
 ```
 
 Most important for each cluster
@@ -2517,11 +2517,11 @@ most_important_for_cluster_tbl <- most_important_for_cluster %>%
   
 most_important_for_cluster_tbl
 
-gtsave(
-  data = most_important_for_cluster_tbl,
-  filename = "figs/cluster_paper_plots/most_important_for_cluster_tbl.png",
-  expand = 20  # Expand margins around the image
-)
+#gtsave(
+#  data = most_important_for_cluster_tbl,
+#  filename = "figs/cluster_paper_plots/most_important_for_cluster_tbl.png",
+#  expand = 20  # Expand margins around the image
+#)
 ```
 
 Most important company in region/group/sector/job role
@@ -2687,7 +2687,7 @@ nrJobs_perRegion_plot <- numberOf_jobsPer_region %>%
   
 nrJobs_perRegion_plot
 
-ggsave(filename = "figs/cluster_paper_plots/nrJobs_perRegion_plot.png", plot = nrJobs_perRegion_plot, limitsize = FALSE, width = 16, height = 8)
+#ggsave(filename = "figs/cluster_paper_plots/nrJobs_perRegion_plot.png", plot = nrJobs_perRegion_plot, limitsize = FALSE, width = 16, height = 8)
 
 
 ```
@@ -2730,7 +2730,7 @@ biggest_companies_plot <- biggest_companies %>%
   
 biggest_companies_plot
 
-ggsave(filename = "figs/cluster_paper_plots/biggest_companies_plot.png", plot = biggest_companies_plot, limitsize = FALSE, width = 16, height = 8)
+#ggsave(filename = "figs/cluster_paper_plots/biggest_companies_plot.png", plot = biggest_companies_plot, limitsize = FALSE, width = 16, height = 8)
 ```
 
 ## Table of companies in clusters
