@@ -2310,7 +2310,7 @@ cluster_tbl_short_WITH_BOLD <- cluster_tbl_data_short_WITH_bold %>%
 # Print the table
 cluster_tbl_short_WITH_BOLD
 
-#cluster_tbl_short_WITH_BOLD %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short_WITH_BOLD.png")
+cluster_tbl_short_WITH_BOLD %>% gtsave("figs/cluster_paper_plots/cluster_tbl_short_WITH_BOLD.png", vheight = 744, vwidth = 1250)
 ```
 
 #### Making a table manually
