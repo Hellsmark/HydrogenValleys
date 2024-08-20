@@ -58,8 +58,6 @@ df_job_roles_raw <- read_sheet(ss, sheet = "Job_roles")
 
 ## Other data
 
-### National information
-
 ```{r}
 # Labourforce 2023 in millions
 # https://data.worldbank.org/indicator/SL.TLF.TOTL.IN?locations=DK-NO-SE
@@ -73,39 +71,6 @@ workforce_gdp <- tribble(
   "NO", 3.0, 88, 486,
   "DK", 3.2, 68, 404
   )
-```
-
-### Regional information
-
-```{r}
-regional_GDP <- data.frame(
-  region = c("Agder","Dalarna","Gotland","Gävleborg","Halland",
-             "Hovedstaden","Jämtland","Kalmar","Kronoberg","Midtjylland",
-             "Møre og Romsdal","Nordjylland","Nordland","Norrbotten","Oslo",
-             "Rogaland","Sjælland","Skåne","Stockholm","Syddanmark",
-             "Södermanland","Troms og Finnmark","Trøndelag","Uppsala","Vestfold og Telemark",
-             "Vestland","Viken","Värmland","Västerbotten","Västernorrland",
-             "Västmanland","Västra Götaland","Östergötland"),
-  GDP_per_capita = c(44772, 41862.5, 37331.5, 40188, 40286.5, 
-                     90316.8, 41567, 39991, 50038, 56448,
-                     48412.8, 48787.2, 48412.8, 63828, 91512,
-                     58744.8, 39916.8, 44620.5, 71806.5, 54028.8,
-                     37233, 49101.6, 49790.4, 47477, 43591.2,
-                     51364.8, 44083.2, 41961, 46590.5, 46098,
-                     40877.5, 50924.5, 45704)
-  ) %>%
-  left_join(region_new_jobs) %>%
-  select(country,region,reg_pop,GDP_per_capita,new_jobs)
-
-#Info from
-#https://www.dst.dk/en/Statistik/emner/oekonomi/nationalregnskab/regionalfordelt-nationalregnskab
-#https://www.scb.se/en/finding-statistics/statistics-by-subject-area/national-accounts/national-accounts/regional-accounts/pong/statistical-news/regional-accounts-2021/
-#https://www.ssb.no/en/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/statistikk/fylkesfordelt-nasjonalregnskap
-
-#Exchange rate used from year of measurement
-#https://www.exchangerates.org.uk/DKK-EUR-spot-exchange-rates-history-2022.html
-#https://www.exchangerates.org.uk/NOK-EUR-spot-exchange-rates-history-2021.html
-#https://www.exchangerates.org.uk/SEK-EUR-spot-exchange-rates-history-2021.html
 ```
 
 ## General wrangle and dataselection
@@ -232,14 +197,14 @@ ggsave(filename = "figs/violine_table.png", width = 6, height = 4, dpi = 600)
 ### Plot of number of jobs per region
 
 ```{r}
-numberOf_jobsPer_region <- jobs_cluster_nicename %>%
-  group_by(nation, place) %>%
+numberOf_jobsPer_region <- jobs %>%
+  group_by(country, place) %>%
   summarise(n =n()) %>%
   mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1"))
 
 nrJobs_perRegion_plot <- numberOf_jobsPer_region %>%
   ggplot(aes(x= n, y= fct_rev(place),
-             fill = nation)) + 
+             fill = country)) + 
   geom_col(drop = F)+
     scale_x_continuous()+
   scale_fill_colorblind("Country")+
@@ -693,24 +658,22 @@ ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors,
 
 ```{r}
 (jobs_cluster_nicename %>% group_by(nation, company) %>% summarise(n =n()) %>% 
-         ungroup() %>% arrange(desc(n)) %>% select(n) %>% sum())*3/4
-
-jobs_cluster_nicename %>% group_by(nation, company) %>% summarise(n =n()) %>% 
-         ungroup() %>% arrange(desc(n)) %>% head(52) %>% select(n) %>% sum()
+         ungroup() %>% arrange(desc(n)) %>% head(20) %>% select(n) %>% sum())/(jobs_cluster_nicename %>% group_by(nation, company) %>% summarise(n =n()) %>% 
+         ungroup() %>% arrange(desc(n)) %>% select(n) %>% sum())
 
 biggest_companies <- jobs_cluster_nicename %>%
   group_by(nation, company) %>%
   summarise(n =n()) %>%
   ungroup() %>%
-  arrange(desc(n)) #%>%
-  head(33)
+  arrange(desc(n)) %>%
+  head(20)
 
 # 12 > 50%
 # 33 > 66%
 # 52 > 75%
 
 biggest_companies_plot <- biggest_companies %>%
-  ggplot(aes(x= n, y= fct_rev(company),
+  ggplot(aes(x= n, y= fct_reorder(company, n),
              fill = nation)) + 
   geom_col(drop = F)+
     scale_x_continuous()+
@@ -721,7 +684,23 @@ biggest_companies_plot <- biggest_companies %>%
       legend.position = "bottom", 
       text = element_text(size = 14), 
       plot.title = element_text(size = 12))
-  
+
+biggest_companies_plot <- tbl %>% 
+  group_by(Country, Sector) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(Sector), 
+             fill = Country)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
 biggest_companies_plot
 
 ggsave(filename = "figs/cluster_paper_plots/biggest_companies_plot.png", plot = biggest_companies_plot, limitsize = FALSE, width = 16, height = 8)
@@ -1005,6 +984,39 @@ location_all <- jobs %>%
   rename("location" = "Location") %>%
   select(-new_name) %>%
   unique()
+```
+
+## Extra data
+
+```{r}
+regional_GDP <- data.frame(
+  region = c("Agder","Dalarna","Gotland","Gävleborg","Halland",
+             "Hovedstaden","Jämtland","Kalmar","Kronoberg","Midtjylland",
+             "Møre og Romsdal","Nordjylland","Nordland","Norrbotten","Oslo",
+             "Rogaland","Sjælland","Skåne","Stockholm","Syddanmark",
+             "Södermanland","Troms og Finnmark","Trøndelag","Uppsala","Vestfold og Telemark",
+             "Vestland","Viken","Värmland","Västerbotten","Västernorrland",
+             "Västmanland","Västra Götaland","Östergötland"),
+  GDP_per_capita = c(44772, 41862.5, 37331.5, 40188, 40286.5, 
+                     90316.8, 41567, 39991, 50038, 56448,
+                     48412.8, 48787.2, 48412.8, 63828, 91512,
+                     58744.8, 39916.8, 44620.5, 71806.5, 54028.8,
+                     37233, 49101.6, 49790.4, 47477, 43591.2,
+                     51364.8, 44083.2, 41961, 46590.5, 46098,
+                     40877.5, 50924.5, 45704)
+  ) %>%
+  left_join(region_new_jobs) %>%
+  select(country,region,reg_pop,GDP_per_capita,new_jobs)
+
+#Info from
+#https://www.dst.dk/en/Statistik/emner/oekonomi/nationalregnskab/regionalfordelt-nationalregnskab
+#https://www.scb.se/en/finding-statistics/statistics-by-subject-area/national-accounts/national-accounts/regional-accounts/pong/statistical-news/regional-accounts-2021/
+#https://www.ssb.no/en/nasjonalregnskap-og-konjunkturer/nasjonalregnskap/statistikk/fylkesfordelt-nasjonalregnskap
+
+#Exchange rate used from year of measurement
+#https://www.exchangerates.org.uk/DKK-EUR-spot-exchange-rates-history-2022.html
+#https://www.exchangerates.org.uk/NOK-EUR-spot-exchange-rates-history-2021.html
+#https://www.exchangerates.org.uk/SEK-EUR-spot-exchange-rates-history-2021.html
 ```
 
 ## Population size
