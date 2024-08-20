@@ -40,6 +40,7 @@ library(ggplot2)
 library(viridis)
 library(gtsummary)
 library(stringr)
+library(forcats)
 ```
 
 # Data
@@ -91,7 +92,11 @@ jobs <- df_main_raw %>%
   mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
   filter(Scrape_date >= "2023-08-20") %>%
   left_join(job_roles) %>%
-  filter(country %in% c("Denmark","Norway","Sweden"))
+  filter(country %in% c("Denmark","Norway","Sweden")) %>%
+  mutate(Company = ifelse(Company == "Rekryteringsföretag", "Recruitment companies", Company))
+
+companies <- df_companies_raw %>%
+  mutate(Name = ifelse(Name == "Rekryteringsföretag", "Recruitment companies", Name))
 ```
 
 # Data overview
@@ -198,6 +203,7 @@ ggsave(filename = "figs/violine_table.png", width = 6, height = 4, dpi = 600)
 
 ```{r}
 numberOf_jobsPer_region <- jobs %>%
+  unite(place, c("region", "country_code"), sep = ", ") %>%
   group_by(country, place) %>%
   summarise(n =n()) %>%
   mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1"))
@@ -364,33 +370,30 @@ ggsave(filename = "figs/nord_comp_tbl_plot.png", width = 6, height = 4, dpi = 60
 ## Actor types
 
 ```{r}
-types <- df_companies_raw %>% 
+types <- companies %>% 
   select(Name, Multinational, Organisation_type, Ownership_type, Industry_Sector, Hydrogen_specialist, Location_of_jobs) %>%
   separate(Location_of_jobs, into = paste0("location_", 1:5), sep = ", ", fill = "right") %>%
   mutate(
     multi_Nordic = rowSums(across(location_1:location_5, ~ . %in% 
                                     c("DK","NO","SE", "DK ","NO ","SE ",
                                       " DK"," NO"," SE", " DK "," NO "," SE "))) >= 2
-  )
+  ) %>% 
+  rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic") %>% 
+  select(-location_1,-location_2,-location_3,-location_4,-location_5)
 
 company_types <- jobs %>% 
   group_by(Company, country_code) %>% 
   summarise(n = n()) %>%
   left_join(types, by = c("Company" = "Name")) %>%
-  select(Company, country_code, n, Multinational, Organisation_type, Ownership_type,
-         Industry_Sector, Hydrogen_specialist, multi_Nordic) %>%
+  select(Company, country_code, n, Multinational, Organisation, Ownership,
+         Sector, "H2-spec.", MultiNordic) %>%
   na.omit()
-
-company_types_clean <- company_types %>% 
-  rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic", "Country" = "country_code")
-
-
 
 ppf <- function(vr_name) {
   y <- sym(vr_name)
-  pl <- company_types_clean %>% 
+  pl <- company_types %>% 
   ggplot(aes(x = n, y = !!y , 
-             fill = Country)) + 
+             fill = country_code)) + 
   geom_col(drop = F)+
     scale_x_continuous(limits = c(0, 1600))+
     scale_fill_colorblind("Country")+
@@ -420,7 +423,7 @@ multi_pl
 #ggsave(filename = "figs/multi_pl.png", dpi = 1200, width = 12, height = 8)
 ```
 
-### Country and company connections
+### Country and company connections plot
 
 ```{r}
 df_gs <- jobs %>% 
@@ -542,7 +545,7 @@ sctr_tbl
 
 ```{r}
 tbl <- jobs %>%
-  inner_join(df_companies %>% 
+  inner_join(companies %>% 
                select(Name, Industry_Sector), by = c("Company"="Name")) %>%
   rename(Sector = Industry_Sector, Country = country_code) %>%
   mutate(Sector = fct_infreq(Sector)) %>% 
@@ -657,43 +660,38 @@ ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors,
 ## Organisations recruiting the most
 
 ```{r}
-(jobs_cluster_nicename %>% group_by(nation, company) %>% summarise(n =n()) %>% 
-         ungroup() %>% arrange(desc(n)) %>% head(20) %>% select(n) %>% sum())/(jobs_cluster_nicename %>% group_by(nation, company) %>% summarise(n =n()) %>% 
+# This calculation is to see what percentage of total jobs that a certain number of top recruiting actors have created - see "head(XX)"
+(jobs %>% group_by(country, Company) %>% summarise(n =n()) %>% 
+         ungroup() %>% arrange(desc(n)) %>% head(30) %>% select(n) %>% sum())/(jobs %>% group_by(country, Company) %>% summarise(n =n()) %>% 
          ungroup() %>% arrange(desc(n)) %>% select(n) %>% sum())
-
-biggest_companies <- jobs_cluster_nicename %>%
-  group_by(nation, company) %>%
-  summarise(n =n()) %>%
-  ungroup() %>%
-  arrange(desc(n)) %>%
-  head(20)
 
 # 12 > 50%
 # 33 > 66%
 # 52 > 75%
 
+biggest_companies <- jobs %>%
+  group_by(country, Company) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  arrange(desc(n)) %>%
+  head(20)
+
+# Summing the job counts by company across countries
+aggregated_companies <- biggest_companies %>%
+  group_by(Company) %>%
+  summarise(total_jobs = sum(n))
+
+# Merging back the total job counts with the original data
+biggest_companies <- biggest_companies %>%
+  left_join(aggregated_companies, by = "Company")
+
 biggest_companies_plot <- biggest_companies %>%
-  ggplot(aes(x= n, y= fct_reorder(company, n),
-             fill = nation)) + 
+  ggplot(aes(x= n, y= fct_reorder(Company, total_jobs),
+             fill = country)) + 
   geom_col(drop = F)+
     scale_x_continuous()+
   scale_fill_colorblind("Country")+
     labs(x= "", y = "", title = "Total jobs per most recruiting companies (responsible for 67% of all jobs)")+
-    theme_minimal()+
-    theme(
-      legend.position = "bottom", 
-      text = element_text(size = 14), 
-      plot.title = element_text(size = 12))
-
-biggest_companies_plot <- tbl %>% 
-  group_by(Country, Sector) %>%
-  summarise(n =n()) %>%
-  ggplot(aes(x= n, y= fct_rev(Sector), 
-             fill = Country)) + 
-  geom_col(drop = F)+
-    scale_x_continuous()+
-    scale_fill_colorblind("Country")+
-    labs(x= "", y = "", title = "Total jobs per sector")+
     theme_minimal()+
     theme(
       legend.position = "bottom", 
@@ -973,7 +971,7 @@ ggsave(filename = "figs/jobroles/combined_engineers.png", plot = combined_engine
 
 # Where
 
-## Wrangle 
+## Wrangle
 
 ```{r}
 location_all <- jobs %>% 
@@ -984,6 +982,11 @@ location_all <- jobs %>%
   rename("location" = "Location") %>%
   select(-new_name) %>%
   unique()
+
+region_new_jobs <- location_all %>% 
+  group_by(region, reg_pop, country) %>%
+  summarise(new_jobs = sum(new_jobs)) %>%
+  ungroup()
 ```
 
 ## Extra data
@@ -1026,11 +1029,6 @@ Linear regression over number of jobs created depending on population size of re
 ### All countries as one
 
 ```{r}
-region_new_jobs <- location_all %>% 
-  group_by(region, reg_pop, country) %>%
-  summarise(new_jobs = sum(new_jobs)) %>%
-  ungroup()
-
 lm_regions <- lm(new_jobs ~ reg_pop, data = region_new_jobs)
 
 # looking at mdl results
@@ -1230,15 +1228,15 @@ ggsave(filename = "figs/gdp_jobs_plot.png", plot = gdp_jobs_plot, limitsize = FA
 ```{r}
 df_jobs <- jobs %>% 
   left_join(companies, by =c("Company" = "Name")) %>%
-  select(country = country_code, region, sector= Industry_Sector, competence= job_role) %>%
+  select(country_code, region, sector= Industry_Sector, competence= job_role) %>%
   na.omit()
 
 df_cl <- df_jobs %>%
-  group_by(country, region, sector, competence) %>%
+  group_by(country_code, region, sector, competence) %>%
   summarise(n = n())
 
 df_wide_cl <- df_cl %>% 
-  unite(place, c("region", "country"), sep = ", ") %>%
+  unite(place, c("region", "country_code"), sep = ", ") %>%
   pivot_wider(names_from = "competence", 
               values_from = "n", 
               values_fill = 0) %>% 
