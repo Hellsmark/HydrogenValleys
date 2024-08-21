@@ -1114,11 +1114,6 @@ outliers_reg_1_2_std <- lm_data_reg %>%
 ### Plot
 
 ```{r}
-#region_new_jobs <- location_all %>% 
-#  group_by(region, reg_pop, country) %>%
-#  summarise(new_jobs = sum(new_jobs)) %>%
-#  ungroup()
-
 region_new_jobs %>% 
   ggplot(aes(round(reg_pop/1e3), new_jobs, 
              colour = country)) + 
