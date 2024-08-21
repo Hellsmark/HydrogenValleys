@@ -204,11 +204,18 @@ ggsave(filename = "figs/violine_table.png", width = 6, height = 4, dpi = 600)
 ### Plot of number of jobs per region
 
 ```{r}
+#Adding the missing regions manually (this is done once more on row 1007)
+regions_noJobs <- data.frame(
+  country = c("Norway", "Sweden", "Sweden","Sweden"),
+  place = c("NO, Innlandet", "SE, Blekinge", "SE, Jönköping", "SE, Örebro"),
+  n = c(0,0,0,0))
+
 numberOf_jobsPer_region <- jobs %>%
   unite(place, c("region", "country_code"), sep = ", ") %>%
   group_by(country, place) %>%
   summarise(n =n()) %>%
-  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1"))
+  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>%
+  full_join(regions_noJobs)
 
 nrJobs_perRegion_plot <- numberOf_jobsPer_region %>%
   ggplot(aes(x= n, y= fct_rev(place),
@@ -996,6 +1003,16 @@ region_new_jobs <- location_all %>%
 ## Extra data
 
 ```{r}
+
+#adding the missing regions manually (this is done on row 207 as well)
+missing_regions <- data.frame(
+  region = c("Innlandet", "Blekinge", "Jönköping", "Örebro"),
+  reg_pop = c(376304, 157973, 368856, 308116),
+  country = c("Norway", "Sweden", "Sweden","Sweden"),
+  new_jobs = c(0,0,0,0))
+
+region_new_jobs<- full_join(region_new_jobs, missing_regions)
+
 regional_GDP <- data.frame(
   region = c("Agder","Dalarna","Gotland","Gävleborg","Halland",
              "Hovedstaden","Jämtland","Kalmar","Kronoberg","Midtjylland",
@@ -1003,17 +1020,19 @@ regional_GDP <- data.frame(
              "Rogaland","Sjælland","Skåne","Stockholm","Syddanmark",
              "Södermanland","Troms og Finnmark","Trøndelag","Uppsala","Vestfold og Telemark",
              "Vestland","Viken","Värmland","Västerbotten","Västernorrland",
-             "Västmanland","Västra Götaland","Östergötland"),
+             "Västmanland","Västra Götaland","Östergötland", "Innlandet", "Blekinge", "Jönköping", "Örebro"),
   GDP_per_capita = c(44772, 41862.5, 37331.5, 40188, 40286.5, 
                      90316.8, 41567, 39991, 50038, 56448,
                      48412.8, 48787.2, 48412.8, 63828, 91512,
                      58744.8, 39916.8, 44620.5, 71806.5, 54028.8,
                      37233, 49101.6, 49790.4, 47477, 43591.2,
                      51364.8, 44083.2, 41961, 46590.5, 46098,
-                     40877.5, 50924.5, 45704)
+                     40877.5, 50924.5, 45704, 43296, 42650.5, 46492, 44916)
   ) %>%
   left_join(region_new_jobs) %>%
   select(country,region,reg_pop,GDP_per_capita,new_jobs)
+
+
 
 #Info from
 #https://www.dst.dk/en/Statistik/emner/oekonomi/nationalregnskab/regionalfordelt-nationalregnskab
@@ -1024,6 +1043,7 @@ regional_GDP <- data.frame(
 #https://www.exchangerates.org.uk/DKK-EUR-spot-exchange-rates-history-2022.html
 #https://www.exchangerates.org.uk/NOK-EUR-spot-exchange-rates-history-2021.html
 #https://www.exchangerates.org.uk/SEK-EUR-spot-exchange-rates-history-2021.html
+
 ```
 
 ## Population size
@@ -1094,10 +1114,10 @@ outliers_reg_1_2_std <- lm_data_reg %>%
 ### Plot
 
 ```{r}
-region_new_jobs <- location_all %>% 
-  group_by(region, reg_pop, country) %>%
-  summarise(new_jobs = sum(new_jobs)) %>%
-  ungroup()
+#region_new_jobs <- location_all %>% 
+#  group_by(region, reg_pop, country) %>%
+#  summarise(new_jobs = sum(new_jobs)) %>%
+#  ungroup()
 
 region_new_jobs %>% 
   ggplot(aes(round(reg_pop/1e3), new_jobs, 
