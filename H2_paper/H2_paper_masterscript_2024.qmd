@@ -52,7 +52,7 @@ library(gsubfn)
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 df_main_raw <- read_sheet(ss, sheet = "Main")
-df_geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:J")
+df_geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:M")
 
 df_companies_raw <- read_sheet(ss, sheet = "CompanyAnalysis")
 df_job_roles_raw <- read_sheet(ss, sheet = "Job_roles")
