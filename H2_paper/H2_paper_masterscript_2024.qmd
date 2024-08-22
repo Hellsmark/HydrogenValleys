@@ -1475,6 +1475,8 @@ df_wide_cl <- df_cl %>%
               values_fill = 0) %>% 
   ungroup()
 
+#mutate(place = paste(region, "(", country_code, ")", sep = ""))
+
 mtrx <- as.matrix(df_wide_cl %>% select(-place, -sector))
 ```
 
@@ -1813,7 +1815,9 @@ df_hcl_nicename_long <- df_hcl_6 %>% # NOTICE the names and numbers may not work
   pivot_longer(-c(id, place, sector, cl, cluster), names_to = "competence", values_to = "n")
 ```
 
-### Tables
+### Tables - This part does not work now
+
+Need to update "other management" and the ", " -\> "( )" part
 
 ```{r}
 cluster_tbl_sectors <- jobs_cluster_nicename %>%
@@ -2036,9 +2040,9 @@ cluster_function <- function(matrx,k){
   set.seed(123456789)
   KM <- kmeans(matrx,k)
   
-  png(paste0("figs/k-mean_",as.character(k),".png"), width = 800, height = 600)
-  autoplot(KM,matrx,frame=TRUE)
-  dev.off()
+  k_mean_plot <- autoplot(KM,matrx,frame=TRUE)
+  k_mean_plot
+  ggsave(paste0("figs/clusters/k-mean_",as.character(k),".png"))
   
   silhouette_score <- silhouette(KM$cluster, dist(matrx))
   mean_silhouette_score <- mean(silhouette_score[, 3])
@@ -2124,7 +2128,10 @@ cluster_tbl_jobroles <- jobs_clustered %>%
   pivot_wider(names_from = "Job_roles",
               values_from = Job_roles) %>%
   unite("Job_Roles", "Administration","Engineering", "Environmental",
-        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Other management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management",
+        "Other","PhD", "Procurement & Logistics", "Project managment", 
+        "Public administration", "Quality assurance", "Researcher", 
+        "Sales & Customer service",  "Technician & Maintenance",
         sep = ", ", na.rm = TRUE)
 
 cluster_tbl_data <- cluster_tbl_sectors %>%
@@ -2140,8 +2147,9 @@ cluster_tbl_data_short <- merge(
           "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
           "Nordland (NO)", "Norrbotten (SE)", "Oslo (NO)", "Rogaland (NO)", "Sjælland (DK)", 
           "Skåne (SE)", "Stockholm (SE)", "Syddanmark (DK)", "Södermanland (SE)", 
-          "Troms og Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
-          "Vestfold og Telemark (NO)", "Vestland (NO)", "Viken (NO)", "Värmland (SE)", 
+          "Troms (NO)","Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
+          "Vestfold (NO)","Telemark (NO)", "Vestland (NO)", "Akershus (NO)","Buskerud (NO)",
+          "Østfold (NO)", "Värmland (SE)", 
           "Västerbotten (SE)", "Västernorrland (SE)", "Västmanland (SE)", 
           "Västra Götaland (SE)", "Östergötland (SE)",
           sep = ", ", na.rm = TRUE),
@@ -2161,7 +2169,7 @@ cluster_tbl_data_short <- merge(
     pivot_wider(names_from = "Job_roles",
                 values_from = Job_roles) %>%
     unite("Job_Roles", "Administration","Engineering", "Environmental",
-        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Other management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management", "Other","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
           sep = ", ", na.rm = TRUE),
     by = "Group", all.x = TRUE
   )
@@ -2290,7 +2298,7 @@ Area to run the functions for the wished for configurations
 
 ```{r}
 # Running for multiple k
-for (i in 2:10){
+for (i in 11:12){
   cluster_result_i <- all_cluster_functions_together(i,mtrx)
 }
 ```
