@@ -207,29 +207,29 @@ ggsave(filename = "figs/violine_table.png", width = 6, height = 4, dpi = 600)
 #Adding the missing regions manually (this is done once more on row 1007)
 regions_noJobs <- data.frame(
   country = c("Norway", "Sweden", "Sweden","Sweden"),
-  place = c("NO, Innlandet", "SE, Blekinge", "SE, Jönköping", "SE, Örebro"),
+  region = c("Innlandet", "Blekinge", "Jönköping", "Örebro"),
   n = c(0,0,0,0))
 
 numberOf_jobsPer_region <- jobs %>%
-  unite(place, c("region", "country_code"), sep = ", ") %>%
-  group_by(country, place) %>%
-  summarise(n =n()) %>%
-  mutate(place = str_replace(place, "(.*), (..)", "\\2, \\1")) %>%
-  full_join(regions_noJobs)
+  group_by(country, region) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  full_join(regions_noJobs) %>%
+  arrange(country, desc(n)) %>%
+  mutate(region = factor(region, levels = unique(region)))
 
 nrJobs_perRegion_plot <- numberOf_jobsPer_region %>%
-  ggplot(aes(x= n, y= fct_rev(place),
-             fill = country)) + 
-  geom_col(drop = F)+
-    scale_x_continuous()+
-  scale_fill_colorblind("Country")+
-    labs(x= "", y = "", title = "Total jobs per region")+
-    theme_minimal()+
-    theme(
-      legend.position = "bottom", 
-      text = element_text(size = 14), 
-      plot.title = element_text(size = 12))
-  
+  ggplot(aes(x = n, y = fct_rev(region), fill = country)) + 
+  geom_col(drop = FALSE) +
+  scale_x_continuous() +
+  scale_fill_colorblind("Country") +
+  labs(x = "", y = "", title = "Total jobs per region") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom", 
+    text = element_text(size = 14), 
+    plot.title = element_text(size = 12)
+    )
+
 nrJobs_perRegion_plot
 
 ggsave(filename = "figs/cluster_paper_plots/nrJobs_perRegion_plot.png", plot = nrJobs_perRegion_plot, limitsize = FALSE, width = 16, height = 8)
@@ -461,7 +461,7 @@ gs <- df_gs %>%
 nodes <- gs %N>% as_tibble()
 edges <- gs %E>% as_tibble()
 
-set.seed(12345)
+set.seed(123456)
 node_edge_map <- ggraph(gs, layout = "fr") +
   geom_edge_link(aes(edge_width = weight), 
                  edge_alpha = 0.3, 
@@ -1231,7 +1231,7 @@ gdp_jobs_plot <- regional_GDP %>%
   scale_size_continuous(range = c(1,4)) +
   guides(size = "none")+
   labs(x= "GDP per capita in kEUR", y= "Nr. of new jobs") +
-  annotate("text", x=94, y =228, label = r2_p_gdp_no)+
+  annotate("text", x=90, y =233, label = r2_p_gdp_no)+
   annotate("text", x=87, y =160, label = r2_p_gdp_all)+
   annotate("text", x=82, y =250, label = r2_p_gdp_dk)+
   annotate("text", x=75, y =46, label = r2_p_gdp_se)+
@@ -1240,6 +1240,218 @@ gdp_jobs_plot <- regional_GDP %>%
 
 gdp_jobs_plot
 ggsave(filename = "figs/gdp_jobs_plot.png", plot = gdp_jobs_plot, limitsize = FALSE, width = 8, height = 5)
+```
+
+## Combine Oslo & Viken
+
+### Wrangle together
+
+```{r}
+OsloViken <- regional_GDP %>%
+  filter(region %in% c("Oslo", "Viken")) 
+
+OsloViken_reg_pop <- OsloViken %>%
+  select(reg_pop) %>%
+  sum()
+
+OsloViken_GDP_per_capita <- (OsloViken$GDP_per_capita[1]*OsloViken$reg_pop[1]+
+  OsloViken$GDP_per_capita[2]*OsloViken$reg_pop[2])/
+  OsloViken_reg_pop
+
+OsloViken_new_jobs <- OsloViken %>%
+  select(new_jobs) %>%
+  sum()
+  
+OsloViken_combined <- data.frame(
+  country = "Norway",
+  region = "Oslo & Viken",
+  reg_pop = OsloViken_reg_pop,
+  GDP_per_capita = OsloViken_GDP_per_capita,
+  new_jobs = OsloViken_new_jobs
+)
+
+region_NewJobs_OsloViken_combined <- regional_GDP %>%
+  filter(!region %in% c("Oslo", "Viken")) %>%
+  bind_rows(OsloViken_combined)
+```
+
+### Population size
+
+```{r}
+lm_regions_OsloViken <- lm(new_jobs ~ reg_pop, data = region_NewJobs_OsloViken_combined)
+
+# looking at mdl results
+glance(lm_regions_OsloViken)
+summary(lm_regions_OsloViken)
+tidy(lm_regions_OsloViken)
+
+# extract data for annotating the plot
+lm_gl_OsloViken <- glance(lm_regions_OsloViken)
+r2_p_all_OsloViken <- paste("R2:", round(lm_gl_OsloViken$r.squared, 2), "&\n", ifelse(lm_gl_OsloViken$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+###
+
+lm_data_reg_OsloViken <- region_NewJobs_OsloViken_combined %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ reg_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg_OsloViken %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_no_OsloViken <- lm_data_reg_OsloViken %>% 
+  select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_no_OsloViken <- paste("R2:", round(lm_no_OsloViken$r.squared, 2), "&\n", ifelse(lm_no_OsloViken$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+outliers_reg_OsloViken <- lm_data_reg_OsloViken %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+outliers_reg_1_2_std_OsloViken <- lm_data_reg_OsloViken %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+
+###
+
+region_pop_plot_OsloViken <- region_NewJobs_OsloViken_combined %>% 
+  ggplot(aes(round(reg_pop/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(reg_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg_OsloViken)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  annotate("text", x=1500, y =320, label = r2_p_no_OsloViken)+
+  annotate("text", x=2040, y =280, label = r2_p_dk)+
+  annotate("text", x=2250, y =200, label = r2_p_all_OsloViken)+
+  annotate("text", x=2250, y =75, label = r2_p_se)+
+  theme_minimal() +
+  theme(legend.position = "top")
+region_pop_plot_OsloViken
+
+ggsave(filename = "figs/all_region_pop_OsloViken.png", plot = region_pop_plot_OsloViken, dpi= 600, width = 8, height = 4)
+```
+
+### GDP per capita
+
+```{r}
+lm_regions_gdp_OsloViken <- lm(new_jobs ~ GDP_per_capita, 
+                               data = region_NewJobs_OsloViken_combined)
+
+# looking at mdl results
+glance(lm_regions_gdp_OsloViken)
+summary(lm_regions_gdp_OsloViken)
+tidy(lm_regions_gdp_OsloViken)
+
+# extract data for annotating the plot
+lm_gl_gdp_OsloViken <- glance(lm_regions_gdp_OsloViken)
+r2_p_gdp_all_OsloViken <- paste("R2:", 
+                                round(lm_gl_gdp_OsloViken$r.squared, 2), "&\n", 
+                                ifelse(lm_gl_gdp_OsloViken$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+###
+
+lm_data_reg_gdp_OsloViken <- region_NewJobs_OsloViken_combined %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ GDP_per_capita, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg_gdp_OsloViken %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_gdp_no_OsloViken <- lm_data_reg_gdp_OsloViken %>% 
+  select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_gdp_no_OsloViken <- paste("R2:", round(lm_gdp_no_OsloViken$r.squared, 2), 
+                     "&\n", ifelse(lm_gdp_no_OsloViken$p.value < 0.05, "p< 0.05", "p>0.05"))  
+outliers_reg_gdp_OsloViken <- lm_data_reg_gdp_OsloViken %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+outliers_reg_1_2_std_gdp_OsloViken <- lm_data_reg_gdp_OsloViken %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+
+###
+
+gdp_jobs_plot_OsloViken <- region_NewJobs_OsloViken_combined %>% 
+  ggplot(aes(round(GDP_per_capita/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(GDP_per_capita/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg_gdp_OsloViken)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "GDP per capita in kEUR", y= "Nr. of new jobs") +
+  annotate("text", x=64, y =400, label = r2_p_gdp_no_OsloViken)+
+  annotate("text", x=87, y =370, label = r2_p_gdp_all_OsloViken)+
+  annotate("text", x=87, y =130, label = r2_p_gdp_dk)+
+  annotate("text", x=75, y =46, label = r2_p_gdp_se)+
+  theme_minimal() +
+  theme(legend.position = "top")
+
+gdp_jobs_plot_OsloViken
+ggsave(filename = "figs/gdp_jobs_plot_OsloViken.png", plot = gdp_jobs_plot_OsloViken, limitsize = FALSE, width = 8, height = 5)
 ```
 
 # Combined patterns
