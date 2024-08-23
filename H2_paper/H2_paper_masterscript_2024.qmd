@@ -1132,8 +1132,8 @@ region_pop_plot <- region_new_jobs %>%
   scale_size_continuous(range = c(1,4)) +
   guides(size = "none")+
   labs(x= "Population in thousands", y= "Nr. of new jobs") +
-  annotate("text", x=1500, y =320, label = r2_p_no)+
-  annotate("text", x=2040, y =280, label = r2_p_dk)+
+  annotate("text", x=900, y =250, label = r2_p_no)+
+  annotate("text", x=1500, y =220, label = r2_p_dk)+
   annotate("text", x=2250, y =200, label = r2_p_all)+
   annotate("text", x=2250, y =75, label = r2_p_se)+
   theme_minimal() +
