@@ -985,19 +985,17 @@ ggsave(filename = "figs/jobroles/combined_engineers.png", plot = combined_engine
 ## Wrangle
 
 ```{r}
-location_all <- jobs %>% 
-  group_by(Location) %>%
-  summarise(new_jobs = n()) %>% 
-  left_join(geo, by = c("Location" ="municipality_city")) %>%
-  na.omit() %>%
-  rename("location" = "Location") %>%
-  select(-new_name) %>%
-  unique()
+#location_all <- jobs %>% 
+ # group_by(Location) %>%
+#  summarise(new_jobs = n()) %>% 
+ # left_join(geo, by = c("Location" ="new_name")) %>%
+#  rename("location" = "Location") %>%
+#  unique()
 
-region_new_jobs <- location_all %>% 
-  group_by(region, reg_pop, country) %>%
-  summarise(new_jobs = sum(new_jobs)) %>%
-  ungroup()
+region_new_jobs <- jobs %>% 
+    group_by(region, reg_pop, country) %>%
+    summarise(new_jobs = n()) %>% 
+    ungroup()
 ```
 
 ## Extra data
@@ -1145,7 +1143,7 @@ region_pop_plot
 ggsave(filename = "figs/all_region_pop.png", plot = region_pop_plot, dpi= 600, width = 8, height = 4)
 ```
 
-## GDP per capita
+## GDP per capita - No longer in use
 
 Linear regression over number of jobs created depending on GDP per capita for each individual region.
 
