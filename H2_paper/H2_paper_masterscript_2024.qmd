@@ -2076,9 +2076,9 @@ add_cluster_to_data_function <- function(KM){
     group_by(cl) %>% 
     summarise(across(.col = Engineering:PhD, .fns = mean))
 
-  pl_cl <- df_hcl_long %>% group_by(cl, place) %>% summarise(n =n()) %>% arrange(desc(cl))
+  pl_cl <- df_hcl_long %>% group_by(cl, place) %>% summarise(n = sum(n)) %>% arrange(desc(cl))
 
-  se_cl <- df_hcl_long %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
+  se_cl <- df_hcl_long %>% group_by(cl, sector) %>% summarise(n = sum(n)) %>% arrange(desc(cl))
 
   cluster_place_sector <- df_hcl %>% 
     select(cluster = cl, place, sector)
