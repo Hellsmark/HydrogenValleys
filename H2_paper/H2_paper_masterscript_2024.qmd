@@ -2296,7 +2296,7 @@ Area to run the functions for the wished for configurations
 
 ```{r}
 # Running for multiple k
-for (i in 11:12){
+for (i in 7:10){
   cluster_result_i <- all_cluster_functions_together(i,mtrx)
 }
 ```
