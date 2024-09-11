@@ -2301,7 +2301,9 @@ for (i in 7:10){
 }
 ```
 
-## Elin - cluster table
+## Slightly less organised code for making specific cluster-tables for H2-paper
+
+### Elin - cluster table
 
 ```{r}
 cluster_place_sector <- ten_df_hcl %>% #har sparat ner denna från cluster_result_i$df_hcl
@@ -2528,4 +2530,427 @@ cluster_tbl_short_WITH_BOLD
 
 cluster_tbl_short_WITH_BOLD %>% gtsave("figs/cluster_paper_plots/Elin10_other_cluster_tbl_short_WITH_BOLD.png", vheight = 744, vwidth = 3986)
 
+```
+
+### Keeping all but arrange after cluster number instead
+
+For this part i used k =10 and added in that jobs_clustered as "jobs_clustered_10"
+
+```{r}
+jobs_cluster_nicename <- jobs_clustered_10 %>%
+  mutate(cl_nr = cluster) %>%
+  mutate(cluster = case_when(
+    cluster %in% c(2, 6, 9) ~ "Other",
+    cluster == 1 ~ "Danish Chemicals & Hydrogen technology manufacturing",
+    cluster == 3 ~ "National University Research",
+    cluster == 4 ~ "Management in Oslo & Copenhagen",
+    cluster == 5 ~ "Research 2",
+    cluster == 7 ~ "Governance in Copenhagen",
+    cluster == 8 ~ "Research 3",
+    cluster == 10 ~ "Norwegian Energy Engineering",
+    TRUE ~ as.character(cluster)
+  ))
+
+cluster_tbl_sectors <- jobs_cluster_nicename %>%
+  select(cl_nr,Group = cluster, Region = place, Sectors = sector) %>%
+  unique() %>%
+  pivot_wider(names_from = "Sectors",
+              values_from = Sectors) %>%
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
+        sep = ", ", na.rm = TRUE)
+  
+cluster_tbl_jobroles <- jobs_cluster_nicename %>%
+  select(cl_nr,Group = cluster, Region = place, Job_roles = competence) %>%
+  unique() %>%
+  pivot_wider(names_from = "Job_roles",
+              values_from = Job_roles) %>%
+  unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_data <- cluster_tbl_sectors %>%
+  merge(cluster_tbl_jobroles, by = c("cl_nr","Group", "Region"), all.x = TRUE)
+
+cluster_tbl_data_short <- merge(
+  cluster_tbl_data %>% select(cl_nr,Group, Regions = Region) %>% unique() %>%
+    mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
+    pivot_wider(names_from = "Regions", 
+                values_from = Regions) %>%
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Gävleborg (SE)", 
+          "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", "Kalmar (SE)", 
+          "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
+          "Nordland (NO)", "Norrbotten (SE)", "Oslo (NO)", "Rogaland (NO)", "Sjælland (DK)", 
+          "Skåne (SE)", "Stockholm (SE)", "Syddanmark (DK)", "Södermanland (SE)", 
+          "Troms (NO)","Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
+          "Vestfold (NO)","Telemark (NO)", "Vestland (NO)", "Akershus (NO)","Buskerud (NO)",
+          "Østfold (NO)", "Värmland (SE)", 
+          "Västerbotten (SE)", "Västernorrland (SE)", "Västmanland (SE)", 
+          "Västra Götaland (SE)", "Östergötland (SE)",
+          sep = ", ", na.rm = TRUE),
+  jobs_cluster_nicename %>%
+    select(cl_nr, Sectors = sector) %>%
+    unique() %>%
+    pivot_wider(names_from = "Sectors",
+                values_from = Sectors) %>%
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
+          sep = ", ", na.rm = TRUE),
+  by = "cl_nr", all.x = TRUE
+  ) %>%
+  merge(
+    jobs_cluster_nicename %>%
+    select(cl_nr, Job_roles = competence) %>%
+    unique() %>%
+    pivot_wider(names_from = "Job_roles",
+                values_from = Job_roles) %>%
+    unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+          sep = ", ", na.rm = TRUE),
+    by = "cl_nr", all.x = TRUE
+  )
+
+cluster_tbl_data_short_WITH_bold <- data.frame(
+  Cluster_number_Group = character(),
+  Regions = character(),
+  Sectors = character(),
+  Job_Roles = character(),
+  n_jobs = character(),
+  stringsAsFactors = FALSE
+)
+
+# Function to bold multiple words in a string
+bold_words <- function(text, words) {
+  for (word in words) {
+    #print(paste0("Bold word: ", word))  # Debug print
+    #print(paste0("Before: ", text))     # Debug print
+    text <- gsub(word, paste0("<b>", word, "</b>"), text, fixed = TRUE)
+    #print(paste0("After: ", text))      # Debug print
+  }
+  return(text)
+}
+
+for (i in 1:10) {
+  cl <- i
+  
+  total_jobs <- jobs_cluster_nicename %>%
+    filter(cl_nr == cl) %>% 
+    nrow()
+  
+  minimum_jobs <- total_jobs*.2
+  
+  bold_regions <- jobs_cluster_nicename %>% 
+    filter(cl_nr == cl) %>%
+    group_by(place) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(place) %>%
+    mutate(place = gsub("(.*), (.*)", "\\1 (\\2)", place))
+  
+  bold_sectors <- jobs_cluster_nicename %>% 
+    filter(cl_nr == cl) %>%
+    group_by(sector) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(sector)
+  
+  bold_job_role <- jobs_cluster_nicename %>% 
+    filter(cl_nr == cl) %>%
+    group_by(competence) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(competence)
+  
+  cluster_row <-   cluster_tbl_data_short %>%
+    filter(cl_nr == cl) %>%
+    rename(Cluster_number = cl_nr) %>%
+    mutate(
+    Regions = bold_words(Regions, bold_regions$place),
+    Sectors = bold_words(Sectors, bold_sectors$sector),
+    Job_Roles = bold_words(Job_Roles, bold_job_role$competence)
+  )
+  # Add numbber of jobs to table
+  cluster_row <- cluster_row %>% 
+    cbind(data.frame( "n_jobs" =
+      jobs_cluster_nicename %>%
+        filter(cl_nr == cl) %>%
+        nrow()
+      )
+    )
+  
+  cl_names <- c(
+    "1: Danish Chemicals & Hydrogen technology manufacturing",
+    "2: Other",
+    "3: National University Research",
+    "4: Management in Oslo & Copenhagen",
+    "5: Research 2",
+    "6: Other",
+    "7: Governance in Copenhagen",
+    "8: Research 3",
+    "9: Other",
+    "10: Norwegian Energy Engineerin"
+  )
+  cluster_row <- data.frame("Cluster_number_Group" = cl_names[i]) %>%
+    cbind(cluster_row) %>%
+    select(Cluster_number_Group, Regions, Sectors, Job_Roles, n_jobs)
+    
+  
+  cluster_tbl_data_short_WITH_bold <- cluster_tbl_data_short_WITH_bold %>%
+    rbind(cluster_row)
+  
+}
+
+
+# Create the gt table with HTML content
+cluster_tbl_short_WITH_BOLD <- cluster_tbl_data_short_WITH_bold %>%
+  gt() %>%
+  cols_label(
+    Cluster_number_Group = "Cluster number/Group",
+    Regions = "Regions",
+    Sectors = "Sectors",
+    Job_Roles = "Job roles",
+    n_jobs = "Number of jobs"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Cluster_number_Group, Regions, Sectors, Job_Roles, n_jobs)
+    )
+  ) %>%
+  # Enable HTML rendering in the cells
+  fmt_markdown(columns = c(Regions, Sectors, Job_Roles))
+
+# Print the table
+cluster_tbl_short_WITH_BOLD
+
+cluster_tbl_short_WITH_BOLD <- cluster_tbl_short_WITH_BOLD %>%
+  tab_options(
+    table.width = px(1000)  # or use another size
+  )
+
+cluster_tbl_short_WITH_BOLD %>% gtsave("figs/cluster_paper_plots/10_cluster_tbl_short_WITH_BOLD_240911.png", vheight = 744, vwidth = 3986)
+```
+
+### Making table with only top %
+
+```{r}
+jobs_cluster_nicename <- jobs_clustered_10 %>%
+  mutate(cluster = case_when(
+    cluster %in% c(2, 6, 9) ~ "Other",
+    cluster == 1 ~ "Danish Chemicals & Hydrogen technology manufacturing",
+    cluster == 3 ~ "National University Research",
+    cluster == 4 ~ "Management in Oslo & Copenhagen",
+    cluster == 5 ~ "Research 2",
+    cluster == 7 ~ "Governance in Copenhagen",
+    cluster == 8 ~ "Research 3",
+    cluster == 10 ~ "Norwegian Energy Engineering",
+    TRUE ~ as.character(cluster)
+  ))
+
+cluster_tbl_sectors <- jobs_cluster_nicename %>%
+  select(Group = cluster, Region = place, Sectors = sector) %>%
+  unique() %>%
+  pivot_wider(names_from = "Sectors",
+              values_from = Sectors) %>%
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
+        sep = ", ", na.rm = TRUE)
+  
+cluster_tbl_jobroles <- jobs_cluster_nicename %>%
+  select(Group = cluster, Region = place, Job_roles = competence) %>%
+  unique() %>%
+  pivot_wider(names_from = "Job_roles",
+              values_from = Job_roles) %>%
+  unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_data <- cluster_tbl_sectors %>%
+  merge(cluster_tbl_jobroles, by = c("Group", "Region"), all.x = TRUE)
+
+cluster_tbl_data_short <- merge(
+  cluster_tbl_data %>% select(Group, Regions = Region) %>% unique() %>%
+    mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
+    pivot_wider(names_from = "Regions", 
+                values_from = Regions) %>%
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Gävleborg (SE)", 
+          "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", "Kalmar (SE)", 
+          "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
+          "Nordland (NO)", "Norrbotten (SE)", "Oslo (NO)", "Rogaland (NO)", "Sjælland (DK)", 
+          "Skåne (SE)", "Stockholm (SE)", "Syddanmark (DK)", "Södermanland (SE)", 
+          "Troms (NO)","Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
+          "Vestfold (NO)","Telemark (NO)", "Vestland (NO)", "Akershus (NO)","Buskerud (NO)",
+          "Østfold (NO)", "Värmland (SE)", 
+          "Västerbotten (SE)", "Västernorrland (SE)", "Västmanland (SE)", 
+          "Västra Götaland (SE)", "Östergötland (SE)",
+          sep = ", ", na.rm = TRUE),
+  jobs_cluster_nicename %>%
+    select(Group = cluster, Sectors = sector) %>%
+    unique() %>%
+    pivot_wider(names_from = "Sectors",
+                values_from = Sectors) %>%
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
+          sep = ", ", na.rm = TRUE),
+  by = "Group", all.x = TRUE
+  ) %>%
+  merge(
+    jobs_cluster_nicename %>%
+    select(Group = cluster, Job_roles = competence) %>%
+    unique() %>%
+    pivot_wider(names_from = "Job_roles",
+                values_from = Job_roles) %>%
+    unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+          sep = ", ", na.rm = TRUE),
+    by = "Group", all.x = TRUE
+  )
+
+cluster_names <- c(
+    "Norwegian Energy Engineering",
+    "Management in Oslo & Copenhagen",
+    "National University Research",
+    "Research 2",
+    "Research 3",
+    "Danish Chemicals & Hydrogen technology manufacturing",
+    "Governance in Copenhagen",
+    "Other"
+    )
+
+cluster_tbl_data_short_onlytop <- data.frame(
+  Group = character(),
+  Regions = character(),
+  Sectors = character(),
+  Job_Roles = character(),
+  stringsAsFactors = FALSE
+)
+
+# Function to bold multiple words in a string
+filter_words <- function(text, words) {
+  #print(words)
+  # Split the string into individual words
+  word_list <- unlist(strsplit(text, ", "))
+  #print(word_list)
+  # Keep only the words that are in the provided list
+  filtered_list <- word_list[word_list %in% words]
+  #print(filtered_list)
+  # Rejoin the words into a single string
+  filtered_text <- paste(filtered_list, collapse = ", ")
+  #print(filtered_text)
+  return(filtered_text)
+}
+
+for (i in 1:8) {
+  cl_name <- cluster_names[i]
+  
+  total_jobs <- jobs_cluster_nicename %>%
+    filter(cluster == cl_name) %>% 
+    nrow()
+  
+  minimum_jobs <- total_jobs*.2
+  
+  top_regions <- jobs_cluster_nicename %>% 
+    filter(cluster == cl_name) %>%
+    group_by(place) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(place) %>%
+    mutate(place = gsub("(.*), (.*)", "\\1 (\\2)", place))
+  
+  top_sectors <- jobs_cluster_nicename %>% 
+    filter(cluster == cl_name) %>%
+    group_by(sector) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(sector)
+  
+  top_job_role <- jobs_cluster_nicename %>% 
+    filter(cluster == cl_name) %>%
+    group_by(competence) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(competence)
+  
+  cluster_row <-   cluster_tbl_data_short %>%
+    filter(Group == cl_name) %>%
+    mutate(
+    Regions = filter_words(Regions, top_regions$place),
+    Sectors = filter_words(Sectors, top_sectors$sector),
+    Job_Roles = filter_words(Job_Roles, top_job_role$competence)
+  )
+  # Add numbber of jobs to table
+  cluster_row <- cluster_row %>% 
+    cbind(data.frame( "n_jobs" =
+      jobs_cluster_nicename %>%
+        filter(cluster == cl_name) %>%
+        nrow()
+      )
+    )
+  
+  cluster_row <- cluster_row %>%
+  mutate(
+    Regions = ifelse(Regions == "" | is.na(Regions), "No significant region", Regions),
+    Sectors = ifelse(Sectors == "" | is.na(Sectors), "No significant sector", Sectors),
+    Job_Roles = ifelse(Job_Roles == "" | is.na(Job_Roles), "No significant job role", Job_Roles)
+  )
+  
+  cluster_tbl_data_short_onlytop <- cluster_tbl_data_short_onlytop %>%
+    rbind(cluster_row)
+  
+}
+
+
+# Create the gt table with HTML content
+cluster_tbl_short_onlytop <- cluster_tbl_data_short_onlytop %>%
+  gt() %>%
+  cols_label(
+    Group = "Group",
+    Regions = "Regions",
+    Sectors = "Sectors",
+    Job_Roles = "Job roles",
+    n_jobs = "Number of jobs"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Group, Regions, Sectors, Job_Roles, n_jobs)
+    )
+  ) %>%
+  # Enable HTML rendering in the cells
+  fmt_markdown(columns = c(Regions, Sectors, Job_Roles))
+
+# Print the table
+cluster_tbl_short_onlytop
+
+cluster_tbl_short_onlytop %>% gtsave("figs/cluster_paper_plots/10_cluster_tbl_short_ONLY_TOP_240911.png", vheight = 744, vwidth = 3000)
 ```
