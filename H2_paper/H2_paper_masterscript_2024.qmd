@@ -2954,3 +2954,257 @@ cluster_tbl_short_onlytop
 
 cluster_tbl_short_onlytop %>% gtsave("figs/cluster_paper_plots/10_cluster_tbl_short_ONLY_TOP_240911.png", vheight = 744, vwidth = 3000)
 ```
+
+# Experimental section
+
+## Testing to remove Akkodis
+
+```{r}
+jobs_NO_AKKODIS <- jobs %>%
+  filter(!Company == "Akkodis")
+```
+
+### General
+
+```{r}
+df_distribution_NO_AKKODIS <- jobs_NO_AKKODIS %>% 
+  count(Company, country_code) %>% 
+  filter(!Company == "!!!NEW_COMPANY!!!")
+
+violine_NO_AKKODIS <- df_distribution_NO_AKKODIS %>%
+  rename(Country = country_code) %>%
+  ggplot(aes(n, Country, fill = Country), alpha = 0.5) + 
+  geom_violin(show.legend = F) + 
+  scale_fill_colorblind() + 
+  theme_grey() +
+  coord_fixed(ratio = 60) +  # Adjust aspect ratio (reduce height)
+  labs(x = "", y = "")
+
+violine_NO_AKKODIS
+```
+
+```{r}
+regions_noJobs <- data.frame(
+  country = c("Norway", "Sweden", "Sweden","Sweden"),
+  region = c("Innlandet", "Blekinge", "Jönköping", "Örebro"),
+  n = c(0,0,0,0))
+
+numberOf_jobsPer_region_NO_AKKODIS <- jobs_NO_AKKODIS %>%
+  group_by(country, region) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  full_join(regions_noJobs) %>%
+  arrange(country, desc(n)) %>%
+  mutate(region = factor(region, levels = unique(region)))
+
+nrJobs_perRegion_plot_NO_AKKODIS <- numberOf_jobsPer_region_NO_AKKODIS %>%
+  ggplot(aes(x = n, y = fct_rev(region), fill = country)) + 
+  geom_col(drop = FALSE) +
+  scale_x_continuous() +
+  scale_fill_colorblind("Country") +
+  labs(x = "", y = "", title = "Total jobs per region") +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom", 
+    text = element_text(size = 14), 
+    plot.title = element_text(size = 12)
+    )
+
+nrJobs_perRegion_plot_NO_AKKODIS
+```
+
+### Who
+
+```{r}
+tbl_NO_AKKODIS <- jobs_NO_AKKODIS %>%
+  inner_join(companies %>% 
+               select(Name, Industry_Sector), by = c("Company"="Name")) %>%
+  rename(Sector = Industry_Sector, Country = country_code) %>%
+  mutate(Sector = fct_infreq(Sector)) %>% 
+  mutate(job_role = fct_infreq(job_role))
+
+sector_plot_NO_AKKODIS <- tbl_NO_AKKODIS %>% 
+  group_by(Country, Sector) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(Sector), 
+             fill = Country)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per sector")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+sector_plot_NO_AKKODIS
+```
+
+```{r}
+(jobs_NO_AKKODIS %>% group_by(country, Company) %>% summarise(n =n()) %>% 
+         ungroup() %>% arrange(desc(n)) %>% head(30) %>% select(n) %>% sum())/(jobs_NO_AKKODIS %>% group_by(country, Company) %>% summarise(n =n()) %>% 
+         ungroup() %>% arrange(desc(n)) %>% select(n) %>% sum())
+
+# 12 -> 50%
+# 20 -> 59%
+# 30 -> 65%
+# 33 -> 66%
+# 52 -> 75%
+
+biggest_companies_NO_AKKODIS <- jobs_NO_AKKODIS %>%
+  group_by(country, Company) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  arrange(desc(n)) %>%
+  head(30) # Has to use number wanted +1
+
+# Summing the job counts by company across countries
+aggregated_companies_NO_AKKODIS <- biggest_companies_NO_AKKODIS %>%
+  group_by(Company) %>%
+  summarise(total_jobs = sum(n))
+
+# Merging back the total job counts with the original data
+biggest_companies_NO_AKKODIS <- biggest_companies_NO_AKKODIS %>%
+  left_join(aggregated_companies_NO_AKKODIS, by = "Company")
+
+biggest_companies_plot_NO_AKKODIS <- biggest_companies_NO_AKKODIS %>%
+  ggplot(aes(x= n, y= fct_reorder(Company, total_jobs),
+             fill = country)) + 
+  geom_col(drop = F)+
+    scale_x_continuous()+
+  scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Top 30 most recruiting organisations, responsible for 60% of all jobs")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+biggest_companies_plot_NO_AKKODIS
+```
+
+### What
+
+```{r}
+jobroles_plot_NO_AKKODIS <- tbl_NO_AKKODIS %>% drop_na(job_role) %>% #removing NA:s here
+  group_by(Country, job_role) %>%
+  summarise(n =n()) %>%
+  ggplot(aes(x= n, y= fct_rev(job_role), 
+             fill = Country)) + 
+  geom_col()+
+    scale_x_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "", y = "", title = "Total jobs per job role")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobroles_plot_NO_AKKODIS
+```
+
+### Where
+
+```{r}
+region_new_jobs_NO_AKKODIS <- jobs_NO_AKKODIS %>% 
+    group_by(region, reg_pop, country) %>%
+    summarise(new_jobs = n()) %>% 
+    ungroup()
+
+
+
+missing_regions <- data.frame(
+  region = c("Innlandet", "Blekinge", "Jönköping", "Örebro"),
+  reg_pop = c(376304, 157973, 368856, 308116),
+  country = c("Norway", "Sweden", "Sweden","Sweden"),
+  new_jobs = c(0,0,0,0))
+
+region_new_jobs_NO_AKKODIS<- full_join(region_new_jobs_NO_AKKODIS, missing_regions)
+
+
+
+lm_regions_NO_AKKODIS <- lm(new_jobs ~ reg_pop, data = region_new_jobs_NO_AKKODIS)
+
+
+# extract data for annotating the plot
+lm_gl_NO_AKKODIS <- glance(lm_regions_NO_AKKODIS)
+r2_p_all_NO_AKKODIS <- paste("R2:", round(lm_gl_NO_AKKODIS$r.squared, 2), "&\n", ifelse(lm_gl_NO_AKKODIS$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+
+lm_data_reg_NO_AKKODIS <- region_new_jobs_NO_AKKODIS %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ reg_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg_NO_AKKODIS %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_dk_NO_AKKODIS <- lm_data_reg_NO_AKKODIS %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_se_NO_AKKODIS <- lm_data_reg_NO_AKKODIS %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_no_NO_AKKODIS <- lm_data_reg_NO_AKKODIS %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_dk_NO_AKKODIS <- paste("R2:", round(lm_dk_NO_AKKODIS$r.squared, 2), "&\n", ifelse(lm_dk_NO_AKKODIS$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_se_NO_AKKODIS <- paste("R2:", round(lm_se_NO_AKKODIS$r.squared, 2), "&\n", ifelse(lm_se_NO_AKKODIS$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_no_NO_AKKODIS <- paste("R2:", round(lm_no_NO_AKKODIS$r.squared, 2), "&\n", ifelse(lm_no_NO_AKKODIS$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+outliers_reg_NO_AKKODIS <- lm_data_reg_NO_AKKODIS %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+outliers_reg_1_2_std_NO_AKKODIS <- lm_data_reg_NO_AKKODIS %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+
+
+
+region_pop_plot_NO_AKKODIS <- region_new_jobs_NO_AKKODIS %>% 
+  ggplot(aes(round(reg_pop/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(reg_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg_NO_AKKODIS)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  annotate("text", x=900, y =250, label = r2_p_no_NO_AKKODIS)+
+  annotate("text", x=1500, y =220, label = r2_p_dk_NO_AKKODIS)+
+  annotate("text", x=2250, y =200, label = r2_p_all_NO_AKKODIS)+
+  annotate("text", x=2250, y =75, label = r2_p_se_NO_AKKODIS)+
+  theme_minimal() +
+  theme(legend.position = "top")
+region_pop_plot_NO_AKKODIS
+```
