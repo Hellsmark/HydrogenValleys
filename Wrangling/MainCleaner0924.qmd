@@ -1,0 +1,292 @@
+---
+title: "MainCleaner0924"
+format: html
+editor: visual
+---
+
+# Libraries
+
+```{r}
+
+```
+
+CHECK WHICH OF THESE LIBRARIES ACTUALLY ARE NEEDED
+
+```{r}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(googlesheets4)
+library(zlib)
+library(digest)
+library(openssl)
+library(base64enc)
+library(stringr)
+```
+
+# Data
+
+## Google
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+# Old scrapes
+# Swedish scrape
+se_Old <- read_sheet(ss, sheet = "se_scrape")
+
+# Norwegian scrape
+no_Old <- read_sheet(ss, sheet = "no_scrape")
+
+# Danish scrape
+dk_Old <- read_sheet(ss, sheet = "dk_scrape")
+
+# Company name chart
+comp_names <- read_sheet(ss, sheet = "company_names")
+
+# Location name chart with extra info
+locations <- read_sheet(ss, sheet = "locations_coord")
+```
+
+## Latest scrape
+
+For this section to work must the scrapes have been downloaded and put into a local folder which the main directory can access. It is assumed that the Swedish and Norwegian data is in a csv file while the Danish is in a rds file
+
+```{r}
+# Swedish scrape
+ams_Latest_scrape <- read.csv("ams.csv", sep=";") %>% filter(s_terms.i.=="vätgas*")
+
+# Norwegian scrape
+finn_Latest_scrape <- read.csv("finn_no_h2.csv")
+
+#Danish scrape
+dk_Latest_scrape <- as.data.frame(readRDS("dk_h2.rds")) #%>% select(!all_text)
+```
+
+# Wrangle of scrape
+
+## Prepping a dataframe
+
+```{r}
+new_data <- data.frame( ID = numeric(0), Title = numeric(0), Company = numeric(0), 
+                        Location = numeric(0), Description = numeric(0), Scrape_date = numeric(0),
+                        Hydrogen_relevance = numeric(0), translatedText = numeric(0))
+```
+
+## Refining latest scrapes
+
+### Sweden
+
+```{r}
+#Compare what is new
+new_se <- ams_Latest_scrape[!ams_Latest_scrape$links %in% se_Old$links,] 
+
+# Add ID to our new data
+ID <- nrow(se_Old)
+IDcol <- c()
+for (i in seq_len(nrow(new_se))) {
+  ID <- ID + 1
+  IDcol <- append(IDcol,10000+ID)
+}
+new_se <- cbind(IDcol,new_se)
+
+# Choose what to put into clean sheet
+new_for_clean_se <- new_se %>% select(IDcol,job_role,company,location,description,scrape_date)
+colnames(new_for_clean_se) <- c("ID","Title", "Company","Location","Description","Scrape_date")
+
+# Add to total of new data
+new_for_clean_se[c("Hydrogen_relevance", "translatedText")] <- NA
+new_data <- rbind(new_data,new_for_clean_se)
+```
+
+### Norway
+
+```{r}
+#Compare what is new
+new_no <- finn_Latest_scrape[!finn_Latest_scrape$url %in% no_Old$url,] 
+
+# Add ID to our new data
+ID <- nrow(no_Old)
+IDcol <- c()
+for (i in seq_len(nrow(new_no))) {
+  ID <- ID + 1
+  IDcol <- append(IDcol,20000+ID)
+}
+new_no <- cbind(IDcol,new_no)
+
+# Choose what to put into clean sheet
+new_for_clean_no <- new_no %>% select(IDcol,stillingstittel,arbetsgivare,sted,add_text,id)
+
+# We want the date for the scrape to be in year-month-day
+for (i in seq_len(nrow(new_for_clean_no))) {
+  new_for_clean_no$id[i] <- substr(new_for_clean_no$id[i], start = 1, stop = 10)
+}
+
+# Change column names
+colnames(new_for_clean_no) <- c("ID","Title", "Company","Location","Description","Scrape_date")
+
+# Add to total of new data
+new_for_clean_no[c("Hydrogen_relevance", "translatedText")] <- NA
+new_data <- rbind(new_data,new_for_clean_no)
+```
+
+### Denmark
+
+```{r}
+#Compare what is new
+new_dk <- dk_Latest_scrape[!dk_Latest_scrape$link_to_external_add %in% dk_Old$link_to_external_add,] 
+
+# Add ID to our new data
+ID <- nrow(dk_Old)
+IDcol <- c()
+for (i in seq_len(nrow(new_dk))) {
+  ID <- ID + 1
+  IDcol <- append(IDcol,30000+ID)
+}
+new_dk <- cbind(IDcol,new_dk)
+```
+
+We have an issue with the danish file. It is the "all_text" column which consists of cells containing more than 50k characters (which is the limit for google sheet). For this problem there are two solutions:
+
+-   To shorten the texts by removing non-essential text
+
+-   To compress the text into a shorter string. This string is then split into three different cells
+
+For the sake of saving all information is both done.
+
+```{r}
+# Make a short_text column with "cleaned" text
+remove_lines_with_pattern <- function(text, pattern) {
+  # Pattern to match an entire line containing the specified pattern
+  line_pattern <- paste0(".*", pattern, ".*\n?")
+  str_replace_all(text, line_pattern, "")
+}
+
+pattern <-c("Cookiebot|DOMAINS|HTTP|www|/privacy|HTML|Thumbnails|Zoom|Cookie|cookie|ID|CONSENT|Samtykke|domains|consent|window|button|Expiry|SessionType:|/\|\\{|\\}")
+
+ddk <- new_dk %>% 
+  select(IDcol, all_text) %>%
+  mutate(nr_breaks = str_count(all_text, pattern = "\n")) %>%
+  mutate(nr_dots = str_count(all_text, pattern = "\\.")) %>%
+  mutate(all_text_chr = str_length(all_text))
+
+ddk_clean_breaks <- ddk %>%
+  mutate(clean_breaks = map_chr(all_text, ~remove_lines_with_pattern(., pattern), .progress = T)) %>%
+  mutate(clean_chr = str_length(clean_breaks))
+
+df_short <- ddk_clean_breaks %>% select(IDcol, short_text = clean_breaks) %>% unique() 
+
+dk_short <- new_dk %>% 
+  left_join(df_short) %>%
+  mutate(all_text_chr = str_length(all_text),
+         short_text_chr = str_length(short_text)) 
+
+
+new_dk$short_text <- dk_short$short_text
+
+# Before the text is added we must check if any string still is too long - if so it cannot be uploaded 
+for (i in seq_len(nrow(dk_short))) {
+  if (dk_short$short_text_chr[i] > 50000) {
+    new_dk$short_text[i] <- "UNSHORTABLE"
+    new_for_clean_dk$short_text[i] <- paste("UNSHORTABLE -", new_dk$text[i], sep=" ")
+  }
+}
+
+#-------------------------------------------------------------------------------------------#
+
+# Define a function to compress a string
+compress_string <- function(x) {
+  compressed <- memCompress(charToRaw(x), type = "gzip")
+  base64encode(compressed)
+}
+
+# Apply the function to the column in dataframe
+new_dk$all_text <- lapply(new_dk$all_text, compress_string)
+
+# Some tsrings are still too long in all_text, we will split them in three
+split_string <- function(x) {
+  n <- nchar(x)
+  c1 <- substr(x, 1, min(50000, n))
+  c2 <- ifelse(n > 50000, substr(x, 50001, min(100000, n)), "")
+  c3 <- ifelse(n > 100000, substr(x, 100001, n), "")
+  return(c(c1, c2, c3))
+}
+
+# Apply the function to dataframe
+new_dk[c("all_text1", "all_text2", "all_text3")] <- t(apply(new_dk["all_text"], 1, split_string))
+
+# Remove all_text
+new_dk <- subset(new_dk, select = -all_text )
+```
+
+```{r}
+# Choose what to put into clean sheet
+new_for_clean_dk <- new_dk %>% select(IDcol,title,company,location,short_text,id)
+
+# We want the date for the scrape to be in year-month-day
+for (i in seq_len(nrow(new_for_clean_dk))) {
+  new_for_clean_dk$id[i] <- substr(new_for_clean_dk$id[i], start = 1, stop = 10)
+}
+
+# Change column names
+colnames(new_for_clean_dk) <- c("ID","Title", "Company","Location","Description","Scrape_date")
+
+# Add to total of new data
+new_for_clean_dk[c("Hydrogen_relevance", "translatedText")] <- NA
+new_data <- rbind(new_data,new_for_clean_dk)
+```
+
+The function used to de-compress the compressed text is found in a separate section here.
+
+```{r}
+# How to de-compress
+
+#decompress_string <- function(x) {
+#  decompressed <- memDecompress(base64decode(x), type = "gzip")
+#  rawToChar(decompressed)
+#}
+
+#dk_Latest_scrape$all_text <- lapply(dk_Latest_scrape$all_text, decompress_string)
+```
+
+## Clean & rename 
+
+### Companies
+
+Replaces the names of the companies in "new_data" with the new names from the worksheet, if there is no match it will be named "!!!NEW_COMPANY!!!".
+
+```{r}
+data_new_names <- new_data %>% 
+  mutate(Company = case_when(tolower(str_trim(Company)) %in% tolower(comp_names$Old_name) ~ comp_names$New_name[match(tolower(str_trim(Company)),tolower(comp_names$Old_name))], TRUE ~ "!!!NEW_COMPANY!!!"))
+```
+
+### Locations
+
+```{r}
+for (i in seq_len(nrow(new_data))) {
+  nr_matching <- 0
+  for (j in seq_len(nrow(locations))) {
+    if (grepl(locations$Name[j], new_data$Location[i], ignore.case = TRUE)) {
+      #if true
+      match <- locations$Name2[j] # save matching location name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  if (nr_matching == 0) {
+    # if no matches were found must the locations list be updated to include more locations
+    data_new_names$Location[i] <- "!!!NEW_LOCATION!!!"
+  } else if (nr_matching > 1) {
+    # if more than 1 match was found will the location choice have to be made manually
+    data_new_names$Location[i] <- "!!!MULTIPLE_LOCATIONS!!!"
+  } else {
+    # when nr of matches is not 0 nor more than 1 will the found match be assigned to the add
+    data_new_names$Location[i] <- match 
+  }
+}
+```
+
+# Upload changes to Google sheet
+
+```{r}
+
+```
