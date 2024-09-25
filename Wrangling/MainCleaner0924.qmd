@@ -7,7 +7,7 @@ editor: visual
 # Libraries
 
 ```{r}
-
+library(tidyverse)
 ```
 
 CHECK WHICH OF THESE LIBRARIES ACTUALLY ARE NEEDED
@@ -32,13 +32,13 @@ library(stringr)
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 # Old scrapes
-# Swedish scrape
+## Swedish scrape
 se_Old <- read_sheet(ss, sheet = "se_scrape")
 
-# Norwegian scrape
+## Norwegian scrape
 no_Old <- read_sheet(ss, sheet = "no_scrape")
 
-# Danish scrape
+## Danish scrape
 dk_Old <- read_sheet(ss, sheet = "dk_scrape")
 
 # Company name chart
@@ -287,6 +287,217 @@ for (i in seq_len(nrow(new_data))) {
 
 # Upload changes to Google sheet
 
-```{r}
+Update Main-sheet
 
+```{r}
+sheet_append(ss, data_new_names, sheet = 'Main')
+```
+
+Update scrape sheets
+
+```{r}
+# Sweden
+sheet_append(ss, new_se, sheet = 'se_scrape')
+
+# Norway
+sheet_append(ss, new_no, sheet = 'no_scrape')
+
+# Denmark
+sheet_append(ss, new_dk, sheet = 'dk_scrape')
+```
+
+# Missing companies
+
+This part of the script is for when new companies has to be added to our list of companies. It is assumed that all information is stored in the Google sheet at this point.
+
+## Find missing companies
+
+### Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+# Missing companies
+new_comp <- read_sheet(ss, sheet = "Main") %>% 
+  filter(Company == "!!!NEW_COMPANY!!!") %>% 
+  select(ID,Company)
+
+# Information from scrape
+## Sweden
+se_comp <- read_sheet(sheet,"se_scrape") %>% 
+  select(IDcol,company) %>% 
+  rename(ID = IDcol, Company = company)
+
+## Norway
+no_comp <- read_sheet(sheet,"no_scrape") %>% 
+  select(IDcol,arbetsgivare) %>% 
+  rename(ID = IDcol, Company = arbetsgivare)
+
+## Denmark
+dk_comp <- read_sheet(sheet,"dk_scrape") %>% 
+  select(IDcol,company) %>% 
+  rename(ID = IDcol, Company = company)
+```
+
+### Wrangle
+
+Collect list of company names from the scrapes.
+
+```{r}
+all_comp <- bind_rows(se_comp, no_comp, dk_comp)
+
+new_comp_names <- all_comp %>% 
+  filter(ID %in% new_comp$ID) %>% 
+  select(ID, Company)
+```
+
+At this point is it easiest to add the new companies to the sheet "company_names" manually. In the variable "new_comp_names" should you find the ID of ads with missing company as well what company is given in the scrape. ID starting with 1 is a Swedish ad, 2 Norwegian and 3 a Danish ad. If the information here is not enough, then it is easiest to either read the description of the specific ad in Google sheet or visit the site of the ad, also found in Google sheet by filtering the ID.
+
+## Add new companies
+
+After each missing company has been added to "company_names" can this part be run in order to update the Main-sheet.
+
+### Data
+
+```{r}
+#Main sheet
+main <- read_sheet(ss, sheet = "Main")
+
+# Chart for company names
+comp_names <- read_sheet(ss, sheet = "company_names")
+```
+
+### Wrangle 
+
+```{r}
+# Get ID of missing ads with missing company
+new_comp <- main %>% 
+  filter(Company == "!!!NEW_COMPANY!!!") %>% 
+  select(ID,Company)
+
+#Update the company names with the company_names work sheet. Companies that still cant be found will be named !!!NEW_COMPANY!!! and there can still be some companies named !!!UNKNOWN_COMPANY!!! 
+to_add <- all_comp %>% 
+  filter(ID %in% new_comp$ID) %>% 
+  mutate(Company = case_when(tolower(str_trim(Company)) %in% tolower(comp_names$Old_name) ~ comp_names$New_name[match(tolower(str_trim(Company)),tolower(comp_names$Old_name))], TRUE ~ "!!!NEW_COMPANY!!!"))
+
+# Update the 'ID' and 'Company' columns in the 'Main' worksheet
+main <- main %>%
+  mutate(ID = ifelse(ID %in% to_add$ID, to_add$ID[match(ID, to_add$ID)], ID),
+         Company = ifelse(ID %in% to_add$ID, to_add$Company[match(ID, to_add$ID)], Company))
+```
+
+At this point if there are any company missing it is easier to fix this manually in the Google sheet. Check the information from the scrape —\> Make sure the different names for the company are in "company_names" —\> Update Main-sheet.
+
+### Upload changes
+
+```{r}
+write_sheet(main, ss = ss, sheet = "Main")
+```
+
+# Missing locations
+
+This part of the script is for when new locations has to be added to our list of locations. It is assumed that all information is stored in the Google sheet at this point.
+
+## Find missing locations
+
+### Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+# Get the ads with missing locations
+adds <- read_sheet(ss, sheet = "Main")  %>% 
+  select(ID,Location)
+
+# Information from scrapes - also change names of columns
+## Sweden
+se_loc <- read_sheet(ss, sheet = "se_scrape") %>% 
+  select(IDcol,location)
+colnames(se_loc) <- c("ID","Location")
+
+## Norway
+no_loc <- read_sheet(ss, sheet = "no_scrape") %>% 
+  select(IDcol,sted)
+colnames(no_loc) <- c("ID","Location")
+
+## Denmark
+dk_loc <- read_sheet(ss, sheet = "dk_scrape") %>% 
+  select(IDcol,location)
+colnames(dk_loc) <- c("ID","Location")
+```
+
+### Wrangle
+
+```{r}
+missingLocations <- adds %>% filter(Location == "!!!NEW_LOCATION!!!")
+
+names_of_missing <- rbind(merge(se_loc, missingLocations["ID"], by = "ID"),merge(no_loc, missingLocations["ID"], by = "ID"),merge(dk_loc, missingLocations["ID"], by = "ID"))
+```
+
+Now we have a list of the ads and locations that are missing in the sheet. These locations will have to be added manually to the "locations_coord" sheet. What needs to be added to the sheet:
+
+-   Original name used for the "city" in the scrape
+
+-   The new common name given (usually the English name)
+
+-   Country of the city
+
+-   Region of the city
+
+-   Population of region
+
+-   Longitude and Latitude
+
+Other columns can be filled but are not necessary.
+
+## Add new locations
+
+### Data
+
+```{r}
+#Main sheet
+main <- read_sheet(ss, sheet = "Main")
+
+# Chart for locations
+locations <- read_sheet(ss, sheet = "locations_coord")
+```
+
+### Wrangle
+
+```{r}
+# Add the newly updated info from Google sheet
+for (i in seq_len(nrow(names_of_missing))) {
+  nr_matching <- 0
+  for (j in seq_len(nrow(locations))) {
+    if (grepl(locations$Name[j], names_of_missing$Location[i], ignore.case = TRUE)) {
+      #if true
+      match <- locations$Name2[j] # save matching location name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  if (nr_matching == 0) {
+    # if no matches were found add this point it means that no location has been given
+    missingLocations$Location[i] <- "!!!UNKNOWN_LOCATION!!!"
+  } else if (nr_matching > 1) {
+    # if more than 1 match was found will the location choice have to be made manually
+    missingLocations$Location[i] <- "!!!MULTIPLE_LOCATIONS!!!"
+  } else {
+    # when nr of matches is not 0 nor more than 1 will the found match be assigned to the add
+    missingLocations$Location[i] <- match 
+  }
+}
+
+adds$Location[match(missingLocations$ID, adds$ID)] <- missingLocations$Location
+
+main <- main %>%
+  mutate(ID = ifelse(ID %in% adds$ID, adds$ID[match(ID, adds$ID)], ID),
+         Location = ifelse(ID %in% adds$ID, adds$Location[match(ID, adds$ID)], Location))
+```
+
+At this point there may be some unknown locations. These will have to be found in the descriptions of the ads. This is not done in the script but manually in Google sheet. Also some ads may have multiple location names in their scrape, this will also have to be resolved manually.
+
+### Upload changes
+
+```{r}
+write_sheet(main, ss = sheet, sheet = "Main")
 ```
