@@ -106,3 +106,29 @@ file_jobrole_updated <- file_jobrole %>%
 ```{r}
 write_sheet(file_jobrole_updated, ss, sheet = "Job_roles")
 ```
+
+# Changes to Main sheet
+
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(ss, sheet = "Main")
+company_names <- read_sheet(ss, sheet = "company_names")
+```
+
+## Fixes
+
+```{r}
+data_new_names <- main %>% 
+  mutate(Company = case_when(tolower(str_trim(Company)) %in% tolower(company_names$Old_name) ~ company_names$New_name[match(tolower(str_trim(Company)),tolower(company_names$Old_name))], TRUE ~ "!!!NEW_COMPANY!!!"))
+
+employstaff <- data_new_names %>% filter(Company %in% c("Employment/staffing agency"))
+```
+
+## Upload changes
+
+```{r}
+write_sheet(data_new_names, ss, sheet = "Main")
+```
