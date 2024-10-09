@@ -60,7 +60,7 @@ ams_Latest_scrape <- read.csv("ams.csv", sep=";") %>% filter(s_terms.i.=="vätga
 finn_Latest_scrape <- read.csv("finn_no_h2.csv")
 
 #Danish scrape
-dk_Latest_scrape <- as.data.frame(readRDS("dk_h2.rds")) #%>% select(!all_text)
+dk_Latest_scrape <- as.data.frame(readRDS("dk_h2.rds")) 
 ```
 
 # Wrangle of scrape
