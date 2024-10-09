@@ -268,9 +268,9 @@ data_new_names <- new_data %>%
 for (i in seq_len(nrow(new_data))) {
   nr_matching <- 0
   for (j in seq_len(nrow(locations))) {
-    if (grepl(locations$Name[j], new_data$Location[i], ignore.case = TRUE)) {
+    if (grepl(locations$Original_name[j], new_data$Location[i], ignore.case = TRUE)) {
       #if true
-      match <- locations$Name2[j] # save matching location name
+      match <- locations$New_name[j] # save matching location name
       nr_matching <- nr_matching+1 # document how many matches we get
     } 
   }
@@ -326,17 +326,17 @@ new_comp <- read_sheet(ss, sheet = "Main") %>%
 
 # Information from scrape
 ## Sweden
-se_comp <- read_sheet(sheet,"se_scrape") %>% 
+se_comp <- read_sheet(ss,sheet = "se_scrape") %>% 
   select(IDcol,company) %>% 
   rename(ID = IDcol, Company = company)
 
 ## Norway
-no_comp <- read_sheet(sheet,"no_scrape") %>% 
+no_comp <- read_sheet(ss,sheet = "no_scrape") %>% 
   select(IDcol,arbetsgivare) %>% 
   rename(ID = IDcol, Company = arbetsgivare)
 
 ## Denmark
-dk_comp <- read_sheet(sheet,"dk_scrape") %>% 
+dk_comp <- read_sheet(ss,sheet = "dk_scrape") %>% 
   select(IDcol,company) %>% 
   rename(ID = IDcol, Company = company)
 ```
@@ -395,6 +395,8 @@ At this point if there are any company missing it is easier to fix this manually
 ```{r}
 write_sheet(main, ss = ss, sheet = "Main")
 ```
+
+# COMPANY DESCRIPTION FINDER ADDED HERE???
 
 # Missing locations
 
