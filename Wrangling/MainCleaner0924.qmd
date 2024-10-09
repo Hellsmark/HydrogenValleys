@@ -2,26 +2,28 @@
 title: "MainCleaner0924"
 format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Libraries
 
 ```{r}
+library(googlesheets4)
+library(conflicted)
 library(tidyverse)
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+library(base64enc)
 ```
 
 CHECK WHICH OF THESE LIBRARIES ACTUALLY ARE NEEDED
 
 ```{r}
 library(data.table)
-library(dplyr)
-library(tidyr)
-library(googlesheets4)
 library(zlib)
 library(digest)
 library(openssl)
-library(base64enc)
-library(stringr)
 ```
 
 # Data
@@ -162,7 +164,7 @@ remove_lines_with_pattern <- function(text, pattern) {
   str_replace_all(text, line_pattern, "")
 }
 
-pattern <-c("Cookiebot|DOMAINS|HTTP|www|/privacy|HTML|Thumbnails|Zoom|Cookie|cookie|ID|CONSENT|Samtykke|domains|consent|window|button|Expiry|SessionType:|/\|\\{|\\}")
+pattern <- c("Cookiebot|DOMAINS|HTTP|www|/privacy|HTML|Thumbnails|Zoom|Cookie|cookie|ID|CONSENT|Samtykke|domains|consent|window|button|Expiry|SessionType:|/|\\{|\\}")
 
 ddk <- new_dk %>% 
   select(IDcol, all_text) %>%
@@ -183,14 +185,6 @@ dk_short <- new_dk %>%
 
 
 new_dk$short_text <- dk_short$short_text
-
-# Before the text is added we must check if any string still is too long - if so it cannot be uploaded 
-for (i in seq_len(nrow(dk_short))) {
-  if (dk_short$short_text_chr[i] > 50000) {
-    new_dk$short_text[i] <- "UNSHORTABLE"
-    new_for_clean_dk$short_text[i] <- paste("UNSHORTABLE -", new_dk$text[i], sep=" ")
-  }
-}
 
 #-------------------------------------------------------------------------------------------#
 
@@ -230,6 +224,14 @@ for (i in seq_len(nrow(new_for_clean_dk))) {
 
 # Change column names
 colnames(new_for_clean_dk) <- c("ID","Title", "Company","Location","Description","Scrape_date")
+
+# Before the text is added we must check if any string still is too long - if so it cannot be uploaded 
+for (i in seq_len(nrow(dk_short))) {
+  if (dk_short$short_text_chr[i] > 50000) {
+    new_dk$short_text[i] <- "UNSHORTABLE"
+    new_for_clean_dk$Description[i] <- paste("UNSHORTABLE -", new_dk$text[i], sep=" ")
+  }
+}
 
 # Add to total of new data
 new_for_clean_dk[c("Hydrogen_relevance", "translatedText")] <- NA
