@@ -249,7 +249,7 @@ The function used to de-compress the compressed text is found in a separate sect
 #dk_Latest_scrape$all_text <- lapply(dk_Latest_scrape$all_text, decompress_string)
 ```
 
-## Clean & rename 
+## Clean & rename
 
 ### Companies
 
@@ -367,7 +367,7 @@ main <- read_sheet(ss, sheet = "Main")
 comp_names <- read_sheet(ss, sheet = "company_names")
 ```
 
-### Wrangle 
+### Wrangle
 
 ```{r}
 # Get ID of missing ads with missing company
