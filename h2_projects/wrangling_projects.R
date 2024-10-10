@@ -18,7 +18,8 @@ df <- df_raw %>% janitor::clean_names()
 
 # extract all collaborations and unique company names. Note that these names need to be harmonized with existing list
 
-collaborations_raw <- df %>% select(id, confirmed_partners) %>% 
+collaborations_raw <- df %>% 
+  select(id, confirmed_partners) %>% 
   separate_rows(confirmed_partners, sep = ", ") %>%
   mutate(confirmed_partners = str_squish(confirmed_partners)) 
 
@@ -39,14 +40,20 @@ updated_list_to_clean <- comp_names_raw %>%
 # read cleaned names
 comp_names_clean <- read_sheet(ss_comp, sheet = "company_names")
 
+# only those names relevant for projects
+actors_h2_projects <- comp_names_clean %>%
+  filter(Old_name %in% companies_raw$confirmed_partners) %>%
+  full_join(companies_raw, by = c("Old_name" = "confirmed_partners"))
+
+write_sheet(actors_h2_projects, ss, sheet = "new_names")
 # update collaboration with cleaned names. Many names missing. No point in making actor list yet
 
 collaborations <- collaborations_raw %>% 
   left_join(comp_names_clean, by=c("confirmed_partners" = "Old_name")) %>%
   select(id, partners = New_name)
 
-projects <- df %>% select(-confirmed_partners, -contains("ref"))
+#projects <- df %>% select(-confirmed_partners, -contains("ref"))
 
 #upload new sheets
-write_sheet(projects, ss, sheet = "main_projects" )
-write_sheet(collaborations, ss, sheet = "collaborations" )
+#write_sheet(projects, ss, sheet = "main_projects" )
+#write_sheet(collaborations, ss, sheet = "collaborations" )
