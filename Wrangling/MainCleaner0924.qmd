@@ -321,7 +321,7 @@ ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx
 
 # Missing companies
 new_comp <- read_sheet(ss, sheet = "Main") %>% 
-  filter(Company == "!!!NEW_COMPANY!!!") %>% 
+  filter(Company %in% c('!!!UNKNOWN_COMPANY!!!',"!!!NEW_COMPANY!!!")) %>% 
   select(ID,Company)
 
 # Information from scrape
@@ -377,10 +377,10 @@ new_comp <- main %>%
   filter(Company == "!!!NEW_COMPANY!!!") %>% 
   select(ID,Company)
 
-#Update the company names with the company_names work sheet. Companies that still cant be found will be named !!!NEW_COMPANY!!! and there can still be some companies named !!!UNKNOWN_COMPANY!!! 
+#Update the company names with the company_names work sheet. Companies that still cant be found will be named !!!UNKNOWN_COMPANY!!! and there can still be some companies named !!!NEW_COMPANY!!! 
 to_add <- all_comp %>% 
   filter(ID %in% new_comp$ID) %>% 
-  mutate(Company = case_when(tolower(str_trim(Company)) %in% tolower(comp_names$Old_name) ~ comp_names$New_name[match(tolower(str_trim(Company)),tolower(comp_names$Old_name))], TRUE ~ "!!!NEW_COMPANY!!!"))
+  mutate(Company = case_when(tolower(str_trim(Company)) %in% tolower(comp_names$Old_name) ~ comp_names$New_name[match(tolower(str_trim(Company)),tolower(comp_names$Old_name))], TRUE ~ "!!!UNKNOWN_COMPANY!!!"))
 
 # Update the 'ID' and 'Company' columns in the 'Main' worksheet
 main <- main %>%
