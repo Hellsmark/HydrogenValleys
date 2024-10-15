@@ -404,7 +404,113 @@ At this point if there are any company missing it is easier to fix this manually
 write_sheet(main, ss = ss, sheet = "Main")
 ```
 
-# COMPANY DESCRIPTION FINDER ADDED HERE???
+# COMPANY DESCRIPTION FINDER
+
+This section is for when the name of the company provided in the scrape does not provide enough information in order to find the company behind the job. The description of the job is used to find what company it is.
+
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(ss,sheet =  "Main")
+
+compNames <- read_sheet(ss,sheet =  "company_names") %>% 
+  select(Old_name,New_name) %>% 
+  filter(New_name != "!!!UNKNOWN_COMPANY!!!")
+
+se_desc <- read_sheet(ss,sheet =  "se_scrape") %>% 
+  select(IDcol,description)
+no_desc <- read_sheet(ss,sheet = "no_scrape") %>% 
+  select(IDcol,add_text)
+dk_desc <- read_sheet(ss,sheet = "dk_scrape") %>% 
+  select(IDcol,all_text1,all_text2,all_text3,short_text)
+```
+
+## Wrangle
+
+First decompress the Danish descriptions
+
+```{r}
+dk_desc$all_text <- paste0(dk_desc$all_text1, dk_desc$all_text2, dk_desc$all_text3) 
+dk_desc <- dk_desc[,c("IDcol","all_text",'short_text')]
+
+# How to de-compress
+decompress_string <- function(x) {
+  decompressed <- memDecompress(base64decode(x), type = "gzip")
+  rawToChar(decompressed)
+}
+
+dk_desc$all_text <- lapply(dk_desc$all_text, decompress_string)
+```
+
+We try to find each company in each description. If the company cannot be found will !!!NEW_COMPANY!!! be entered instead. This means that the company does not exists in the company list. The company has to be found manually and then added to the list on google sheet as well. In some cases may the description finder confuse an entry in a descrption with a company with a "generic name", in these cases will one have to fix it manually, you will see the text !!!MULTIPLE_COMPANIES!!! for these cases. Be aware that it may take a while to execute all code since the company list very long.
+
+```{r}
+ads <- main %>% select(ID,Company)
+missingNames <- ads %>% filter(Company == "!!!UNKNOWN_COMPANY!!!")
+
+# Function to check if string is in the other strings
+for (i in seq_len(nrow(missingNames))) {
+  nr_matching <- 0
+  if (missingNames$ID[i] > 30000) {
+    desc <- dk_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$short_text[1]
+  } else if (missingNames$ID[i] > 20000) {
+    desc <- no_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$add_text[1]
+  } else {
+    desc <- se_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$description[1]
+  }
+  #-----#
+  for (j in seq_len(nrow(compNames))) {
+    if (grepl(paste0("\\b",compNames$Old_name[j],"\\b"), desc)) {
+      #if true
+      match <- compNames$New_name[j] # save matching company name name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  if (missingNames$ID[i] > 30000 & nr_matching == 0) {
+    desc <- dk_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$all_text[1]
+    for (j in seq_len(nrow(compNames))) {
+    if (grepl(paste0("\\b",compNames$Old_name[j],"\\b"), desc)) {
+      #if true
+      match <- compNames$New_name[j] # save matching company name name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  }
+  if (nr_matching == 0) {
+    # if no matches were found must the company list be updated to include more company names
+    missingNames$Company[i] <- "!!!NEW_COMPANY!!!"
+  } else if (nr_matching > 1) {
+    # if more than 1 match was found will the company choice have to be made manually
+    missingNames$Company[i] <- "!!!MULTIPLE_COMPANIES!!!"
+  } else {
+    # when nr of matches is 1 will the found match be assigned to the add
+    missingNames$Company[i] <- match 
+  }
+  print(i)
+}
+```
+
+## Upload
+
+```{r}
+ads$Company[match(missingNames$ID, ads$ID)] <- missingNames$Company
+
+# Update the 'ID' and 'Company' columns in the 'Main' worksheet
+main <- main %>%
+  mutate(ID = ifelse(ID %in% ads$ID, ads$ID[match(ID, ads$ID)], ID),
+         Company = ifelse(ID %in% ads$ID, ads$Company[match(ID, ads$ID)], Company))
+
+# Write the updated dataframe back to the 'Main' worksheet
+write_sheet(main, ss = ss, sheet = "Main")
+```
+
+# Description finder used for Employee/staffing agencies
 
 # Missing locations
 
