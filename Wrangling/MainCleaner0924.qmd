@@ -233,6 +233,14 @@ for (i in seq_len(nrow(dk_short))) {
   }
 }
 
+# Re-order scrape df to match google sheet
+new_dk <- new_dk %>% select(IDcol, title, company,
+                            location,pub_date,company_hp,link_to_external_add,
+                            text,date,id,
+                            all_text1,all_text2,all_text3,
+                            short_text)
+
+
 # Add to total of new data
 new_for_clean_dk[c("Hydrogen_relevance", "translatedText")] <- NA
 new_data <- rbind(new_data,new_for_clean_dk)
