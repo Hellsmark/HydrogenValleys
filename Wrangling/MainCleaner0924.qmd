@@ -404,7 +404,7 @@ At this point if there are any company missing it is easier to fix this manually
 write_sheet(main, ss = ss, sheet = "Main")
 ```
 
-# COMPANY DESCRIPTION FINDER
+# Company Description Finder
 
 This section is for when the name of the company provided in the scrape does not provide enough information in order to find the company behind the job. The description of the job is used to find what company it is.
 
@@ -524,8 +524,9 @@ This part of the script is for when new locations has to be added to our list of
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 # Get the ads with missing locations
-adds <- read_sheet(ss, sheet = "Main")  %>% 
-  select(ID,Location)
+main <- read_sheet(ss, sheet = "Main")
+
+ads <- main %>% select(ID,Location)
 
 # Information from scrapes - also change names of columns
 ## Sweden
@@ -547,7 +548,7 @@ colnames(dk_loc) <- c("ID","Location")
 ### Wrangle
 
 ```{r}
-missingLocations <- adds %>% filter(Location == "!!!NEW_LOCATION!!!")
+missingLocations <- ads %>% filter(Location == "!!!NEW_LOCATION!!!")
 
 names_of_missing <- rbind(merge(se_loc, missingLocations["ID"], by = "ID"),merge(no_loc, missingLocations["ID"], by = "ID"),merge(dk_loc, missingLocations["ID"], by = "ID"))
 ```
@@ -573,9 +574,6 @@ Other columns can be filled but are not necessary.
 ### Data
 
 ```{r}
-#Main sheet
-main <- read_sheet(ss, sheet = "Main")
-
 # Chart for locations
 locations <- read_sheet(ss, sheet = "locations_coord")
 ```
@@ -587,9 +585,9 @@ locations <- read_sheet(ss, sheet = "locations_coord")
 for (i in seq_len(nrow(names_of_missing))) {
   nr_matching <- 0
   for (j in seq_len(nrow(locations))) {
-    if (grepl(locations$Name[j], names_of_missing$Location[i], ignore.case = TRUE)) {
+    if (grepl(locations$Original_name[j], names_of_missing$Location[i], ignore.case = TRUE)) {
       #if true
-      match <- locations$Name2[j] # save matching location name
+      match <- locations$New_name[j] # save matching location name
       nr_matching <- nr_matching+1 # document how many matches we get
     } 
   }
@@ -605,11 +603,11 @@ for (i in seq_len(nrow(names_of_missing))) {
   }
 }
 
-adds$Location[match(missingLocations$ID, adds$ID)] <- missingLocations$Location
+ads$Location[match(missingLocations$ID, ads$ID)] <- missingLocations$Location
 
 main <- main %>%
-  mutate(ID = ifelse(ID %in% adds$ID, adds$ID[match(ID, adds$ID)], ID),
-         Location = ifelse(ID %in% adds$ID, adds$Location[match(ID, adds$ID)], Location))
+  mutate(ID = ifelse(ID %in% ads$ID, ads$ID[match(ID, ads$ID)], ID),
+         Location = ifelse(ID %in% ads$ID, ads$Location[match(ID, ads$ID)], Location))
 ```
 
 At this point there may be some unknown locations. These will have to be found in the descriptions of the ads. This is not done in the script but manually in Google sheet. Also some ads may have multiple location names in their scrape, this will also have to be resolved manually.
@@ -617,5 +615,9 @@ At this point there may be some unknown locations. These will have to be found i
 ### Upload changes
 
 ```{r}
-write_sheet(main, ss = sheet, sheet = "Main")
+write_sheet(main, ss = ss, sheet = "Main")
 ```
+
+# Description finder for Locations
+
+This section is similar as for companies but used for locations.
