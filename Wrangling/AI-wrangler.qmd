@@ -123,12 +123,13 @@ A loop that sends 20 ads at a time
 i = 0
 results = []
 while i < len(df):
-  chunk = df.iloc[i:i+20].reset_index(drop=True)
+  chunk = df.iloc[i:i+1].reset_index(drop=True)
+  print(chunk)
   print(f'chunk went ok! i = {i}')
   result_chunk = information_extraction(chunk, fields=['jobtitle', 'company', 'location'])
   print(f'api went ok! i = {i}')
   results.append(result_chunk)
-  i += 20
+  i += 1
 ```
 
 Create a dataframe to start add the rest of the results to
