@@ -4,14 +4,126 @@ format: html
 editor: visual
 ---
 
-## Libraries
+# Initiation 
+
+## R libraries
 
 ```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
 
+library(googlesheets4)
+library(tidyverse)
+```
+
+## Python packages
+
+```{python}
+from openai import OpenAI
+import os
+import pandas as pd
+import ast
+
+app_key = os.environ.get("OPENAI_API_KEY")
+
+df = pd.DataFrame()
 ```
 
 # Data
 
 ```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
+main <- read_sheet(ss, sheet = "Main")
+
+to_upload <- data.frame()
+```
+
+## Learning material for AI
+
+This commented out code shows how certain ads were chosen as "example" for the AI tool to use and base its decisions on. Most of them are Norwegian because most missing info belonged to Norwegian ads, fewer Danish and Swedish.
+
+```{r}
+#main_noFail <- main %>% 
+#  filter(!is.na(Title)) %>% 
+#  filter(!Company %in% c('!!!NEW_COMPANY!!!','!!!MULTIPLE_COMPANIES!!!','Employment/staffing agency')) %>%
+#  filter(!Location %in% c('!!!UNKNOWN_LOCATION!!!','!!!MULTIPLE_LOCATIONS!!!','!!!NEW_LOCATION!!!'))
+
+#se_nofail <- main_noFail %>% filter(ID < 20000)
+#no_nofail <- main_noFail %>% filter(ID >= 20000) %>% filter(ID < 30000)
+#dk_nofail <- main_noFail %>% filter(ID >= 30000)
+
+#random_se1 <- se_nofail[sample(nrow(se_nofail), 1), ] #10431
+#random_no1 <- no_nofail[sample(nrow(no_nofail), 1), ] #21185
+#random_no2 <- no_nofail[sample(nrow(no_nofail), 1), ] #20344
+#random_no3 <- no_nofail[sample(nrow(no_nofail), 1), ] #20931
+#random_no4 <- no_nofail[sample(nrow(no_nofail), 1), ] #21250
+#random_no5 <- no_nofail[sample(nrow(no_nofail), 1), ] #20104
+#random_dk1 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30732
+#random_dk2 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30903
+```
+
+The "learning-data"
+
+```{r}
+example_data <- main %>%
+  filter(ID %in% c(10431,21185,20344,20931,21250,20104,30732,30903))
+```
+
+# AI function
+
+```{python}
+app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
+
+def extract_job_info(df, fields=['jobtitle', 'company', 'location'], chunk_size=25, model="gpt-4"):
+    # Prepare an empty list to store the results
+    results = []
+    
+    # Split dataframe into chunks of `chunk_size`
+    chunks = [df[i:i + chunk_size] for i in range(0, len(df), chunk_size)]
+    
+    for chunk in chunks:
+        # Construct the prompt for the AI API
+        prompt = "For each job ad, please extract the following fields based on the text provided:\n\n"
+        prompt += f"Fields requested: {fields}\n\n"
+        
+        job_ids = []  # To keep track of IDs in case of an error
+        for idx, row in chunk.iterrows():
+            ad_text = row['job_ad_text']
+            job_id = row['job_ad_id']
+            job_ids.append(job_id)  # Add ID to tracking list
+            prompt += f"Job ID: {job_id}\nText: {ad_text}\n\n"
+
+        try:
+            # Call the OpenAI API with the constructed prompt
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "Extract job title, company, and location from job ads."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            # Process the response
+            data = response['choices'][0]['message']['content'].strip()
+            # Here we expect the response to be in JSON or a parsable list format.
+            extracted_data = eval(data)  # Use `json.loads` if response is in JSON
+
+            # Add each entry to the results list
+            for item in extracted_data:
+                results.append(item)
+
+        except Exception as e:
+            # Print error with problematic job IDs
+            print(f"An error occurred: {e}")
+            print(f"Failed to process job IDs in this chunk: {job_ids}")
+            continue
+
+    # Convert results into a DataFrame if needed
+    results_df = pd.DataFrame(results, columns=["ID", "Job Title", "Company", "Location"])
+    return results_df
+
+# Example usage with a dataframe `df`
+# Ensure `df` has 'job_ad_text' and 'job_ad_id' columns
+# results_df = extract_job_info(df, fields=['jobtitle', 'company', 'location'])
 ```
