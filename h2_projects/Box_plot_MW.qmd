@@ -69,5 +69,5 @@ sel %>% ggplot(aes(x = country, y = electrolyser_consumption_mw, fill = country)
   labs(x = "Country", y = "MW", title = "Electrolyser Consumption by Country") +
   scale_y_continuous(limits = c(-5, 800)) + 
   theme_minimal() +
-  theme(legend.position = "none")  # Valfritt, om du vill dölja legenden
+  theme(legend.position = "none")  # Valfritt, om du vill dölja legenden hallo
 ```
