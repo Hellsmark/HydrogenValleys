@@ -40,6 +40,7 @@ sel %>% ggplot(aes(x = country, y = electrolyser_consumption_mw, fill = country)
   labs(x = "Country", y = "MW", title = "Electrolyser Consumption by Country") +
   theme_minimal() +
   theme(legend.position = "none")  # Valfritt, om du vill dölja legenden
+
 ```
 
 Såhär ser den ut med outlyers
