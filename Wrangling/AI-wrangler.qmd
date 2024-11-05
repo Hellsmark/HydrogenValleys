@@ -1,0 +1,198 @@
+---
+title: "AI-wrangler"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Initiation 
+
+## R libraries
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+
+library(googlesheets4)
+library(tidyverse)
+```
+
+## Python packages
+
+```{python}
+import openai
+import os
+import pandas as pd
+import ast
+
+app_key = os.environ.get("OPENAI_API_KEY")
+
+df = pd.DataFrame()
+```
+
+# Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(ss, sheet = "Main")
+
+to_upload <- data.frame()
+
+fail12 <- main %>% 
+  filter(is.na(Title))
+fail22 <-  main %>% 
+  filter(Company %in% c('!!!NEW_COMPANY!!!','!!!MULTIPLE_COMPANIES!!!','Employment/staffing agency'))
+fail32 <- main %>% 
+  filter(Location %in% c('!!!UNKNOWN_LOCATION!!!','!!!MULTIPLE_LOCATIONS!!!','!!!NEW_LOCATION!!!'))
+
+fail_total2 <- fail12 %>% 
+  rbind(fail22) %>% 
+  rbind(fail32) %>%
+  unique() %>%
+  arrange(ID)
+
+py$df <- fail_total2
+```
+
+## Learning material for AI
+
+This commented out code shows how certain ads were chosen as "example" for the AI tool to use and base its decisions on. Most of them are Norwegian because most missing info belonged to Norwegian ads, fewer Danish and Swedish.
+
+```{r}
+#main_noFail <- main %>% 
+#  filter(!is.na(Title)) %>% 
+#  filter(!Company %in% c('!!!NEW_COMPANY!!!','!!!MULTIPLE_COMPANIES!!!','Employment/staffing agency')) %>%
+#  filter(!Location %in% c('!!!UNKNOWN_LOCATION!!!','!!!MULTIPLE_LOCATIONS!!!','!!!NEW_LOCATION!!!'))
+
+#se_nofail <- main_noFail %>% filter(ID < 20000)
+#no_nofail <- main_noFail %>% filter(ID >= 20000) %>% filter(ID < 30000)
+#dk_nofail <- main_noFail %>% filter(ID >= 30000)
+
+#random_se1 <- se_nofail[sample(nrow(se_nofail), 1), ] #10431
+#random_no1 <- no_nofail[sample(nrow(no_nofail), 1), ] #21185
+#random_no2 <- no_nofail[sample(nrow(no_nofail), 1), ] #20344
+#random_no3 <- no_nofail[sample(nrow(no_nofail), 1), ] #20931
+#random_no4 <- no_nofail[sample(nrow(no_nofail), 1), ] #21250
+#random_no5 <- no_nofail[sample(nrow(no_nofail), 1), ] #20104
+#random_dk1 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30732
+#random_dk2 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30903
+```
+
+The "learning-data"
+
+```{r}
+example_data <- main %>%
+  filter(ID %in% c(10431,21185,20344,20931,21250,20104,30732,30903))
+```
+
+# AI function
+
+```{python}
+def information_extraction(ads,fields=['jobtitle', 'company', 'location']):
+  example = '' #example fixed to string
+  content = "You are a helpful assistent who extracts certain fields from job ads. You are asked to extract either jobtitle, company and/or location. Where jobtitle is the jobtitle of the job in the job ad. Company is the company/organisation that is hiring. Location is the city/place where the job is located. You will be provided multiple job ads at once. Each job ad has an ID which is presented before the text. Your response  should be in the form of a python list where each ad has its own list with 4 items. The list should look like '[[ID1,Jobtitle1,Company1,Location1],[ID2,Jobtitle2,Company2,Location2],[ID3,Jobtitle3,Company3,Location3]]'. If you find multiple options for company or location you should include all of them. In those cases should the be put into a list like '[[ID1,Jobtitle1,[Company11,Caompany12],[Location11,Location12]]'. Do not add any text or characters outside of the list and it should be able to be read as a python list."
+  
+  prompt = f"For each job ad, please extract the following fields based on the texts provided:\n\n"
+  prompt += f"Fields requested: {fields}\n\n"
+  
+  for i in range(len(ads)):
+    print(i)
+    job_id = int(ads['ID'][i])
+    ad_text = ads['Description'][i]
+    prompt += f"Job ID: {job_id}\nText: {ad_text}\n\n"
+  
+  response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=16384,
+    temperature=0.0
+  )
+  return response.choices[0].message.content.strip()
+```
+
+## Loop though data and call for function
+
+A loop that sends 20 ads at a time
+
+```{python}
+i = 0
+results = []
+while i < len(df):
+  chunk = df.iloc[i:i+1].reset_index(drop=True)
+  print(chunk)
+  print(f'chunk went ok! i = {i}')
+  result_chunk = information_extraction(chunk, fields=['jobtitle', 'company', 'location'])
+  print(f'api went ok! i = {i}')
+  results.append(result_chunk)
+  i += 1
+```
+
+Create a dataframe to start add the rest of the results to
+
+```{python}
+results_data = ast.literal_eval(results[0])
+results_combined = pd.DataFrame(results_data, columns=["ID", "Title", "Company", "Location"])
+results_minusFirst20 = results[1:]
+print(f'first df went ok!')
+```
+
+Add the rest of the results
+
+```{python}
+incorrect_chunks = []
+for j in range(len(results_minusFirst20)):
+  try:
+    results_data = ast.literal_eval(results_minusFirst20[j])
+    results_data_df = pd.DataFrame(results_data, columns=["ID", "Title", "Company", "Location"])
+    results_combined = pd.concat([results_combined, results_data_df], ignore_index=True)
+    print(f'added df went ok! j = {j}')
+  except:
+    incorrect_chunks.append(j)
+    print(f'added df went error! j = {j}')
+```
+
+Code area for fixing those chunks sent to API which did not come back with the right format
+
+```{python}
+import ast
+
+# Replace "null" with "None" in the string
+cleaned_string = results_minusFirst20[10].replace("null", "None")
+
+# Now use ast.literal_eval on the cleaned string
+results_data = ast.literal_eval(cleaned_string)
+
+###
+
+results_data_df = pd.DataFrame(results_data, columns=["ID", "Title", "Company", "Location"])
+results_combined = pd.concat([results_combined, results_data_df], ignore_index=True)
+```
+
+The results should now be easy to view. However one can not fully trust the respond. Therefore should all results be checked and be added to the main-file with care.
+
+```{python}
+for index in results_combined['ID']:
+  ok = 0
+  for id in df['ID']:
+    if index == id:
+      ok = 1
+  if ok == 0:
+    print(index)
+```
+
+# Checking results - editing and adding to sheet
+
+```{r}
+ai_api_results <- py$results_combined
+```
+
+Easiest way to just manually edit in the dataframe is to do it in the Google sheet.
+
+```{r}
+write_sheet(ai_api_results, ss = ss, sheet = "test_upload")
+```

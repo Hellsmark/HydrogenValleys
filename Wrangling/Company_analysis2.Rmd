@@ -6,20 +6,26 @@ output: html_document
 ---
 
 ## Introduction
-test_viktor 
+
+test_viktor
 
 ## Initiation - Delete python?
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(reticulate)
 
 ```
+
 ### R-libraries
+
 ```{r, include = FALSE}
 library(googlesheets4)
 library(dplyr)
 ```
-### Python packages 
+
+### Python packages
+
 ```{python}
 from openai import OpenAI
 import os
@@ -32,6 +38,7 @@ df = pd.DataFrame()
 ```
 
 ## Google get
+
 ```{r}
 gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
 
@@ -44,8 +51,8 @@ hydro <- CompanyAnalysis %>% select(Name,Hydrogen_relevance) %>% slice(-1)
 to_upload <- data.frame()
 ```
 
-
 ## Function for hydrogen relevance
+
 ```{python}
 app_key = os.environ.get("OPENAI_API_KEY")
 client = OpenAI(api_key=app_key)
@@ -68,6 +75,7 @@ def relevance(text):
 ```
 
 ## Running and sorting
+
 ```{python}
 df = r['hydro']
 companies = list(df['Name'])
@@ -106,9 +114,7 @@ print(total)
 dfffff = pd.DataFrame(total, columns=['Name', 'Hydrogen_relevance', 'Hydrogen_relevance_motivation'])
 
 r['to_upload'] = dfffff
-````
 
-```{python}
 df_result_py1 = pd.DataFrame(list_of_lists_py, columns=['Name', 'Hydrogen_relevance'])
 ```
 
@@ -123,10 +129,8 @@ write_sheet(to_upload, ss = sheet, sheet = "test_viktor")
 
 ```
 
-
-
-
 ## Function for company description
+
 ```{python}
 app_key = os.environ.get("OPENAI_API_KEY")
 client = OpenAI(api_key=app_key)
@@ -148,7 +152,7 @@ def description(text):
   return response.choices[0].message.content.strip()
 ```
 
-````{python}
+```{python}
 df = r['hydro']
 companies = list(df['Name'])
 comp1 = str(companies[0:50])
@@ -186,8 +190,7 @@ print(total)
 dfffff = pd.DataFrame(total, columns=['Name', 'Description'])
 
 r['to_upload'] = dfffff
-````
-
+```
 
 ```{r}
 

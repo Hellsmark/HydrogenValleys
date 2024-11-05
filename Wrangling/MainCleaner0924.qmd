@@ -404,7 +404,7 @@ At this point if there are any company missing it is easier to fix this manually
 write_sheet(main, ss = ss, sheet = "Main")
 ```
 
-# COMPANY DESCRIPTION FINDER
+# Company Description Finder
 
 This section is for when the name of the company provided in the scrape does not provide enough information in order to find the company behind the job. The description of the job is used to find what company it is.
 
@@ -512,6 +512,104 @@ write_sheet(main, ss = ss, sheet = "Main")
 
 # Description finder used for Employee/staffing agencies
 
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(ss,sheet =  "Main")
+
+compNames <- read_sheet(ss,sheet =  "company_names") %>% 
+  select(Old_name,New_name) %>% 
+  filter(!New_name %in% c("!!!UNKNOWN_COMPANY!!!",'Employment/staffing agency'))
+
+se_desc <- read_sheet(ss,sheet =  "se_scrape") %>% 
+  select(IDcol,description)
+no_desc <- read_sheet(ss,sheet = "no_scrape") %>% 
+  select(IDcol,add_text)
+dk_desc <- read_sheet(ss,sheet = "dk_scrape") %>% 
+  select(IDcol,all_text1,all_text2,all_text3,short_text)
+
+dk_desc$all_text <- paste0(dk_desc$all_text1, dk_desc$all_text2, dk_desc$all_text3) 
+dk_desc <- dk_desc[,c("IDcol","all_text",'short_text')]
+
+# How to de-compress
+decompress_string <- function(x) {
+  decompressed <- memDecompress(base64decode(x), type = "gzip")
+  rawToChar(decompressed)
+}
+
+dk_desc$all_text <- lapply(dk_desc$all_text, decompress_string)
+```
+
+## Wrangle
+
+```{r}
+ads <- main %>% select(ID,Company)
+missingNames <- ads %>% filter(Company == "Employment/staffing agency")
+
+# Function to check if string is in the other strings
+for (i in seq_len(nrow(missingNames))) {
+  nr_matching <- 0
+  if (missingNames$ID[i] > 30000) {
+    desc <- dk_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$short_text[1]
+  } else if (missingNames$ID[i] > 20000) {
+    desc <- no_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$add_text[1]
+  } else {
+    desc <- se_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$description[1]
+  }
+  #-----#
+  for (j in seq_len(nrow(compNames))) {
+    if (grepl(paste0("\\b",compNames$Old_name[j],"\\b"), desc)) {
+      #if true
+      match <- compNames$New_name[j] # save matching company name name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  if (missingNames$ID[i] > 30000 & nr_matching == 0) {
+    desc <- dk_desc %>% filter(IDcol == missingNames$ID[i])
+    desc <- desc$all_text[1]
+    for (j in seq_len(nrow(compNames))) {
+    if (grepl(paste0("\\b",compNames$Old_name[j],"\\b"), desc)) {
+      #if true
+      match <- compNames$New_name[j] # save matching company name name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  }
+  if (nr_matching == 0) {
+    # if no matches were found must the company list be updated to include more company names
+    missingNames$Company[i] <- "Employment/staffing agency"
+  } else if (nr_matching > 1) {
+    # if more than 1 match was found will the company choice have to be made manually
+    missingNames$Company[i] <- "Employment/staffing agency"
+  } else {
+    # when nr of matches is 1 will the found match be assigned to the add
+    missingNames$Company[i] <- match 
+  }
+  print(i)
+}
+```
+
+Beware to check the results. Some company names are very generic and can therefore been assigned although the company is not responsible for the new job.
+
+## Upload
+
+```{r}
+ads$Company[match(missingNames$ID, ads$ID)] <- missingNames$Company
+
+# Update the 'ID' and 'Company' columns in the 'Main' worksheet
+main <- main %>%
+  mutate(ID = ifelse(ID %in% ads$ID, ads$ID[match(ID, ads$ID)], ID),
+         Company = ifelse(ID %in% ads$ID, ads$Company[match(ID, ads$ID)], Company))
+
+# Write the updated dataframe back to the 'Main' worksheet
+write_sheet(main, ss = ss, sheet = "Main")
+```
+
 # Missing locations
 
 This part of the script is for when new locations has to be added to our list of locations. It is assumed that all information is stored in the Google sheet at this point.
@@ -524,8 +622,9 @@ This part of the script is for when new locations has to be added to our list of
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 # Get the ads with missing locations
-adds <- read_sheet(ss, sheet = "Main")  %>% 
-  select(ID,Location)
+main <- read_sheet(ss, sheet = "Main")
+
+ads <- main %>% select(ID,Location)
 
 # Information from scrapes - also change names of columns
 ## Sweden
@@ -547,7 +646,7 @@ colnames(dk_loc) <- c("ID","Location")
 ### Wrangle
 
 ```{r}
-missingLocations <- adds %>% filter(Location == "!!!NEW_LOCATION!!!")
+missingLocations <- ads %>% filter(Location == "!!!NEW_LOCATION!!!")
 
 names_of_missing <- rbind(merge(se_loc, missingLocations["ID"], by = "ID"),merge(no_loc, missingLocations["ID"], by = "ID"),merge(dk_loc, missingLocations["ID"], by = "ID"))
 ```
@@ -573,9 +672,6 @@ Other columns can be filled but are not necessary.
 ### Data
 
 ```{r}
-#Main sheet
-main <- read_sheet(ss, sheet = "Main")
-
 # Chart for locations
 locations <- read_sheet(ss, sheet = "locations_coord")
 ```
@@ -587,9 +683,9 @@ locations <- read_sheet(ss, sheet = "locations_coord")
 for (i in seq_len(nrow(names_of_missing))) {
   nr_matching <- 0
   for (j in seq_len(nrow(locations))) {
-    if (grepl(locations$Name[j], names_of_missing$Location[i], ignore.case = TRUE)) {
+    if (grepl(locations$Original_name[j], names_of_missing$Location[i], ignore.case = TRUE)) {
       #if true
-      match <- locations$Name2[j] # save matching location name
+      match <- locations$New_name[j] # save matching location name
       nr_matching <- nr_matching+1 # document how many matches we get
     } 
   }
@@ -605,11 +701,11 @@ for (i in seq_len(nrow(names_of_missing))) {
   }
 }
 
-adds$Location[match(missingLocations$ID, adds$ID)] <- missingLocations$Location
+ads$Location[match(missingLocations$ID, ads$ID)] <- missingLocations$Location
 
 main <- main %>%
-  mutate(ID = ifelse(ID %in% adds$ID, adds$ID[match(ID, adds$ID)], ID),
-         Location = ifelse(ID %in% adds$ID, adds$Location[match(ID, adds$ID)], Location))
+  mutate(ID = ifelse(ID %in% ads$ID, ads$ID[match(ID, ads$ID)], ID),
+         Location = ifelse(ID %in% ads$ID, ads$Location[match(ID, ads$ID)], Location))
 ```
 
 At this point there may be some unknown locations. These will have to be found in the descriptions of the ads. This is not done in the script but manually in Google sheet. Also some ads may have multiple location names in their scrape, this will also have to be resolved manually.
@@ -617,5 +713,104 @@ At this point there may be some unknown locations. These will have to be found i
 ### Upload changes
 
 ```{r}
-write_sheet(main, ss = sheet, sheet = "Main")
+write_sheet(main, ss = ss, sheet = "Main")
+```
+
+# Description finder for Locations
+
+This section is similar as for companies but used for locations.
+
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(ss,sheet =  "Main")
+
+locations <- read_sheet(ss,sheet =  "locations_coord") %>% 
+  select(Original_name,New_name)
+
+se_desc <- read_sheet(ss,sheet =  "se_scrape") %>% 
+  select(IDcol,description)
+no_desc <- read_sheet(ss,sheet = "no_scrape") %>% 
+  select(IDcol,add_text)
+dk_desc <- read_sheet(ss,sheet = "dk_scrape") %>% 
+  select(IDcol,all_text1,all_text2,all_text3,short_text)
+
+dk_desc$all_text <- paste0(dk_desc$all_text1, dk_desc$all_text2, dk_desc$all_text3) 
+dk_desc <- dk_desc[,c("IDcol","all_text",'short_text')]
+
+# How to de-compress
+decompress_string <- function(x) {
+  decompressed <- memDecompress(base64decode(x), type = "gzip")
+  rawToChar(decompressed)
+}
+
+dk_desc$all_text <- lapply(dk_desc$all_text, decompress_string)
+```
+
+## Wrangle
+
+```{r}
+ads <- main %>% select(ID,Location)
+missingLocs <- ads %>% filter(Location == "!!!UNKNOWN_LOCATION!!!")
+
+# Function to check if string is in the other strings
+for (i in seq_len(nrow(missingLocs))) {
+  nr_matching <- 0
+  if (missingLocs$ID[i] > 30000) {
+    desc <- dk_desc %>% filter(IDcol == missingLocs$ID[i])
+    desc <- desc$short_text[1]
+  } else if (missingLocs$ID[i] > 20000) {
+    desc <- no_desc %>% filter(IDcol == missingLocs$ID[i])
+    desc <- desc$add_text[1]
+  } else {
+    desc <- se_desc %>% filter(IDcol == missingLocs$ID[i])
+    desc <- desc$description[1]
+  }
+  #-----#
+  for (j in seq_len(nrow(locations))) {
+    if (grepl(paste0("\\b",locations$Original_name[j],"\\b"), desc)) {
+      #if true
+      match <- locations$New_name[j] # save matching location name name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  if (missingLocs$ID[i] > 30000 & nr_matching == 0) {
+    desc <- dk_desc %>% filter(IDcol == missingLocs$ID[i])
+    desc <- desc$all_text[1]
+    for (j in seq_len(nrow(locations))) {
+    if (grepl(paste0("\\b",locations$Original_name[j],"\\b"), desc)) {
+      #if true
+      match <- locations$New_name[j] # save matching location name name
+      nr_matching <- nr_matching+1 # document how many matches we get
+    } 
+  }
+  }
+  if (nr_matching == 0) {
+    # if no matches were found must the location list be updated to include more location names
+    missingLocs$Location[i] <- "!!!NEW_LOCATION!!!"
+  } else if (nr_matching > 1) {
+    # if more than 1 match was found will the location choice have to be made manually
+    missingLocs$Location[i] <- "!!!MULTIPLE_LOCATIONS!!!"
+  } else {
+    # when nr of matches is 1 will the found match be assigned to the add
+    missingLocs$Location[i] <- match 
+  }
+  print(i)
+}
+```
+
+## Upload
+
+```{r}
+ads$Location[match(missingLocs$ID, ads$ID)] <- missingLocs$Location
+
+# Update the 'ID' and 'Location' columns in the 'Main' worksheet
+main <- main %>%
+  mutate(ID = ifelse(ID %in% ads$ID, ads$ID[match(ID, ads$ID)], ID),
+         Location = ifelse(ID %in% ads$ID, ads$Location[match(ID, ads$ID)], Location))
+
+# Write the updated dataframe back to the 'Main' worksheet
+write_sheet(main, ss = ss, sheet = "Main")
 ```

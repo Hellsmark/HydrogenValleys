@@ -132,3 +132,55 @@ employstaff <- data_new_names %>% filter(Company %in% c("Employment/staffing age
 ```{r}
 write_sheet(data_new_names, ss, sheet = "Main")
 ```
+
+# Other
+
+```{r}
+fail12 <- file_mainpage %>% 
+  filter(is.na(Title))
+fail22 <-  file_mainpage %>% 
+  filter(Company %in% c('!!!NEW_COMPANY!!!','!!!MULTIPLE_COMPANIES!!!','Employment/staffing agency'))
+fail32 <- file_mainpage %>% 
+  filter(Location %in% c('!!!UNKNOWN_LOCATION!!!','!!!MULTIPLE_LOCATIONS!!!','!!!NEW_LOCATION!!!'))
+
+fail_total2 <- fail12 %>% 
+  rbind(fail22) %>% 
+  rbind(fail32) %>%
+  unique() %>%
+  arrange(ID)
+
+
+a_30042_ <- read_sheet(ss, sheet = "dk_scrape") %>% filter(IDcol == 30042)
+
+a_30042_$all_text <- paste0(a_30042_$all_text1, a_30042_$all_text2, a_30042_$all_text3) 
+a_30042_ <- a_30042_[,c("IDcol","all_text",'short_text')]
+
+# How to de-compress
+decompress_string <- function(x) {
+  decompressed <- memDecompress(base64decode(x), type = "gzip")
+  rawToChar(decompressed)
+}
+
+a_30042_$all_text <- lapply(a_30042_$all_text, decompress_string)
+
+
+main_noFail <- file_mainpage %>% 
+  filter(!is.na(Title)) %>% 
+  filter(!Company %in% c('!!!NEW_COMPANY!!!','!!!MULTIPLE_COMPANIES!!!','Employment/staffing agency')) %>%
+  filter(!Location %in% c('!!!UNKNOWN_LOCATION!!!','!!!MULTIPLE_LOCATIONS!!!','!!!NEW_LOCATION!!!'))
+
+se_nofail <- main_noFail %>% filter(ID < 20000)
+no_nofail <- main_noFail %>% filter(ID >= 20000) %>% filter(ID < 30000)
+dk_nofail <- main_noFail %>% filter(ID >= 30000)
+
+random_se1 <- se_nofail[sample(nrow(se_nofail), 1), ] #10431
+random_no1 <- no_nofail[sample(nrow(no_nofail), 1), ] #21185
+random_no2 <- no_nofail[sample(nrow(no_nofail), 1), ] #20344
+random_no3 <- no_nofail[sample(nrow(no_nofail), 1), ] #20931
+random_no4 <- no_nofail[sample(nrow(no_nofail), 1), ] #21250
+random_no5 <- no_nofail[sample(nrow(no_nofail), 1), ] #20104
+random_dk1 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30732
+random_dk2 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30903
+
+
+```
