@@ -2,6 +2,8 @@
 title: "Boxplot"
 format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
 
 ## Libraries
@@ -13,6 +15,8 @@ library(tidyverse)
 library(googlesheets4)
 library(dplyr)
 library(ggplot2)
+library(ggthemes)
+library(plotly)
 ```
 
 ## Download data
@@ -30,18 +34,51 @@ df <- df_raw %>% janitor::clean_names()
 Filter out countries and MW from data set, remove extreme outliers and plot a boxplot
 
 ```{r}
-sel<- df %>% filter(electrolyser_consumption_mw !="N/A",         
-  electrolyser_consumption_mw < 1000) %>% # Ta bort värden > 1000 
-  select(country,electrolyser_consumption_mw)%>%
+sel<- df %>% 
+  filter(
+    electrolyser_consumption_mw !="N/A") %>% # Ta bort värden > 1000 
+  select(country, project_name, status, electrolyser_consumption_mw)%>%
   mutate(electrolyser_consumption_mw = as.numeric(electrolyser_consumption_mw))
  
-sel %>% ggplot(aes(x = country, y = electrolyser_consumption_mw, fill = country)) +
+box<- sel %>% 
+  ggplot(aes(x = country, y = electrolyser_consumption_mw,
+             label = project_name,
+             fill = country)) +
   geom_boxplot() +
+  geom_jitter(alpha = 0.7) +
+  scale_y_log10()+
+  facet_wrap(~status)+
   labs(x = "Country", y = "MW", title = "Electrolyser Consumption by Country") +
   theme_minimal() +
   theme(legend.position = "none")  # Valfritt, om du vill dölja legenden
 
+box
+ggplotly(box)
+
+
 ```
+
+
+# status
+```{r}
+
+status <- sel %>% 
+  group_by(status, country) %>% 
+  summarise(mw = sum(electrolyser_consumption_mw), n = n())
+
+st_plot <- status %>% 
+  ggplot(aes(mw, status, 
+             label = n,
+             fill = country)) + 
+  geom_col() +
+  theme_minimal() +
+  labs(y = "")
+  
+st_plot
+ggplotly(st_plot)
+
+```
+
 
 Såhär ser den ut med outlyers
 
