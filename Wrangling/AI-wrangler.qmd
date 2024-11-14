@@ -6,7 +6,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Initiation 
+# Initiation
 
 ## R libraries
 
@@ -37,8 +37,6 @@ df = pd.DataFrame()
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 main <- read_sheet(ss, sheet = "Main")
-
-to_upload <- data.frame()
 
 fail12 <- main %>% 
   filter(is.na(Title))
@@ -176,9 +174,9 @@ results_combined = pd.concat([results_combined, results_data_df], ignore_index=T
 The results should now be easy to view. However one can not fully trust the respond. Therefore should all results be checked and be added to the main-file with care.
 
 ```{python}
-for index in results_combined['ID']:
+for index in df['ID']:
   ok = 0
-  for id in df['ID']:
+  for id in results_combined['ID']:
     if index == id:
       ok = 1
   if ok == 0:

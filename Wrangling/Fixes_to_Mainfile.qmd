@@ -11,7 +11,7 @@ editor_options:
 ```{r}
 library(tidyverse)
 library(googlesheets4)
-
+library(base64enc)
 
 ```
 
@@ -181,6 +181,24 @@ random_no4 <- no_nofail[sample(nrow(no_nofail), 1), ] #21250
 random_no5 <- no_nofail[sample(nrow(no_nofail), 1), ] #20104
 random_dk1 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30732
 random_dk2 <- dk_nofail[sample(nrow(dk_nofail), 1), ] #30903
+
+
+#####
+
+dk_30681 <- read_sheet(ss, sheet = "dk_scrape") %>%
+  filter(IDcol == 30681)
+
+# How to de-compress
+
+decompress_string <- function(x) {
+  decompressed <- memDecompress(base64decode(x), type = "gzip")
+  rawToChar(decompressed)
+}
+
+dk_30681$all_text <- paste0(dk_30681$all_text1, dk_30681$all_text2, dk_30681$all_text3) 
+dk_30681 <- dk_30681[,c("IDcol","all_text",'short_text')]
+
+dk_30681$all_text <- lapply(dk_30681$all_text, decompress_string)
 
 
 ```
