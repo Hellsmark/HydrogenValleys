@@ -1,0 +1,67 @@
+---
+title: "total_mw_country"
+author: "Jakob"
+format: html
+editor: visual
+---
+
+## Libraries
+
+Download necessary libraries
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(dplyr)
+library(ggplot2)
+library(janitor)
+```
+
+## Download data
+
+Get data from Google sheets
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736"
+df_raw <- read_sheet(ss, sheet = "Projects_2")
+df <- df_raw %>% janitor::clean_names()
+```
+
+## Select and plot
+
+Select "countries" and "MW" from data set, plot a bar diagram of total consumption.
+
+```{r}
+
+sel <- df %>% 
+  filter(electrolyser_consumption_mw != "N/A") %>% 
+  select(country, electrolyser_consumption_mw) %>%
+  mutate(electrolyser_consumption_mw = as.numeric(electrolyser_consumption_mw)) %>%
+  group_by(country) %>%
+  summarise(total_consumption = sum(electrolyser_consumption_mw, na.rm = TRUE))  # Calculate total MW
+
+# Create the bar plot
+ggplot(sel, aes(x = country, y = total_consumption, fill = country)) + 
+  geom_bar(stat = "identity") +
+  labs(x = "Country", y = "Total MW", title = "Total Electrolyser Consumption by Country") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Optionally hide the legend
+
+```
+
+```{r}
+sel <- df %>% 
+  filter(electrolyser_consumption_mw != "N/A") %>% 
+  select(country, electrolyser_consumption_mw) %>%
+  mutate(electrolyser_consumption_mw = as.numeric(electrolyser_consumption_mw)) %>%
+  group_by(country) %>%
+  summarise(mean_consumption = mean(electrolyser_consumption_mw, na.rm = TRUE))
+
+# Create the bar plot
+ggplot(sel, aes(x = country, y = mean_consumption, fill = country)) + 
+  geom_bar(stat = "identity") +
+  labs(x = "Country", y = "Mean MW", title = "Mean Electrolyser Consumption by Country") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Remove legends
+
+```
