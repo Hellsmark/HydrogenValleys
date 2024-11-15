@@ -17,15 +17,6 @@ conflicts_prefer(dplyr::select)
 library(base64enc)
 ```
 
-CHECK WHICH OF THESE LIBRARIES ACTUALLY ARE NEEDED
-
-```{r}
-library(data.table)
-library(zlib)
-library(digest)
-library(openssl)
-```
-
 # Data
 
 ## Google

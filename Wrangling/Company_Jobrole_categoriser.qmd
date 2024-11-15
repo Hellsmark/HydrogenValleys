@@ -1,0 +1,113 @@
+---
+title: "Company and jobroles infoFinder"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Initiation
+
+## R libraries
+
+```{r}
+library(googlesheets4)
+library(conflicted)
+library(tidyverse)
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+```
+
+## Python packages
+
+```{python}
+import openai
+import os
+import pandas as pd
+import ast
+
+app_key = os.environ.get("OPENAI_API_KEY")
+
+df = pd.DataFrame()
+```
+
+# Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(ss, sheet = "Main")
+
+companyAnalysis <- read_sheet(ss, sheet = "CompanyAnalysis")
+
+locations_coord <- read_sheet(ss, sheet = "locations_coord")
+
+to_be_uploaded <- data.frame( Name = character(), Description = numeric(0), Number_of_ads = numeric(0),
+                              Location_of_jobs = numeric(0), Multinational = numeric(0),
+                              Organisation_type = numeric(0), Ownership_type = numeric(0),
+                              Industry_Sector = numeric(0), Hydrogen_relevance = numeric(0),
+                              Hydrogen_relevance_motivation = numeric(0), 
+                              Hydrogen_specialist = numeric(0), Nationality = numeric(0),
+                              Founded_year = numeric(0))
+```
+
+# Companies
+
+Finding unique and new companies
+
+```{r}
+all_companies <- main %>%
+  select(Company) %>%
+  unique() %>%
+  arrange(Company)
+
+previously_known_companies <- companyAnalysis %>%
+  select(Name)
+
+new_companies <- anti_join(all_companies,previously_known_companies,by = c("Company" = "Name"))
+```
+
+Calculate number of ads published by each company
+
+```{r}
+nr_of_ads <- main %>%
+  count(Company, name = 'Number_of_ads')
+
+colnames(nr_of_ads) <- c("Name","Number_of_ads")
+
+to_be_uploaded <- to_be_uploaded %>%
+  bind_rows(nr_of_ads %>% select(any_of(names(to_be_uploaded))))
+```
+
+Compile in what countries each company is recruiting
+
+```{r}
+company_country_all <- main %>%
+  select(Company,Location) %>%
+  left_join(locations_coord %>% select(New_name,country_code) %>% unique(),
+            by = c('Location' = 'New_name')) %>%
+  select(Company,country_code) %>%
+  unique() 
+
+country_codes <- company_country_all %>% select(country_code) %>% unique() %>% drop_na() %>% pull(country_code)
+
+company_country <- company_country_all %>%
+  group_by(Company) %>%
+  pivot_wider(names_from = 'country_code',
+              values_from = 'country_code') %>%
+  unite('country_code', !!!country_codes, sep = ', ') %>%
+  ungroup()
+
+
+pivot_wider(names_from = "Job_roles",
+              values_from = Job_roles) %>%
+  unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Other management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+        sep = ", ", na.rm = TRUE)
+
+
+allcountries <- locations_coord %>% select(country_code) %>% unique()
+```
