@@ -24,12 +24,13 @@ library(reticulate)
 ## Python packages
 
 ```{python}
-import openai
+from openai import OpenAI
 import os
 import pandas as pd
 import ast
 
 app_key = os.environ.get("OPENAI_API_KEY")
+client = OpenAI(api_key=app_key)
 
 df = pd.DataFrame()
 ```
@@ -68,6 +69,7 @@ previously_known_companies <- companyAnalysis %>%
   select(Name)
 
 new_companies <- anti_join(all_companies,previously_known_companies,by = c("Company" = "Name"))
+py$df <- new_companies
 ```
 
 Calculate number of ads published by each company
@@ -108,3 +110,81 @@ to_be_uploaded <- to_be_uploaded %>%
          Hydrogen_specialist, Nationality, Founded_year, -Location_of_jobs.y, -Location_of_jobs.x)      
 
 ```
+
+## AI-functions
+
+Here we have a collection AI functions and their implementation.
+
+### Description of companies
+
+Python function using OpenAI API
+
+```{python}
+def description(text):
+  example = "['Company_A','Short description first sentence. Second sentence']"
+  
+  content = "You are a helpful assistent that when provided the name of an organisation respond with a short description, two scentences (no more, no less), about the organisation and what they do. Your response should be in the form of a python list which consists of two items, the first being the name of the organisation provided, the second being the short description of the organisation. Do not add any text or characters outside of the list and it should be able to be read as a python list. Here is an example: "+example
+  
+  prompt = f"Describe the following organisation: '{text}'"
+  
+  response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "system", 
+                   "content": content},
+                  {"role":"user",
+                   "content":prompt}],
+    max_tokens=16384,
+    temperature=0.5
+  )
+  return response.choices[0].message.content.strip()
+
+```
+
+Run the function
+
+```{python}
+results = []
+
+for i in range(len(df)):
+  print(i)
+  text = df['Company'][i]
+  print(text)
+  result = description(text)
+  print(f'api went ok! i = {i}')
+  results.append(result)
+```
+
+Create a dataframe to start add the rest of the results to
+
+```{python}
+try:
+  results_data = ast.literal_eval(results[0])
+  results_combined = pd.DataFrame([results_data], columns=["Name", "Description"])
+  results_rest = results[1:]
+  print(f'first df went ok!')
+except:
+  print('first df went error!')
+```
+
+Add the rest of the results
+
+```{python}
+incorrect_parts = []
+for j in range(len(results_rest)):
+  try:
+    results_data = ast.literal_eval(results_rest[j])
+    results_data_df = pd.DataFrame([results_data], columns=["Name", "Description"])
+    results_combined = pd.concat([results_combined, results_data_df], ignore_index=True)
+    print(f'added df went ok! j = {j}')
+  except:
+    incorrect_parts.append(j)
+    print(f'added df went error! j = {j}')
+```
+
+Code area for fixing those chunks sent to API which did not come back with the right format - this cell is not to be run as is, but to be used based on the issues present
+
+```{python}
+
+```
+
+The results should now be easy to view. However one can not fully trust the respond. Therefore should all results be checked and be added to the main-file with care.
