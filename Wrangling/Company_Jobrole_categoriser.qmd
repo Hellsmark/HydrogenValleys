@@ -85,29 +85,26 @@ to_be_uploaded <- to_be_uploaded %>%
 Compile in what countries each company is recruiting
 
 ```{r}
-company_country_all <- main %>%
+company_country <- main %>%
   select(Company,Location) %>%
+  separate_rows(Location, sep = ", ") %>%
+  # Optionally, trim any extra whitespace (just in case)
+  mutate(Location = trimws(Location)) %>%
   left_join(locations_coord %>% select(New_name,country_code) %>% unique(),
             by = c('Location' = 'New_name')) %>%
   select(Company,country_code) %>%
-  unique() 
-
-country_codes <- company_country_all %>% select(country_code) %>% unique() %>% drop_na() %>% pull(country_code)
-
-company_country <- company_country_all %>%
+  unique() %>%
   group_by(Company) %>%
-  pivot_wider(names_from = 'country_code',
-              values_from = 'country_code') %>%
-  unite('country_code', !!!country_codes, sep = ', ') %>%
-  ungroup()
+  summarise(country_code = paste(sort(unique(country_code)), collapse = ", ")) %>%
+  ungroup() 
 
+colnames(company_country) <- c("Name","Location_of_jobs")
 
-pivot_wider(names_from = "Job_roles",
-              values_from = Job_roles) %>%
-  unite("Job_Roles", "Administration","Engineering", "Environmental",
-        "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Other management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
-        sep = ", ", na.rm = TRUE)
+to_be_uploaded <- to_be_uploaded %>%
+  left_join(company_country, by = "Name") %>%  
+  mutate(Location_of_jobs = Location_of_jobs.y) %>%         
+  select(Name, Description, Number_of_ads, Location_of_jobs, Multinational, Organisation_type,
+         Ownership_type, Industry_Sector, Hydrogen_relevance, Hydrogen_relevance_motivation, 
+         Hydrogen_specialist, Nationality, Founded_year, -Location_of_jobs.y, -Location_of_jobs.x)      
 
-
-allcountries <- locations_coord %>% select(country_code) %>% unique()
 ```
