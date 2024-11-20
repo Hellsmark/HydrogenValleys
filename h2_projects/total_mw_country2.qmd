@@ -1,0 +1,63 @@
+---
+title: "Total mW"
+format: html
+editor: visual
+---
+
+## Total MW
+
+Download necessary libraries
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(dplyr)
+library(ggplot2)
+```
+
+download data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736"
+ss_comp <- "https://docs.google.com/spreadsheets/d/14Yv8uc_-WGARJ0vLzMbMXplSMIjiRxnAXwetjH6xCU8/edit?gid=1026439614#gid=1026439614"
+
+# Read project sheet and clean
+df_raw <- read_sheet(ss, sheet = "Projects_2")
+df <- df_raw %>% janitor::clean_names()
+
+```
+
+---
+filter out the data
+---
+
+```{r}
+new_countries<- c(SWE="Sweden",FIN="Finland",NOR="Norway",DNK="Denmark")
+
+mw <- df%>%
+  select(id, country, electrolyser_mw)%>%
+  filter(electrolyser_mw != "N/A")%>%
+  distinct()%>%
+  mutate(country = new_countries[country],electrolyser_mw = as.numeric(electrolyser_mw))
+
+```
+
+---
+Plot a bar plot of 
+---
+
+```{r}
+total_MW <- sum(mw$electrolyser_mw)
+
+ggplot(mw, aes(x = "", y = electrolyser_mw, fill = country)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(x = "", y = total_MW, label = scales::comma(total_MW)), 
+            vjust = -0.5, size = 5) + 
+  labs(title = "Total MW Distribution",
+       x = "",
+       y = "Electrolyzer capacity [MW]",
+       fill = "Country") +
+  scale_y_continuous(labels = scales::comma) + # Add commas to large numbers
+  theme_minimal()
+
+```

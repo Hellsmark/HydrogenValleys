@@ -1,0 +1,69 @@
+---
+title: "Intervall plot"
+format: html
+editor: visual
+---
+
+## 
+
+Download necessary libraries
+
+```{r}
+library(tidyverse) 
+library(googlesheets4) 
+library(dplyr) 
+library(ggplot2)
+```
+
+download data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736" 
+
+ss_comp <- "https://docs.google.com/spreadsheets/d/14Yv8uc_-WGARJ0vLzMbMXplSMIjiRxnAXwetjH6xCU8/edit?gid=1026439614#gid=1026439614" 
+
+# Read project sheet and clean 
+df_raw <- read_sheet(ss, sheet = "Projects_2") 
+df <- df_raw %>% 
+  janitor::clean_names() 
+```
+
+---
+--- filter out the data ---
+---
+
+```{r}
+new_countries<- c(SWE="Sweden",FIN="Finland",NOR="Norway",DNK="Denmark")  
+
+mw <- df%>% 
+  select(id, country, electrolyser_mw)%>%   
+  filter(electrolyser_mw != "N/A")%>%   
+  distinct()%>%   mutate(country = new_countries[country],electrolyser_mw = as.numeric(electrolyser_mw)) 
+```
+
+---
+--- Plot a bar plot of  ---
+---
+
+```{r}
+mw$MW_interval <- cut(
+  mw$electrolyser_mw,
+  breaks = c(-Inf, 1, 10,100,500, 1001, Inf), # Define interval boundaries
+  labels = c("<1","1-9","10-99","100-499", "500-1000", ">1000"), # Label intervals
+  right = FALSE # Intervals are left-closed
+)
+```
+
+Plotting the bars
+
+```{r}
+ggplot(mw, aes(x = MW_interval, fill = country)) +
+  geom_bar(position = "stack") +
+  labs(
+    title = "Distribution of Countries by MW Intervals",
+    x = "MW Intervals",
+    y = "Number of Projects",
+    fill = "Country"
+  ) +
+  theme_minimal()
+```
