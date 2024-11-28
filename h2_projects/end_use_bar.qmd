@@ -1,0 +1,55 @@
+---
+title: "End_Use"
+format: html
+editor: visual
+---
+
+## End Use Distribution
+
+Download libraries
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(plotly)
+```
+
+## Gather data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736" 
+
+# Read project sheet and clean 
+df_raw <- read_sheet(ss, sheet = "main_projects") 
+df <- df_raw %>% 
+  janitor::clean_names() 
+
+end_use<- df%>%
+  select(id, country, end_use_mobility,end_use_heat_power, end_use_grid_export)
+```
+
+## Count & Plot
+
+```{r}
+plot_data <- data.frame(
+  Category = c("Mobility", "CHP", "Export"),
+  Count = c(
+    sum(end_use$end_use_mobility == 1, na.rm = TRUE),
+    sum(end_use$end_use_heat_power == 1, na.rm = TRUE),
+    sum(end_use$end_use_grid_export == 1, na.rm = TRUE)
+  )
+)
+
+ggplot(plot_data, aes(x = Category, y = Count, fill = Category)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Count), vjust = -0.5, color = "black")+
+  labs(
+    title = "End use for Projects",
+    x = "End use Category",
+    y = "Number or Projects"
+  ) +
+  theme_minimal()
+```

@@ -1,0 +1,45 @@
+---
+title: "Projects per year"
+format: html
+editor: visual
+---
+
+## Library
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(plotly)
+```
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736" 
+
+# Read project sheet and clean 
+df_raw <- read_sheet(ss, sheet = "main_projects") 
+df <- df_raw %>% 
+  janitor::clean_names() 
+
+p_year <- df%>%
+  select(date_online)%>%  
+  filter(date_online != "N/A")%>%
+  count(date_online)%>%
+  mutate(n=as.numeric(n),date_online=as.numeric(date_online))
+
+```
+
+plot
+
+```{r}
+ggplot(p_year,aes(x=factor(date_online),y=n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(
+    title = "Projects planned to be operational",
+    x = "Year",
+    y = "Ammoun of projects"
+  ) +
+  theme_minimal()
+```

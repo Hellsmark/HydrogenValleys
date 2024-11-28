@@ -1,0 +1,62 @@
+---
+title: "Accumulated MW"
+format: html
+editor: visual
+---
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(plotly)
+```
+
+## Download & Organize data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736" 
+
+# Read project sheet and clean 
+df_raw <- read_sheet(ss, sheet = "main_projects") 
+df <- df_raw %>% 
+  janitor::clean_names() 
+
+
+new_countries<- c(SWE="Sweden",FIN="Finland",NOR="Norway",DNK="Denmark")  
+
+mw_year <- df%>%
+  select(country,date_online,electrolyser_mw)%>%  
+  filter(electrolyser_mw != "N/A", date_online != "N/A") %>%
+  mutate(date_online=as.numeric(date_online),electrolyser_mw=as.numeric(electrolyser_mw),country = new_countries[country])
+
+# Förbered data och beräkna ackumulerad MW för varje land
+summarized_data <- mw_year %>%
+  filter(date_online > 2021) %>% # Ta bort år före 2004
+  group_by(country, date_online) %>% # Gruppera efter land och år
+  summarize(total_mw = sum(electrolyser_mw, na.rm = TRUE)) %>% # Summera MW per land och år
+  arrange(date_online) %>% # Sortera efter år
+  ungroup() %>%
+  group_by(country) %>% # Gruppera efter land för ackumulering
+  mutate(cumulative_mw = cumsum(total_mw)/1000) %>% # Beräkna ackumulerad MW för varje land
+  ungroup()
+```
+
+## Plot
+
+```{r}
+# Plot: Stacked Area Plot
+ggplot(summarized_data, aes(x = date_online, y = cumulative_mw, fill = country)) +
+  geom_area(alpha = 0.6) + # Skapa områdeplot
+  labs(
+    title = "Accumulated MW per country over time",
+    x = "Year",
+    y = "Accumulated GW",
+    fill = "Country"
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(summarized_data$date_online), max(summarized_data$date_online), by = 1)) # Anpassa x-axeln
+```
