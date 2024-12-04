@@ -107,8 +107,7 @@ to_be_uploaded <- to_be_uploaded %>%
   mutate(Location_of_jobs = Location_of_jobs.y) %>%         
   select(Name, Description, Number_of_ads, Location_of_jobs, Multinational, Organisation_type,
          Ownership_type, Industry_Sector, Hydrogen_relevance, Hydrogen_relevance_motivation, 
-         Hydrogen_specialist, Nationality, Founded_year, -Location_of_jobs.y, -Location_of_jobs.x)      
-
+         Hydrogen_specialist, Nationality, Founded_year, -Location_of_jobs.y, -Location_of_jobs.x)    
 ```
 
 ## AI-functions
@@ -187,4 +186,52 @@ Code area for fixing those chunks sent to API which did not come back with the r
 
 ```
 
-The results should now be easy to view. However one can not fully trust the respond. Therefore should all results be checked and be added to the main-file with care.
+The results should now be easy to view. However one can not fully trust the respond. Therefore should all results be checked and be added to the main-file with care. Easiest way is to upload it and read in Google Sheets. After changes has been made there can it be added with the rest of the companies.
+
+```{r}
+ai_api_results <- py$results_combined
+write_sheet(ai_api_results, ss = ss, sheet = "test_upload")
+```
+
+## Combine data
+
+This section is for the combination of all gathered data, the counted ads for each company, the description of them and the manually performed categorization of them.
+
+### New Data
+
+```{r}
+categorization <- read_sheet(ss, sheet = "test_upload")
+```
+
+### Compilation
+
+```{r}
+to_be_uploaded <- to_be_uploaded %>%
+  left_join(companyAnalysis, by = "Name") %>%  
+  mutate(Description = Description.y, Number_of_ads = Number_of_ads.x, 
+         Location_of_jobs = Location_of_jobs.x, Multinational = Multinational.y,
+         Organisation_type = Organisation_type.y, Ownership_type = Ownership_type.y,
+         Industry_Sector = Industry_Sector.y, Hydrogen_relevance = Hydrogen_relevance.y,
+         Hydrogen_relevance_motivation = Hydrogen_relevance_motivation.y, 
+         Hydrogen_specialist = Hydrogen_specialist.y, Nationality = Nationality.y,
+         Founded_year = Founded_year.y) %>%         
+  select(Name, Description, Number_of_ads, Location_of_jobs, Multinational, Organisation_type,
+         Ownership_type, Industry_Sector, Hydrogen_relevance, Hydrogen_relevance_motivation, 
+         Hydrogen_specialist, Nationality, Founded_year)
+
+for (col in colnames(categorization)[-1]) {  # Exclude the "Name" column
+  to_be_uploaded[[col]] <- ifelse(
+    is.na(to_be_uploaded[[col]]) | to_be_uploaded[[col]] == "", 
+    categorization[[col]][match(to_be_uploaded$Name, categorization$Name)], 
+    to_be_uploaded[[col]]
+  )
+}
+
+to_be_uploaded$Founded_year[to_be_uploaded$Founded_year == "NULL"] <- NA
+```
+
+```{r}
+write_sheet(to_be_uploaded, ss = ss, sheet = "CompanyAnalysis")
+```
+
+# Job roles

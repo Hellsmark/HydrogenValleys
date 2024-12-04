@@ -4,20 +4,27 @@ author: "Viktor"
 date: "2024-03-23"
 output: html_document
 ---
+
 ## Introduction
-This script is for categorising the companies. It uses open AI soft- and hardware via API in order to do so. 
+
+This script is for categorising the companies. It uses open AI soft- and hardware via API in order to do so.
 
 ## Initiation
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(reticulate)
 ```
+
 ### R-libraries
+
 ```{r, include = FALSE}
 library(googlesheets4)
 library(dplyr)
 ```
+
 ### Python packages
+
 ```{python}
 from openai import OpenAI
 import os
@@ -28,6 +35,7 @@ app_key = os.environ.get("OPENAI_API_KEY")
 ```
 
 ## Collect data from google
+
 ```{r, include = FALSE}
 gs4_auth(scopes = c("https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"))
 
@@ -37,6 +45,7 @@ CompanyAnalysis <- read_sheet(sheet, "CompanyAnalysis")
 ```
 
 ## Categoriser-function
+
 ```{python}
 client = OpenAI(api_key=app_key)
 
@@ -71,7 +80,9 @@ def categoriser(text):
 ```
 
 ## Running categorisation
+
 ### Preprocess of data
+
 ```{r}
 py$CompanyAnalysis_py <- CompanyAnalysis
 ```
@@ -80,9 +91,9 @@ py$CompanyAnalysis_py <- CompanyAnalysis
 df_done_py = CompanyAnalysis_py.head(1)
 df_companies_py = CompanyAnalysis_py.iloc[1:len(CompanyAnalysis_py)]
 ```
-The dataframe may be too large for the AI-model to be able to provide a response for each company
-Therefor should the following section be run multiple times with 100 companies each time until we have added it all to the df_done_py dataframe.
-### Categorising all the companies
+
+The dataframe may be too large for the AI-model to be able to provide a response for each company Therefor should the following section be run multiple times with 100 companies each time until we have added it all to the df_done_py dataframe. \### Categorising all the companies
+
 ```{python}
 i = 0
 j = 0
@@ -108,7 +119,9 @@ while i < len(df_companies_py):
       print('AI failed after 3 attempts')
       break
 ```
+
 ### Process result
+
 ```{python}
 df_done_py.drop(columns=['Number_of_adds', 'Location_of_jobs'], inplace=True)
 ```
@@ -129,7 +142,9 @@ CompanyAnalysis2 <- merged_df %>%
          ,-Industry_Sector.x,-Industry_Sector.y, -Hydrogen_relevance.x, -Hydrogen_relevance.y,
          ,-Nationality.x,-Nationality.y)
 ```
+
 ## Upload to google
+
 ```{r}
 #write_sheet(CompanyAnalysis2, ss = sheet, sheet = "CompanyAnalysis")
 #May consider using sheet_append
