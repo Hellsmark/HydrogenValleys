@@ -52,7 +52,7 @@ collaborations <- collaborations_raw %>%
   left_join(comp_names_clean, by=c("confirmed_partners" = "Old_name")) %>%
   select(id, partners = New_name)
 
-#projects <- df %>% select(-confirmed_partners, -contains("ref"))
+projects <- df %>% select(-confirmed_partners, -contains("ref"))
 
 #upload new sheets
 #write_sheet(projects, ss, sheet = "main_projects" )
