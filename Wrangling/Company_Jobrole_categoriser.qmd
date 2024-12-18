@@ -35,7 +35,9 @@ client = OpenAI(api_key=app_key)
 df = pd.DataFrame()
 ```
 
-# Data
+# Companies
+
+## Data
 
 ```{r}
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
@@ -54,8 +56,6 @@ to_be_uploaded <- data.frame( Name = character(), Description = numeric(0), Numb
                               Hydrogen_specialist = numeric(0), Nationality = numeric(0),
                               Founded_year = numeric(0))
 ```
-
-# Companies
 
 Finding unique and new companies
 
@@ -230,8 +230,76 @@ for (col in colnames(categorization)[-1]) {  # Exclude the "Name" column
 to_be_uploaded$Founded_year[to_be_uploaded$Founded_year == "NULL"] <- NA
 ```
 
+### Upload
+
 ```{r}
 write_sheet(to_be_uploaded, ss = ss, sheet = "CompanyAnalysis")
 ```
 
 # Job roles
+
+## Data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+main <- read_sheet(ss, sheet = "Main")
+
+jobRoles <- read_sheet(ss, sheet = "Job_roles")
+
+to_be_uploaded <- data.frame( Title = character(), Job_role_AI = numeric(0),
+                              Job_role = numeric(0), Job_level = numeric(0), 
+                              Type = numeric(0), Type_2 = numeric(0))
+```
+
+## Wrangle
+
+Get the un-categorised jobs
+
+```{r}
+last_se <- jobRoles %>%
+  filter(ID < 20000) %>%
+  summarise(max_value = max(ID)) %>%
+  pull(max_value)
+last_no <- jobRoles %>%
+  filter(ID < 30000 & ID >= 20000) %>%
+  summarise(max_value = max(ID)) %>%
+  pull(max_value)
+last_dk <- jobRoles %>%
+  filter(ID >= 30000) %>%
+  summarise(max_value = max(ID)) %>%
+  pull(max_value)
+
+new_jobs <- main %>%
+  select(ID,Title,Description) %>%
+  filter((ID > last_se & ID < 20000) | (ID > last_no & ID < 30000) | (ID > last_dk))
+```
+
+Next step is to look through the new jobs and categorise them according to predefined categories/competences.
+
+```{r}
+write_sheet(new_jobs, ss = ss, sheet = "test_upload")
+```
+
+## Add newly categorized
+
+### Gather newly categorized
+
+```{r}
+categorization <- read_sheet(ss, sheet = "test_upload")
+```
+
+### Add to existing data
+
+```{r}
+to_be_uploaded <- categorization %>%
+  mutate(Job_role_AI = NA,
+         Job_level = NA) %>%
+  select(ID, Title, Job_role_AI, Job_role, Job_level, Type, Type_2)
+```
+
+### Upload
+
+```{r}
+sheet_append(ss, to_be_uploaded, sheet = 'Job_roles')
+```
