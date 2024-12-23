@@ -150,7 +150,7 @@ gt_tbl_country_comp <- tbl_country_comp %>%
   ) %>% gt_theme_espn()
 gt_tbl_country_comp
 
-gtsave(gt_tbl_country_comp, filename = "tables/countries_jobs.png")
+gtsave(gt_tbl_country_comp, filename = "H2_paper/tables_W2425/countries_jobs.png")
 ```
 
 ### Violin
@@ -170,13 +170,13 @@ violine <- df_distribution %>%
   labs(x = "", y = "")
 
 violine
-ggsave(filename = "figs/violine.png", plot = violine, limitsize = FALSE, width = 6, height = 4)
+ggsave(filename = "H2_paper/figs_W2425/violine.png", plot = violine, limitsize = FALSE, width = 6, height = 4)
 ```
 
 Add table to violin
 
 ```{r}
-img <- png::readPNG("tables/countries_jobs.png")
+img <- png::readPNG("H2_paper/tables_W2425/countries_jobs.png")
 
 # Create a rasterGrob
 table_grob <- grid::rasterGrob(img)
@@ -198,7 +198,7 @@ final_figure1 <- cowplot::plot_grid(violine,
                                                     rel_heights = c(1, 1))
 
 final_figure1
-ggsave(filename = "figs/violine_table.png", width = 6, height = 4, dpi = 600)
+ggsave(filename = "H2_paper/figs_W2425/violine_table.png", width = 6, height = 4, dpi = 600)
 ```
 
 ### Plot of number of jobs per region
@@ -206,9 +206,9 @@ ggsave(filename = "figs/violine_table.png", width = 6, height = 4, dpi = 600)
 ```{r}
 #Adding the missing regions manually (this is done once more on row 1007)
 regions_noJobs <- data.frame(
-  country = c("Norway", "Sweden", "Sweden","Sweden"),
-  region = c("Innlandet", "Blekinge", "Jönköping", "Örebro"),
-  n = c(0,0,0,0))
+  country = c("Norway", "Sweden", "Sweden"),
+  region = c("Innlandet", "Blekinge", "Jönköping"),
+  n = c(0,0,0))
 
 numberOf_jobsPer_region <- jobs %>%
   group_by(country, region) %>%
@@ -232,7 +232,7 @@ nrJobs_perRegion_plot <- numberOf_jobsPer_region %>%
 
 nrJobs_perRegion_plot
 
-ggsave(filename = "figs/cluster_paper_plots/nrJobs_perRegion_plot.png", plot = nrJobs_perRegion_plot, limitsize = FALSE, width = 16, height = 8)
+ggsave(filename = "H2_paper/figs_W2425/nrJobs_perRegion_plot.png", plot = nrJobs_perRegion_plot, limitsize = FALSE, width = 16, height = 8)
 ```
 
 ## Overview companies
@@ -311,17 +311,17 @@ se <- top10("SE")
 dk 
 no
 se
-gtsave(dk, filename = "tables/dk_comp.png", vwidth = 800, vheight = 600)
-gtsave(no, filename = "tables/no_comp.png", vwidth = 800, vheight = 600)
-gtsave(se, filename = "tables/se_comp.png", vwidth = 800, vheight = 600)
+gtsave(dk, filename = "H2_paper/tables_W2425/dk_comp.png", vwidth = 800, vheight = 600)
+gtsave(no, filename = "H2_paper/tables_W2425/no_comp.png", vwidth = 800, vheight = 600)
+gtsave(se, filename = "H2_paper/tables_W2425/se_comp.png", vwidth = 800, vheight = 600)
 ```
 
 Add country tables together to one
 
 ```{r}
-img_dk <- png::readPNG("tables/dk_comp.png")
-img_no <- png::readPNG("tables/no_comp.png")
-img_se <- png::readPNG("tables/se_comp.png")
+img_dk <- png::readPNG("H2_paper/tables_W2425/dk_comp.png")
+img_no <- png::readPNG("H2_paper/tables_W2425/no_comp.png")
+img_se <- png::readPNG("H2_paper/tables_W2425/se_comp.png")
 
 
 # Create a rasterGrob
@@ -371,7 +371,7 @@ nord_comp_tbl_plot <- cowplot::plot_grid(
 )
 
 nord_comp_tbl_plot
-ggsave(filename = "figs/nord_comp_tbl_plot.png", width = 6, height = 4, dpi = 600)
+ggsave(filename = "H2_paper/figs_W2425/nord_comp_tbl_plot.png", width = 6, height = 4, dpi = 600)
 ```
 
 # Who
@@ -387,7 +387,7 @@ types <- companies %>%
                                     c("DK","NO","SE", "DK ","NO ","SE ",
                                       " DK"," NO"," SE", " DK "," NO "," SE "))) >= 2
   ) %>% 
-  rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordic"="multi_Nordic") %>% 
+  rename("Organisation" = "Organisation_type", "Ownership"= "Ownership_type", "Sector" = "Industry_Sector", "H2-spec."= "Hydrogen_specialist", "MultiNordicJobs"="multi_Nordic") %>% 
   select(-location_1,-location_2,-location_3,-location_4,-location_5)
 
 company_types <- jobs %>% 
@@ -395,7 +395,7 @@ company_types <- jobs %>%
   summarise(n = n()) %>%
   left_join(types, by = c("Company" = "Name")) %>%
   select(Company, country_code, n, Multinational, Organisation, Ownership,
-         Sector, "H2-spec.", MultiNordic) %>%
+         Sector, "H2-spec.", MultiNordicJobs) %>%
   na.omit()
 
 ppf <- function(vr_name) {
@@ -404,7 +404,7 @@ ppf <- function(vr_name) {
   ggplot(aes(x = n, y = !!y , 
              fill = country_code)) + 
   geom_col(drop = F)+
-    scale_x_continuous(limits = c(0, 1600))+
+    scale_x_continuous(limits = c(0, 3000))+
     scale_fill_colorblind("Country")+
     labs(x= "", y = "", title = y)+
     theme_minimal()+
@@ -416,7 +416,7 @@ ppf <- function(vr_name) {
   return(pl)
 }
 
-v<- c("Multinational", "Organisation", "Ownership", "Sector", "H2-spec.", "MultiNordic")
+v<- c("Multinational", "Organisation", "Ownership", "Sector", "H2-spec.", "MultiNordicJobs")
 
 plot_list <- map(v, ppf)
 names(plot_list) <- v
@@ -429,7 +429,7 @@ multi_pl <-plot_list[[2]] + sml_pl +
   theme(legend.position="bottom", 
         text = element_text(size = 14)) 
 multi_pl
-#ggsave(filename = "figs/multi_pl.png", dpi = 1200, width = 12, height = 8)
+ggsave(filename = "H2_paper/figs_W2425/multi_pl.png", dpi = 1200, width = 12, height = 8)
 ```
 
 ### Country and company connections plot
