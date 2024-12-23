@@ -1,0 +1,434 @@
+---
+title: "End_Use"
+format: html
+editor: visual
+---
+
+## Library
+
+-   download libraries
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(plotly)
+library(tidygraph)
+library(ggraph)
+library(ggplot2)
+library(ggthemes)
+library(visNetwork)
+```
+
+## Gather data
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736" 
+
+# Read project sheet and clean 
+df_raw <- read_sheet(ss, sheet = "main_projects") 
+df <- df_raw %>% 
+  janitor::clean_names() 
+
+df_actors <- read_sheet(ss, sheet = "collaborations") 
+df_a <- df_actors %>% 
+  janitor::clean_names() 
+
+df_c<- df %>%
+  select(id, project_name, country, location, date_online, status, technology, electricity, electrolyser_mw, product, end_use_mobility, end_use_heat_power, end_use_grid_export)
+
+comp <- read_sheet(ss,sheet="collaborations")
+comp <- comp %>% 
+  janitor::clean_names() 
+
+```
+
+### Bar plot
+
+Illustrating how many projects that are dedicated to the different end use categories.
+
+```{r}
+
+enduse<- c(end_use_mobility="Mobility",end_use_heat_power="Heat and Power",end_use_grid_export
+="Export")  
+
+ppl_df <- df_c %>%
+  pivot_longer(starts_with("end"), names_to = "end_use", values_to = "nr") %>%
+  replace_na(list(nr = 0)) %>%
+  mutate(end_use = enduse[end_use])%>%
+  group_by(country,end_use,status)%>%
+  summarize(nr=sum(nr))%>%
+  ungroup()
+
+
+ppl_df %>% 
+  ggplot(aes(x = end_use, y = nr, fill = status)) +
+  geom_bar(stat = "identity") +
+ # geom_text(aes(label = nr), vjust = -0.5, color = "black")+
+  labs(
+    title = "End use for Projects",
+    x = "End use Category",
+    y = "Number or Projects"
+  ) +
+  #facet_wrap(~status) +
+  theme_minimal() 
+ggsave("figs/End_use.png")
+```
+
+### Bar plot
+
+Illustrates what year the projects are planned to be operational.
+
+```{r}
+years<-data.frame(year=c(2000:2040))
+
+p_year <- df_c%>%
+  select(date_online, country)%>%  
+  filter(date_online != "N/A")%>%
+  count(date_online)%>%
+  mutate(n=as.numeric(n),date_online=as.numeric(date_online))%>%
+  rename(year=date_online)
+
+years<-years%>%
+  left_join(p_year, by="year")%>%
+  replace_na(list(n=0))
+
+ggplot(years,aes(x=year,y=n))+
+  geom_bar(stat = "identity",show.legend=FALSE,fill = "skyblue")+
+  scale_x_continuous(breaks = c(2000,2005,2010,2015,2020,2025,2030,2035,2040))+
+  labs(title = "Planned Operation Year",
+       x="Year",
+       y="Number of Projects")+
+  theme_minimal()
+ggsave("figs/Operational_year.png")
+```
+
+## Box plot
+
+of MW electrolyser use for the different countries. With some interactive points to see the projects.
+
+```{r}
+sel<- df_c %>% 
+  filter(electrolyser_mw !="N/A") %>% # Ta bort värden > 1000 
+  select(country, project_name, status, electrolyser_mw)%>%
+  mutate(electrolyser_mw = as.numeric(electrolyser_mw))
+ 
+box<- sel %>% 
+  ggplot(aes(x = country, y = electrolyser_mw,
+             label = project_name,
+             fill = country)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.7) +
+  scale_y_log10()+
+  facet_wrap(~status)+
+  labs(x = "Country", y = "MW", title = "Electrolyser Consumption by Country") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Valfritt, om du vill dölja legenden
+
+box
+ggplotly(box)
+
+ggsave("figs/Box_plot_MW.png")
+```
+
+### Box plot
+
+Illustrationg what sizes of projects that are most usual for each country. The y-axis in log scale since Denmark has some really big projects.
+
+```{r}
+sel<- df %>% filter(electrolyser_mw !="N/A")%>% 
+  select(country,electrolyser_mw)%>%
+  mutate(electrolyser_mw = as.numeric(electrolyser_mw))
+ 
+sel %>% ggplot(aes(x = country, y = electrolyser_mw, fill = country)) +
+  geom_boxplot() +
+  scale_y_log10()+
+  labs(x = "Country", y = "MW", title = "Electrolyser Consumption by Country") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Valfritt, om du vill dölja legenden
+
+ggsave("figs/Box_plot_MW2.png")
+```
+
+### Bar plot
+
+Showing GW produciton for the status of each project.
+
+```{r}
+status <- sel %>% 
+  group_by(status, country) %>% 
+  summarise(mw = sum(electrolyser_mw), n = n())%>%
+  mutate(mw= mw*0.001)
+
+st_plot <- status %>% 
+  ggplot(aes(mw, status, 
+             label = n,
+             fill = country)) + 
+  geom_col() +
+  theme_minimal() +
+  labs(y = "",x="GW")
+  
+st_plot
+ggplotly(st_plot)
+
+ggsave("figs/GW_status.png")
+```
+
+### Accumulated GW
+
+Graph showing how the GWs used by electrolysers is planed grow over time in the future
+
+```{r}
+new_countries<- c(SWE="Sweden",FIN="Finland",NOR="Norway",DNK="Denmark")  
+
+
+mw_year <- df_c%>%
+  select(country,date_online,electrolyser_mw)%>%  
+  filter(electrolyser_mw != "N/A", date_online != "N/A") %>%
+  mutate(date_online=as.numeric(date_online),electrolyser_mw=as.numeric(electrolyser_mw),country = new_countries[country]) #Gör siffror till siffror och byter till Sweden istället för SWW osv.
+
+# Förbered data och beräkna ackumulerad MW för varje land
+summarized_data <- mw_year %>%
+  filter(date_online > 2021) %>% # Ta bort år före 2004
+  group_by(country, date_online) %>% # Gruppera efter land och år
+  summarize(total_mw = sum(electrolyser_mw, na.rm = TRUE)) %>% # Summera MW per land och år
+  arrange(date_online) %>% # Sortera efter år
+  group_by(country) %>% # Gruppera efter land för ackumulering
+  mutate(cumulative_mw = cumsum(total_mw)/1000) %>% # Beräkna ackumulerad MW för varje land
+  ungroup()
+
+
+# Plot: Stacked Area Plot
+ggplot(summarized_data, aes(x = date_online, y = cumulative_mw, fill = country)) +
+  geom_area(alpha = 0.6) + # Skapa områdeplot
+  labs(
+    title = "Accumulated MW per country over time",
+    x = "Year",
+    y = "Accumulated GW",
+    fill = "Country"
+  ) +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(summarized_data$date_online), max(summarized_data$date_online), by = 1)) # Anpassa x-axeln
+ggsave("figs/Accumulated_GW.png")
+```
+
+## Bad graph
+
+Showing the previous information in a different way.
+
+```{r}
+mw_year <- df%>%
+  select(date_online,electrolyser_mw)%>%  
+  filter(electrolyser_mw != "N/A", date_online != "N/A")%>%
+  mutate(date_online=as.numeric(date_online),electrolyser_mw=as.numeric(electrolyser_mw) )
+
+summarized_data <- mw_year %>%
+  filter(date_online>2021)%>%
+  group_by(date_online) %>%
+  summarize(total_mw = sum(electrolyser_mw))
+
+ggplot(summarized_data, aes(x = factor(date_online), y = total_mw)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(
+    title = "Total buildout MW per Year",
+    x = "Year",
+    y = "Total MW"
+  ) +
+  theme_minimal()
+ggsave("figs/MW_buildout_per_year.png")
+```
+
+## Total GW planned
+
+For all countries in one bar
+
+```{r}
+new_countries<- c(SWE="Sweden",FIN="Finland",NOR="Norway",DNK="Denmark")
+
+mw <- df%>%
+  select(id, country, electrolyser_mw)%>%
+  filter(electrolyser_mw != "N/A")%>%
+  distinct()%>%
+  mutate(country = new_countries[country],electrolyser_mw = as.numeric(electrolyser_mw)*0.001)
+
+total_MW <- sum(mw$electrolyser_mw)
+
+ggplot(mw, aes(x = "", y = electrolyser_mw, fill = country)) +
+  geom_bar(stat = "identity") +
+  #geom_text(aes(x = "", y = total_MW, label = scales::comma(total_MW)), 
+  #          vjust = -0.5, size = 5) + 
+  labs(title = "Total GW Distribution",
+       x = "",
+       y = "Electrolyzer capacity [GW]",
+       fill = "Country") +
+  scale_y_continuous(labels = scales::comma) + # Add commas to large numbers
+  theme_minimal()
+ggsave("figs/GW_total_planned.png")
+```
+
+### NOT DONE
+
+Number of projects being operational in which years
+
+The time line on the x-axis does not contain the years when no projects are planned. Makes it a bit missleading. Maybe the axes should be tilted.
+
+```{r}
+
+p_year <- df%>%
+  select(date_online)%>%  
+  filter(date_online != "N/A")%>%
+  count(date_online)%>%
+  mutate(n=as.numeric(n),date_online=as.numeric(date_online))
+
+ggplot(p_year,aes(x=factor(date_online),y=n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(
+    title = "Projects planned to be operational",
+    x = "Year",
+    y = "Ammoun of projects"
+  ) +
+  theme_minimal()
+  #?theme(axis.text.x=element_text(angle = 45,hjust=5) )
+ggsave("figs/Projects_operational.png")
+```
+
+### Bar diagram
+
+Illustrating how many projects that are planned for different sizes (divided in intervals of MW capacity).
+
+```{r}
+new_countries<- c(SWE="Sweden",FIN="Finland",NOR="Norway",DNK="Denmark")  
+
+mw <- df%>% 
+  select(id, country, electrolyser_mw)%>%   
+  filter(electrolyser_mw != "N/A")%>%   
+  distinct()%>%   mutate(country = new_countries[country],electrolyser_mw = as.numeric(electrolyser_mw))
+
+mw$MW_interval <- cut(
+  mw$electrolyser_mw,
+  breaks = c(-Inf, 1, 10,100,500, 1001, Inf), # Define interval boundaries
+  labels = c("<1","1-9","10-99","100-499", "500-1000", ">1000"), # Label intervals
+  right = FALSE # Intervals are left-closed
+)
+
+ggplot(mw, aes(x = MW_interval, fill = country)) +
+  geom_bar(position = "stack") +
+  labs(
+    title = "Distribution of Countries by MW Intervals",
+    x = "MW Intervals",
+    y = "Number of Projects",
+    fill = "Country"
+  ) +
+  theme_minimal()
+
+ggsave("figs/MW_intervals.png")
+```
+
+### Most represented companies
+
+Plot over what companies are represented the most times in different projects, NOT DONE
+
+```{r}
+actors <- df_a %>%
+  select(id, comp_name) %>% 
+  mutate(country = case_when(grepl("F", id) ~ "Finland",
+                             grepl("S", id) ~ "Sweden",
+                             grepl("N", id) ~ "Norway",
+                             grepl("D", id) ~ "Denmark"))
+
+data_summary <- actors %>%
+  count(comp_name, country) %>%
+  arrange(desc(n)) %>%
+  head(30)
+
+ggplot(data_summary, aes(x = comp_name, y = n, fill = country)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(
+    title = "Most represented actors",
+    x = "Companies",
+    y = "Number of projects",
+    fill = "Country"
+  ) +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+  theme(
+  axis.text.x = element_text(angle = 45, hjust = 1)  # Snedställda etiketter
+  )
+ggsave("figs/Most_represented_actors.png")
+```
+
+# Networks
+
+### Products and companies
+
+Shows connections between The different product categories(orange) and the companies (blue)
+
+```{r}
+com <-comp %>%
+  select(id,comp_name)
+
+cont <- df%>%
+  select(id,country, product)%>%
+  left_join(com,by="id")%>%
+  select(-id,-country)
+
+g <- graph_from_data_frame(cont, directed = FALSE)
+
+# Set labels: Only show labels for nodes in column "from"
+V(g)$label <- ifelse(V(g)$name %in% cont$product, V(g)$name, NA)
+V(g)$size <- ifelse(V(g)$name %in% cont$product, 10, 5)   # Större noder för namn i kolumn 1
+V(g)$color <- ifelse(V(g)$name %in% cont$product, "orange", "lightblue")  # Färg för noder i kolumn 1
+
+plot(g, vertex.size = V(g)$size, vertex.color = V(g)$color, edge.color = "gray",
+     main = "Product-Companies network", vertex.label = V(g)$label,
+     vertex.label.color = "black", vertex.frame.color = "white")
+ggsave("figs/Network_Product_companies.png")
+```
+
+### Countries and companies
+
+Shows connections between The different countries (orange) and the companies (blue)
+
+```{r}
+
+companies <-comp %>%
+  select(id,comp_name)
+contr <- df%>%
+  select(id,country)%>%
+  left_join(companies,by="id")%>%
+  select(-id)
+
+g <- graph_from_data_frame(contr, directed = FALSE)
+
+# Set labels: Only show labels for nodes in column "from"
+V(g)$label <- ifelse(V(g)$name %in% contr$country, V(g)$name, NA)
+V(g)$size <- ifelse(V(g)$name %in% contr$country, 10, 5)   # Större noder för namn i kolumn 1
+V(g)$color <- ifelse(V(g)$name %in% contr$country, "orange", "lightblue")  # Färg för noder i kolumn 1
+
+plot(g, vertex.size = V(g)$size, vertex.color = V(g)$color, edge.color = "gray",
+     main = "Country-companies-network", vertex.label = V(g)$label,
+     vertex.label.color = "black", vertex.frame.color = "white")
+ggsave("figs/Country_companies_network.png")
+
+```
+
+### Products and countries
+
+Shows connections between The different countries (orange) and the products (blue). Illustrating what types of projects that are most common in the different countries
+
+```{r}
+prod<-df%>%
+  select(country,product)
+
+g <- graph_from_data_frame(prod, directed = FALSE)
+  
+V(g)$size <- ifelse(V(g)$name %in% prod$country, 10, 10)   # Större noder för namn i kolumn 1
+V(g)$color <- ifelse(V(g)$name %in% prod$country, "orange", "lightblue")  # Färg för noder i kolumn 1
+
+plot(g, vertex.size = V(g)$size, vertex.color = V(g)$color, edge.color = "gray",
+     main = "Product-Countries network", vertex.label = V(g)$label,
+     vertex.label.color = "black", vertex.frame.color = "white")
+ggsave("figs/Product-countries-network.png")
+```
