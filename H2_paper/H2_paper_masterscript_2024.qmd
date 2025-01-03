@@ -489,7 +489,7 @@ node_edge_map <- ggraph(gs, layout = "fr") +
   #annotate("text", x=-3, y =-13, label = "Sweden")
 
 node_edge_map
-ggsave("figs/node_edge_map.png", dpi = 1200, width = 12, height = 8)
+ggsave("H2_paper/figs_W2425/node_edge_map.png", dpi = 1200, width = 12, height = 8)
 ```
 
 ## Sectors
@@ -547,7 +547,7 @@ sctr_tbl <- sctr_tbl_info %>%
 
 sctr_tbl
 
-#sctr_tbl %>% gtsave("tables/sctr_tbl.png")
+sctr_tbl %>% gtsave("H2_paper/tables_W2425/sctr_tbl.png")
 ```
 
 ### Overview plot
@@ -558,7 +558,8 @@ tbl <- jobs %>%
                select(Name, Industry_Sector), by = c("Company"="Name")) %>%
   rename(Sector = Industry_Sector, Country = country_code) %>%
   mutate(Sector = fct_infreq(Sector)) %>% 
-  mutate(job_role = fct_infreq(job_role))
+  mutate(job_role = fct_infreq(job_role)) %>%
+  filter(!Company == 'UNKNOWN_COMPANY')
 
 sector_plot <- tbl %>% 
   group_by(Country, Sector) %>%
@@ -577,7 +578,7 @@ sector_plot <- tbl %>%
       axis.text.y = element_text(color = "black"))
 
 sector_plot
-#ggsave("figs/Total_jobs_per_sector.png", dpi = 1200, width = 6, height = 8)
+ggsave("H2_paper/figs_W2425/Total_jobs_per_sector.png", dpi = 1200, width = 6, height = 8)
 ```
 
 ### Residual plot
@@ -599,7 +600,7 @@ sectors_norm$n_norm <- sectors_norm$n_job / sectors_norm$n_job_country
 sectors_norm$mean <- sectors_norm$n_job_sector / sum(jobs_total$n_job)
 sectors_norm$diff <- sectors_norm$n_norm - sectors_norm$mean
 
-sector_deviation_plot <- ggplot(sectors_norm, aes(x = str_wrap(Sector, 20, whitespace_only = FALSE), y = diff*100)) +
+sector_deviation_plot <- ggplot(sectors_norm %>% filter(!Sector == 'NaN'), aes(x = str_wrap(Sector, 20, whitespace_only = FALSE), y = diff*100)) +
   geom_col(aes(fill = Country), width = 0.5, position = position_dodge(width = 0.5)) +
   scale_fill_colorblind("Country") +
   theme(legend.position = "top") +
@@ -609,7 +610,7 @@ sector_deviation_plot <- ggplot(sectors_norm, aes(x = str_wrap(Sector, 20, white
         axis.text.y = element_text(color = "black")) 
 sector_deviation_plot
 
-ggsave(filename = "figs/jobroles/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+ggsave(filename = "H2_paper/figs_W2425/sector_deviation.png", plot = sector_deviation_plot, limitsize = FALSE, width = 10, height = 7)
 ```
 
 ### Patchwork of overview and residual plots
@@ -632,6 +633,7 @@ tbl_sectors <- tbl_sectors %>%
   mutate(Sector = factor(Sector, levels = sector_order))
 
 sectors_norm <- sectors_norm %>%
+  filter(!Sector == 'NaN') %>%
   mutate(Sector = factor(Sector, levels = sector_order))
 #
 
@@ -663,7 +665,7 @@ p2 <- ggplot(sectors_norm, aes(x = diff*100, y = fct_rev(Sector))) +
 combined_sectors <- p1 + p2 + plot_layout(guides = "collect")
 
 combined_sectors
-ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors, limitsize = FALSE, width = 12, height = 7)
+ggsave(filename = "H2_paper/figs_W2425/combined_sectors.png", plot = combined_sectors, limitsize = FALSE, width = 12, height = 7)
 ```
 
 ## Organisations recruiting the most
@@ -671,7 +673,7 @@ ggsave(filename = "figs/jobroles/combined_sectors.png", plot = combined_sectors,
 ```{r}
 # This calculation is to see what percentage of total jobs that a certain number of top recruiting actors have created - see "head(XX)"
 (jobs %>% group_by(country, Company) %>% summarise(n =n()) %>% 
-         ungroup() %>% arrange(desc(n)) %>% head(30) %>% select(n) %>% sum())/(jobs %>% group_by(country, Company) %>% summarise(n =n()) %>% 
+         ungroup() %>% arrange(desc(n)) %>% head(25) %>% select(n) %>% sum())/(jobs %>% group_by(country, Company) %>% summarise(n =n()) %>% 
          ungroup() %>% arrange(desc(n)) %>% select(n) %>% sum())
 
 # 12 -> 50%
@@ -685,7 +687,7 @@ biggest_companies <- jobs %>%
   summarise(n =n()) %>%
   ungroup() %>%
   arrange(desc(n)) %>%
-  head(30) # Has to use number wanted +1
+  head(25) # Has to use number wanted +1
 
 # Summing the job counts by company across countries
 aggregated_companies <- biggest_companies %>%
@@ -702,7 +704,7 @@ biggest_companies_plot <- biggest_companies %>%
   geom_col(drop = F)+
     scale_x_continuous()+
   scale_fill_colorblind("Country")+
-    labs(x= "", y = "", title = "Top 30 most recruiting organisations, responsible for 65% of all jobs")+
+    labs(x= "", y = "", title = "Top 25 most recruiting organisations, responsible for 60% of all jobs")+
     theme_minimal()+
     theme(
       legend.position = "bottom", 
@@ -712,7 +714,7 @@ biggest_companies_plot <- biggest_companies %>%
 
 biggest_companies_plot
 
-ggsave(filename = "figs/cluster_paper_plots/biggest_companies_plot.png", plot = biggest_companies_plot, limitsize = FALSE, width = 16, height = 8)
+ggsave(filename = "H2_paper/figs_W2425/biggest_companies_plot.png", plot = biggest_companies_plot, limitsize = FALSE, width = 16, height = 8)
 ```
 
 # What
@@ -776,7 +778,7 @@ jbrls_tbl <- jbrls_tbl_info %>%
   )
 
 jbrls_tbl
-jbrls_tbl %>% gtsave("tables/jbrls_tbl.png")
+jbrls_tbl %>% gtsave("H2_paper/tables_W2425/jbrls_tbl.png")
 ```
 
 ### Overview plot
@@ -799,7 +801,7 @@ jobroles_plot <- tbl %>% drop_na(job_role) %>% #removing NA:s here
       axis.text.y = element_text(color = "black"))
 
 jobroles_plot
-ggsave("figs/Total_jobs_per_jobrole.png", dpi = 1200, width = 8, height = 8)
+ggsave("H2_paper/figs_W2425/Total_jobs_per_jobrole.png", dpi = 1200, width = 8, height = 8)
 ```
 
 ### Residual plot
@@ -829,7 +831,7 @@ jobroles_deviation_plot <- ggplot(jobs_norm, aes(x = str_wrap(job_role, 20, whit
   theme(axis.text.x = element_text(size = 8, angle = 45, hjust = 1, vjust = 1)) 
 jobroles_deviation_plot
 
-#ggsave(filename = "figs/jobroles/jobroles_deviation.png", plot = jobroles_deviation_plot, limitsize = FALSE, width = 10, height = 7)
+ggsave(filename = "H2_paper/figs_W2425/jobroles_deviation.png", plot = jobroles_deviation_plot, limitsize = FALSE, width = 10, height = 7)
 ```
 
 ### Patchwork of overview and residual plots
@@ -900,7 +902,7 @@ p2j <- ggplot(jobs_norm, aes(x = diff*100, y = fct_rev(job_role))) +
 combined_jobe_roles <- p1j + p2j + plot_layout(guides = "collect")
 
 combined_jobe_roles
-ggsave(filename = "figs/jobroles/combined_jobe_roles.png", plot = combined_jobe_roles, limitsize = FALSE, width = 12, height = 7)
+ggsave(filename = "H2_paper/figs_W2425/combined_jobe_roles.png", plot = combined_jobe_roles, limitsize = FALSE, width = 12, height = 7)
 ```
 
 ## Engineering types
@@ -977,7 +979,7 @@ combined_engineers <- engineers_plot + engineers_deviation_plot + plot_layout(gu
 # Print the combined plot
 print(combined_engineers)
 
-ggsave(filename = "figs/jobroles/combined_engineers.png", plot = combined_engineers, limitsize = FALSE, width = 10, height = 6) 
+ggsave(filename = "H2_paper/figs_W2425/combined_engineers.png", plot = combined_engineers, limitsize = FALSE, width = 10, height = 6) 
 ```
 
 # Where
@@ -1000,14 +1002,16 @@ region_new_jobs <- jobs %>%
 
 ## Extra data
 
+This section is for when one wants to make analysis based on GDP - This is not updated to new regions of Norway
+
 ```{r}
 
 #adding the missing regions manually (this is done on row 207 as well)
 missing_regions <- data.frame(
-  region = c("Innlandet", "Blekinge", "Jönköping", "Örebro"),
-  reg_pop = c(376304, 157973, 368856, 308116),
-  country = c("Norway", "Sweden", "Sweden","Sweden"),
-  new_jobs = c(0,0,0,0))
+  region = c("Innlandet", "Blekinge", "Jönköping"),
+  reg_pop = c(376304, 157973, 368856),
+  country = c("Norway", "Sweden", "Sweden"),
+  new_jobs = c(0,0,0))
 
 region_new_jobs<- full_join(region_new_jobs, missing_regions)
 
@@ -1018,14 +1022,16 @@ regional_GDP <- data.frame(
              "Rogaland","Sjælland","Skåne","Stockholm","Syddanmark",
              "Södermanland","Troms og Finnmark","Trøndelag","Uppsala","Vestfold og Telemark",
              "Vestland","Viken","Värmland","Västerbotten","Västernorrland",
-             "Västmanland","Västra Götaland","Östergötland", "Innlandet", "Blekinge", "Jönköping", "Örebro"),
+             "Västmanland","Västra Götaland","Östergötland", "Innlandet", "Blekinge", "Jönköping", "Örebro",
+             'Greenland'),
   GDP_per_capita = c(44772, 41862.5, 37331.5, 40188, 40286.5, 
                      90316.8, 41567, 39991, 50038, 56448,
                      48412.8, 48787.2, 48412.8, 63828, 91512,
                      58744.8, 39916.8, 44620.5, 71806.5, 54028.8,
                      37233, 49101.6, 49790.4, 47477, 43591.2,
                      51364.8, 44083.2, 41961, 46590.5, 46098,
-                     40877.5, 50924.5, 45704, 43296, 42650.5, 46492, 44916)
+                     40877.5, 50924.5, 45704, 43296, 42650.5, 46492, 44916,
+                     48277.5)
   ) %>%
   left_join(region_new_jobs) %>%
   select(country,region,reg_pop,GDP_per_capita,new_jobs)
@@ -1041,6 +1047,12 @@ regional_GDP <- data.frame(
 #https://www.exchangerates.org.uk/DKK-EUR-spot-exchange-rates-history-2022.html
 #https://www.exchangerates.org.uk/NOK-EUR-spot-exchange-rates-history-2021.html
 #https://www.exchangerates.org.uk/SEK-EUR-spot-exchange-rates-history-2021.html
+
+#Greenland - 2021
+#https://tradingeconomics.com/greenland/gdp-per-capita-us-dollar-wb-data.html
+#https://www.x-rates.com/average/?from=USD&to=EUR&amount=1&year=2021
+
+
 
 ```
 
@@ -1084,8 +1096,11 @@ lm_no <- lm_data_reg %>% select(country, glance) %>% unnest(glance) %>% filter(c
 r2_p_dk <- paste("R2:", round(lm_dk$r.squared, 2), "&\n", ifelse(lm_dk$p.value < 0.05, "p< 0.05", "p>0.05"))  
 r2_p_se <- paste("R2:", round(lm_se$r.squared, 2), "&\n", ifelse(lm_se$p.value < 0.05, "p< 0.05", "p>0.05"))  
 r2_p_no <- paste("R2:", round(lm_no$r.squared, 2), "&\n", ifelse(lm_no$p.value < 0.05, "p< 0.05", "p>0.05"))  
+```
 
+Outliers -
 
+```{r}
 outliers_reg <- lm_data_reg %>%
   mutate(outliers = map(aug, ~.x %>%
                           mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
@@ -1107,6 +1122,45 @@ outliers_reg_1_2_std <- lm_data_reg %>%
   relocate(region, .after = "country") %>%
   filter(outlier) %>%
   mutate(abs_resid = abs(.resid))
+```
+
+Outliers - REMOVE??? Added when had missing data for Greenland
+
+```{r}
+outliers_reg <- lm_data_reg %>%
+  mutate(
+    outliers = map(aug, ~.x %>%
+                     mutate(outlier = abs(.resid) > 2 * sd(.resid))),
+    region = map(data, ~.x$region) # Ensure `region` is created here
+  ) %>%
+  ungroup() %>% # Ungroup to prevent grouping issues
+  mutate(region = map2(outliers, region, ~.y[seq_len(nrow(.x))])) %>% # Adjust `region` to match `outliers`
+  select(country, outliers, region) %>%
+  mutate(outliers = map2(outliers, region, ~{
+    .x %>%
+      mutate(region = .y) # Add `region` as a column to `outliers`
+  })) %>%
+  unnest(outliers, names_sep = "_") %>% # Use `names_sep` to disambiguate
+  relocate(region, .after = "country") %>%
+  filter(outliers_outlier) # Use the renamed column
+
+outliers_reg_1_2_std <- lm_data_reg %>%
+  mutate(
+    outliers = map(aug, ~.x %>%
+                     mutate(outlier = abs(.resid) > 2 * sd(.resid),
+                               abs_std_resid = abs(.std.resid))),
+    region = map(data, ~.x$region) # Ensure `region` is created here
+  ) %>%
+  ungroup() %>% # Ungroup to prevent grouping issues
+  mutate(region = map2(outliers, region, ~.y[seq_len(nrow(.x))])) %>% # Adjust `region` to match `outliers`
+  select(country, outliers, region) %>%
+  mutate(outliers = map2(outliers, region, ~{
+    .x %>%
+      mutate(region = .y) # Add `region` as a column to `outliers`
+  })) %>%
+  unnest(outliers, names_sep = "_") %>% # Use `names_sep` to disambiguate
+  relocate(region, .after = "country") %>%
+  filter(outliers_outlier) # Use the renamed column
 ```
 
 ### Plot
@@ -1132,15 +1186,15 @@ region_pop_plot <- region_new_jobs %>%
   scale_size_continuous(range = c(1,4)) +
   guides(size = "none")+
   labs(x= "Population in thousands", y= "Nr. of new jobs") +
-  annotate("text", x=900, y =250, label = r2_p_no)+
-  annotate("text", x=1500, y =220, label = r2_p_dk)+
-  annotate("text", x=2250, y =200, label = r2_p_all)+
-  annotate("text", x=2250, y =75, label = r2_p_se)+
+  annotate("text", x=300, y =250, label = r2_p_no)+
+  annotate("text", x=1500, y =450, label = r2_p_dk)+
+  annotate("text", x=2380, y =400, label = r2_p_all)+
+  annotate("text", x=2250, y =15, label = r2_p_se)+
   theme_minimal() +
   theme(legend.position = "top")
 region_pop_plot
 
-ggsave(filename = "figs/all_region_pop.png", plot = region_pop_plot, dpi= 600, width = 8, height = 4)
+ggsave(filename = "H2_paper/figs_W2425/all_region_pop.png", plot = region_pop_plot, dpi= 600, width = 8, height = 4)
 ```
 
 ## GDP per capita - No longer in use
@@ -1241,6 +1295,8 @@ ggsave(filename = "figs/gdp_jobs_plot.png", plot = gdp_jobs_plot, limitsize = FA
 ```
 
 ## Combine Oslo & Viken
+
+Not updated for new Norwegian regions
 
 ### Wrangle together
 
@@ -1460,7 +1516,8 @@ ggsave(filename = "figs/gdp_jobs_plot_OsloViken.png", plot = gdp_jobs_plot_OsloV
 df_jobs <- jobs %>% 
   left_join(companies, by =c("Company" = "Name")) %>%
   select(country_code, region, sector= Industry_Sector, competence= job_role) %>%
-  na.omit()
+  na.omit() %>%
+  filter(!sector == 'NaN')
 
 df_cl <- df_jobs %>%
   group_by(country_code, region, sector, competence) %>%
@@ -1493,6 +1550,8 @@ df_knee <- tibble(k = 2:60, wss = wss)
 df_knee %>% 
   ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
   scale_x_continuous(breaks = 2:60)
+
+# Best at: 6 - 10
 ```
 
 ### Silhouette
@@ -1508,6 +1567,8 @@ df_sil <- tibble(k = 2:60, sil_width = sil_width)
 df_sil %>% ggplot(aes(k, sil_width)) + geom_line() + 
   geom_point()+
   scale_x_continuous(breaks = 2:60)
+
+# Best at: 3 - 7
 ```
 
 ## Clustering
@@ -1534,39 +1595,39 @@ set.seed(123456789)
 KM_10 <- kmeans(mtrx,10)
 
 # Evaluate with plots
-png("figs/k-mean_2.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_2.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_2,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_3.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_3.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_3,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_4.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_4.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_4,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_5.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_5.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_5,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_6.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_6.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_6,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_7.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_7.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_7,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_8.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_8.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_8,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_9.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_9.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_9,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
-png("figs/k-mean_10.png", width = 800, height = 600)  # Open a PNG device
+png("H2_paper/figs_W2425/k-mean_plots/k-mean_10.png", width = 800, height = 600)  # Open a PNG device
 autoplot(KM_10,mtrx,frame=TRUE)
 dev.off()  # Close the device
 
@@ -1605,7 +1666,7 @@ for (i in 2:10) {
   print(paste("Davies-Bouldin Index:", davies_bouldin_index))
 }
 
-# Best result found at 5-6 clusters
+# Best result found at: 
 ```
 
 ## Add clusters to data
@@ -1705,7 +1766,7 @@ se_cl_7 <- df_hcl_long_7 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arra
 se_cl_8 <- df_hcl_long_8 %>% group_by(cl, sector) %>% summarise(n =n()) %>% arrange(desc(cl))
 ```
 
-k=6 is the final chosen cluster-solution
+k=6 is the final chosen cluster-solution - half data
 
 ### Important companies for the clusters
 
@@ -1843,7 +1904,7 @@ cluster_tbl_data_short <- merge(
     mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
     pivot_wider(names_from = "Regions", 
                 values_from = Regions) %>%
-    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Gävleborg (SE)", 
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", 'Greenland (DK)', "Gävleborg (SE)", 
           "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", "Kalmar (SE)", 
           "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
           "Nordland (NO)", "Norrbotten (SE)", "Oslo (NO)", "Rogaland (NO)", "Sjælland (DK)", 
@@ -2040,7 +2101,7 @@ cluster_function <- function(matrx,k){
   
   k_mean_plot <- autoplot(KM,matrx,frame=TRUE)
   k_mean_plot
-  ggsave(paste0("figs/clusters/k-mean_",as.character(k),".png"))
+  ggsave(paste0("H2_paper/figs_W2425/clusters/k-mean_",as.character(k),".png"))
   
   silhouette_score <- silhouette(KM$cluster, dist(matrx))
   mean_silhouette_score <- mean(silhouette_score[, 3])
@@ -2127,7 +2188,7 @@ cluster_tbl_jobroles <- jobs_clustered %>%
               values_from = Job_roles) %>%
   unite("Job_Roles", "Administration","Engineering", "Environmental",
         "Finance & Business development","HR", "IT & Data science", "Law", "Management",
-        "Other","PhD", "Procurement & Logistics", "Project managment", 
+        "Other","PhD", "Procurement & Logistics", "Project management", 
         "Public administration", "Quality assurance", "Researcher", 
         "Sales & Customer service",  "Technician & Maintenance",
         sep = ", ", na.rm = TRUE)
@@ -2140,7 +2201,7 @@ cluster_tbl_data_short <- merge(
     mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
     pivot_wider(names_from = "Regions", 
                 values_from = Regions) %>%
-    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Gävleborg (SE)", 
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Greenland (DK)", "Gävleborg (SE)", 
           "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", "Kalmar (SE)", 
           "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
           "Nordland (NO)", "Norrbotten (SE)", "Oslo (NO)", "Rogaland (NO)", "Sjælland (DK)", 
@@ -2167,7 +2228,7 @@ cluster_tbl_data_short <- merge(
     pivot_wider(names_from = "Job_roles",
                 values_from = Job_roles) %>%
     unite("Job_Roles", "Administration","Engineering", "Environmental",
-        "Finance & Business development","HR", "IT & Data science", "Law", "Management", "Other","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management", "Other","PhD", "Procurement & Logistics", "Project management", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
           sep = ", ", na.rm = TRUE),
     by = "Group", all.x = TRUE
   )
@@ -2274,7 +2335,7 @@ cluster_tbl_short_WITH_BOLD <- cluster_tbl_data_short_WITH_bold %>%
 # Print the table
 cluster_tbl_short_WITH_BOLD
 
-cluster_tbl_short_WITH_BOLD %>% gtsave(paste0("figs/clusters/cluster_tbl_WITH_BOLD_",as.character(k),".png"), vheight = 800, vwidth = 2000)
+cluster_tbl_short_WITH_BOLD %>% gtsave(paste0("H2_paper/figs_W2425/clusters/cluster_tbl_WITH_BOLD_",as.character(k),".png"), vheight = 800, vwidth = 2000)
 }
 ```
 
@@ -2296,8 +2357,17 @@ Area to run the functions for the wished for configurations
 
 ```{r}
 # Running for multiple k
-for (i in 7:10){
+cluster_result_all <- tibble(
+  i = 3:10,      # First column (numeric values 1 to 10)
+  Result = letters[3:10]  # Second column (letters a to j))
+)
+
+j <- 0
+for (i in 3:10){
+  j <- j+1
   cluster_result_i <- all_cluster_functions_together(i,mtrx)
+  
+  cluster_result_all$Result[j] <- I(list(cluster_result_i))
 }
 ```
 
