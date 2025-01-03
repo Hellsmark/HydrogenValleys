@@ -727,7 +727,7 @@ Simple table of the different job roles including short description
 jbrls_tbl_info <- data.frame(
   jobroles = c("Administration", "Engineering", "Environmental",
                "Finance & Business development", "HR", "IT & Data science",
-               "Law", "Other", "Other management", 
+               "Law", "Management other", "Other", 
                "PhD", "Procurement & Logistics", "Project management", 
                "Public administration", "Quality assurance", "Research", 
                "Sales & Customer service", "Technician & Maintenance"),
@@ -738,8 +738,8 @@ jbrls_tbl_info <- data.frame(
                   "Includes jobs related to human resources and recruitment.", 
                   "Includes jobs working with software, data management, IT and data analysis.", 
                   "Includes jobs within law, such as lawyers and legal advisors.", 
-                  "Includes all jobs which do not fall within any of the other 16 categories.", 
-                  "Includes management jobs which are not explicitly Project management, such as CEOs, section manager, operations manager and so on.", 
+                  "Includes management jobs which are not explicitly Project management, such as CEOs, section manager, operations manager and so on.",
+                  "Includes all jobs which do not fall within any of the other 16 categories.",
                   "Includes doctoral students.", 
                   "Includes jobs in charge of procurement, logistics and supply chains.", 
                   "Includes jobs for project planning and management.", 
@@ -1551,7 +1551,7 @@ df_knee %>%
   ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
   scale_x_continuous(breaks = 2:60)
 
-# Best at: 6 - 10
+# Best at: ~ 6
 ```
 
 ### Silhouette
@@ -1568,7 +1568,7 @@ df_sil %>% ggplot(aes(k, sil_width)) + geom_line() +
   geom_point()+
   scale_x_continuous(breaks = 2:60)
 
-# Best at: 3 - 7
+# Best at: 2 - 4 + 7
 ```
 
 ## Clustering
@@ -2187,7 +2187,7 @@ cluster_tbl_jobroles <- jobs_clustered %>%
   pivot_wider(names_from = "Job_roles",
               values_from = Job_roles) %>%
   unite("Job_Roles", "Administration","Engineering", "Environmental",
-        "Finance & Business development","HR", "IT & Data science", "Law", "Management",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management other",
         "Other","PhD", "Procurement & Logistics", "Project management", 
         "Public administration", "Quality assurance", "Researcher", 
         "Sales & Customer service",  "Technician & Maintenance",
@@ -2228,7 +2228,7 @@ cluster_tbl_data_short <- merge(
     pivot_wider(names_from = "Job_roles",
                 values_from = Job_roles) %>%
     unite("Job_Roles", "Administration","Engineering", "Environmental",
-        "Finance & Business development","HR", "IT & Data science", "Law", "Management", "Other","PhD", "Procurement & Logistics", "Project management", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management other", "Other","PhD", "Procurement & Logistics", "Project management", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
           sep = ", ", na.rm = TRUE),
     by = "Group", all.x = TRUE
   )
@@ -2840,6 +2840,8 @@ cluster_tbl_sectors <- jobs_cluster_nicename %>%
   unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
         sep = ", ", na.rm = TRUE)
   
+###
+
 cluster_tbl_jobroles <- jobs_cluster_nicename %>%
   select(Group = cluster, Region = place, Job_roles = competence) %>%
   unique() %>%
@@ -2848,6 +2850,8 @@ cluster_tbl_jobroles <- jobs_cluster_nicename %>%
   unite("Job_Roles", "Administration","Engineering", "Environmental",
         "Finance & Business development","HR", "IT & Data science", "Law", "Other", "Management","PhD", "Procurement & Logistics", "Project managment", "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",  "Technician & Maintenance",
         sep = ", ", na.rm = TRUE)
+
+###
 
 cluster_tbl_data <- cluster_tbl_sectors %>%
   merge(cluster_tbl_jobroles, by = c("Group", "Region"), all.x = TRUE)
@@ -3023,6 +3027,39 @@ cluster_tbl_short_onlytop <- cluster_tbl_data_short_onlytop %>%
 cluster_tbl_short_onlytop
 
 cluster_tbl_short_onlytop %>% gtsave("figs/cluster_paper_plots/10_cluster_tbl_short_ONLY_TOP_240911.png", vheight = 744, vwidth = 3000)
+```
+
+Doing table for whole dataset
+
+```{r}
+top_percent_table <- function(k,jobs_clustered){
+  cluster_tbl_sectors <- jobs_clustered %>%
+    select(Group = cluster, Region = place, Sectors = sector) %>%
+    unique() %>%
+    pivot_wider(names_from = "Sectors",
+                values_from = Sectors) %>%
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility",
+          "Fossil fuel & Refinery", "Government & Public sector", 
+          "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other",
+          "Other manufacturing","Research & Education", "Transport",
+          sep = ", ", na.rm = TRUE)
+  
+  cluster_tbl_jobroles <- jobs_clustered %>%
+    select(Group = cluster, Region = place, Job_roles = competence) %>%
+    unique() %>%
+    pivot_wider(names_from = "Job_roles",
+                values_from = Job_roles) %>%
+    unite("Job_Roles", "Administration","Engineering", "Environmental",
+          "Finance & Business development","HR", "IT & Data science", "Law", 
+          "Management other", "Other","PhD", "Procurement & Logistics", "Project management", 
+          "Public administration", "Quality assurance", "Researcher", 
+          "Sales & Customer service",  "Technician & Maintenance",
+          sep = ", ", na.rm = TRUE)
+  
+  View(cluster_tbl_jobroles)
+}
+
+top_percent_table(3,cluster_result_all[[2]][[1]][["jobs_clustered"]])
 ```
 
 # Experimental section
