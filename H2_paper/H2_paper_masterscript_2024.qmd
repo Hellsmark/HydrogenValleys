@@ -3335,3 +3335,456 @@ region_pop_plot_NO_AKKODIS <- region_new_jobs_NO_AKKODIS %>%
   theme(legend.position = "top")
 region_pop_plot_NO_AKKODIS
 ```
+
+## Combining Akershus & Oslo
+
+### Wrangle
+
+```{r}
+population_akershus <- jobs %>%
+  filter(region == 'Akershus') %>%
+  select(reg_pop)
+
+population_oslo <- jobs %>%
+  filter(region == 'Oslo') %>%
+  select(reg_pop)
+
+population_both <- population_akershus$reg_pop[1]+population_oslo$reg_pop[1]
+
+akershus_oslo <- jobs %>%
+  filter(region %in% c('Oslo','Akershus')) %>%
+  select(!region) %>%
+  mutate(region = 'Oslo & Akershus') %>%
+  mutate(reg_pop = ifelse(region == "Oslo & Akershus", population_both, reg_pop))
+  
+jobs_akershus_oslo <- jobs %>%
+  filter(!region %in% c('Oslo','Akershus')) %>%
+  bind_rows(akershus_oslo)
+```
+
+### Where
+
+```{r}
+region_new_jobs_new <- jobs_akershus_oslo %>% 
+    group_by(region, reg_pop, country) %>%
+    summarise(new_jobs = n()) %>% 
+    ungroup()
+
+region_new_jobs_new <- full_join(region_new_jobs_new, missing_regions)
+
+
+lm_regions_new <- lm(new_jobs ~ reg_pop, data = region_new_jobs_new)
+
+# extract data for annotating the plot
+lm_gl_new <- glance(lm_regions_new)
+r2_p_all_new <- paste("R2:", round(lm_gl_new$r.squared, 2), "&\n", ifelse(lm_gl_new$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+lm_data_reg_new <- region_new_jobs_new %>% 
+  group_by(country) %>%
+  nest(data = -country) %>% 
+  mutate(lm = map(data, ~lm(new_jobs ~ reg_pop, data = .))) %>%
+  mutate(tidy = map(lm, ~tidy(.)),
+         glance = map(lm, ~glance(.)), 
+         aug = map(lm, ~augment(.))) 
+
+lm_data_reg_new %>% select(country, glance) %>% unnest(glance)
+
+# extract data for annotating the plot
+lm_dk_new <- lm_data_reg_new %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Denmark")
+lm_se_new <- lm_data_reg_new %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Sweden")
+lm_no_new <- lm_data_reg_new %>% select(country, glance) %>% unnest(glance) %>% filter(country == "Norway")
+
+r2_p_dk_new <- paste("R2:", round(lm_dk_new$r.squared, 2), "&\n", ifelse(lm_dk_new$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_se_new <- paste("R2:", round(lm_se_new$r.squared, 2), "&\n", ifelse(lm_se_new$p.value < 0.05, "p< 0.05", "p>0.05"))  
+r2_p_no_new <- paste("R2:", round(lm_no_new$r.squared, 2), "&\n", ifelse(lm_no_new$p.value < 0.05, "p< 0.05", "p>0.05"))  
+
+
+outliers_reg_new <- lm_data_reg_new %>%
+  mutate(outliers = map(aug, ~.x %>%
+                          mutate(outlier = abs(.resid) > 2*sd(.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier)
+
+outliers_reg_1_2_std <- lm_data_reg_new %>%
+  mutate(outliers = map(aug, ~.x %>%
+                        mutate(outlier = abs(.resid) > sd(.resid),
+                               abs_std_resid = abs(.std.resid)))) %>%
+  select(country, data, outliers) %>%
+  mutate(region = map(data, ~.x$region)) %>%
+  select(-data) %>%
+  unnest(c(region, outliers)) %>%
+  relocate(region, .after = "country") %>%
+  filter(outlier) %>%
+  mutate(abs_resid = abs(.resid))
+
+
+region_pop_plot_new <- region_new_jobs_new %>% 
+  ggplot(aes(round(reg_pop/1e3), new_jobs, 
+             colour = country)) + 
+  geom_smooth(linewidth = 1.5, alpha = 0.7, 
+              method = "lm", se=F, inherit.aes = T, show.legend = F)+
+  geom_smooth(aes(round(reg_pop/1e3), new_jobs),
+              color = "darkred", linetype = "dashed",
+              linewidth = 1.5, alpha = 0.7,
+              method = "lm", se=F, 
+              inherit.aes = F, show.legend = F)+
+  geom_point(aes(size= new_jobs), alpha = 0.7) + 
+  geom_label_repel(aes(label = region,
+                       color = country), 
+                  size = 2, alpha =1,
+                  show.legend = F,
+                  data = outliers_reg_new)+
+  scale_color_colorblind(" ")+
+  scale_size_continuous(range = c(1,4)) +
+  guides(size = "none")+
+  labs(x= "Population in thousands", y= "Nr. of new jobs") +
+  annotate("text", x=300, y =250, label = r2_p_no_new)+
+  annotate("text", x=1500, y =450, label = r2_p_dk_new)+
+  annotate("text", x=2380, y =400, label = r2_p_all_new)+
+  annotate("text", x=2250, y =15, label = r2_p_se_new)+
+  theme_minimal() +
+  theme(legend.position = "top")
+region_pop_plot_new
+```
+
+Rogaland is still an outlier
+
+### Combined patterns
+
+```{r}
+df_jobs_new <- jobs_akershus_oslo %>% 
+  left_join(companies, by =c("Company" = "Name")) %>%
+  select(country_code, region, sector= Industry_Sector, competence= job_role) %>%
+  na.omit() %>%
+  filter(!sector == 'NaN')
+
+df_cl_new <- df_jobs_new %>%
+  group_by(country_code, region, sector, competence) %>%
+  summarise(n = n())
+
+df_wide_cl_new <- df_cl_new %>% 
+  unite(place, c("region", "country_code"), sep = ", ") %>%
+  pivot_wider(names_from = "competence", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+
+#mutate(place = paste(region, "(", country_code, ")", sep = ""))
+
+mtrx_new <- as.matrix(df_wide_cl_new %>% select(-place, -sector))
+```
+
+```{r}
+wss <- map_dbl(2:60, function(k){
+  km <- kmeans(x= mtrx_new, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_knee <- tibble(k = 2:60, wss = wss)
+
+df_knee %>% 
+  ggplot(aes(k, wss, label = k)) + geom_line() + geom_point() +
+  scale_x_continuous(breaks = 2:60)
+
+# Best at: ~ 6
+
+
+
+sil_width <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = mtrx_new, k = k)
+  pam_k$silinfo$avg.width
+}) 
+
+df_sil <- tibble(k = 2:60, sil_width = sil_width)
+
+df_sil %>% ggplot(aes(k, sil_width)) + geom_line() + 
+  geom_point()+
+  scale_x_continuous(breaks = 2:60)
+
+# Best at: 3 - 8
+```
+
+```{r}
+cluster_function_new <- function(matrx,k){
+  set.seed(123456789)
+  KM <- kmeans(matrx,k)
+  
+  k_mean_plot <- autoplot(KM,matrx,frame=TRUE)
+  k_mean_plot
+  ggsave(paste0("H2_paper/figs_W2425/clusters_exp/k-mean_",as.character(k),".png"))
+  
+  silhouette_score <- silhouette(KM$cluster, dist(matrx))
+  mean_silhouette_score <- mean(silhouette_score[, 3])
+  wcss <- sum(KM$withinss)
+  dunn_index <- dunn(clusters = KM$cluster, Data = matrx)
+  davies_bouldin_index <- index.DB(matrx, KM$cluster)$DB
+  
+  print(paste("The scores for k = ",as.character(k)))
+  print(paste("Mean Silhouette Score:", mean_silhouette_score))
+  print(paste("WCSS:", wcss))
+  print(paste("Dunn Index:", dunn_index))
+  print(paste("Davies-Bouldin Index:", davies_bouldin_index))
+  
+  return(KM)
+}
+
+
+###
+
+
+add_cluster_to_data_function_new <- function(KM){
+  cl_new <- KM$cluster
+
+  df_hcl <- df_wide_cl_new %>% 
+    rowid_to_column("id") %>%
+    mutate(cl = cl_new) %>% 
+    relocate(cl, .after = "id") 
+  
+  df_hcl_long <- df_hcl %>%
+    pivot_longer(-c(id, place, sector, cl), names_to = "competence", values_to = "n")
+
+  sum_stat <- df_hcl %>% 
+    group_by(cl) %>% 
+    summarise(across(.col = Engineering:PhD, .fns = mean))
+
+  pl_cl <- df_hcl_long %>% group_by(cl, place) %>% summarise(n = sum(n)) %>% arrange(desc(cl))
+
+  se_cl <- df_hcl_long %>% group_by(cl, sector) %>% summarise(n = sum(n)) %>% arrange(desc(cl))
+
+  cluster_place_sector <- df_hcl %>% 
+    select(cluster = cl, place, sector)
+  
+  jobs_clustered <- jobs_akershus_oslo %>% 
+    mutate(year = lubridate::year(Scrape_date), month = lubridate::month(Scrape_date)) %>%
+    left_join(companies, by =c("Company" = "Name")) %>%
+    select(id = ID, country = country_code, region, company = Company , sector = Industry_Sector, competence = job_role, year, month, nation = country) %>%
+    na.omit() %>%
+    filter(!sector == 'NaN') %>% filter(!competence == 'NaN') %>%
+    unite(place, c("region", "country"), sep = ", ") %>%
+    merge(cluster_place_sector, by = c("place", "sector"), all.x = TRUE) %>%
+    select(id, cluster, place, company, sector, competence, year, month, nation)
+  
+  return(list(df_hcl = df_hcl,sum_stat = sum_stat,pl_cl = pl_cl,se_cl = se_cl,jobs_clustered = jobs_clustered))
+}
+
+
+###
+
+
+make_table_function_new <- function(jobs_clustered,k,top_percentage){
+
+cluster_tbl_sectors <- jobs_clustered %>%
+  select(Group = cluster, Region = place, Sectors = sector) %>%
+  unique() %>%
+  pivot_wider(names_from = "Sectors",
+              values_from = Sectors) %>%
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_jobroles <- jobs_clustered %>%
+  select(Group = cluster, Region = place, Job_roles = competence) %>%
+  unique() %>%
+  pivot_wider(names_from = "Job_roles",
+              values_from = Job_roles) %>%
+  unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management other",
+        "Other","PhD", "Procurement & Logistics", "Project management", 
+        "Public administration", "Quality assurance", "Researcher", 
+        "Sales & Customer service",  "Technician & Maintenance",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_data <- cluster_tbl_sectors %>%
+  merge(cluster_tbl_jobroles, by = c("Group", "Region"), all.x = TRUE)
+
+cluster_tbl_data_short <- merge(
+  cluster_tbl_data %>% select(Group, Regions = Region) %>% unique() %>%
+    mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
+    pivot_wider(names_from = "Regions", 
+                values_from = Regions) %>%
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Greenland (DK)", 
+          "Gävleborg (SE)", "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", "Kalmar (SE)",
+          "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
+          "Nordland (NO)", "Norrbotten (SE)", "Oslo & Akershus (NO)", "Rogaland (NO)", 
+          "Sjælland (DK)", 
+          "Skåne (SE)", "Stockholm (SE)", "Syddanmark (DK)", "Södermanland (SE)", 
+          "Troms (NO)","Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
+          "Vestfold (NO)","Telemark (NO)", "Vestland (NO)","Buskerud (NO)",
+          "Østfold (NO)", "Värmland (SE)", "Västerbotten (SE)", "Västernorrland (SE)", 
+          "Västmanland (SE)", "Västra Götaland (SE)", "Östergötland (SE)",
+          sep = ", ", na.rm = TRUE),
+  jobs_clustered %>%
+    select(Group = cluster, Sectors = sector) %>%
+    unique() %>%
+    pivot_wider(names_from = "Sectors",
+                values_from = Sectors) %>%
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility",
+          "Fossil fuel & Refinery", "Government & Public sector", 
+          "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", 
+          "Other manufacturing","Research & Education", "Transport",
+          sep = ", ", na.rm = TRUE),
+  by = "Group", all.x = TRUE
+  ) %>%
+  merge(
+    jobs_clustered %>%
+    select(Group = cluster, Job_roles = competence) %>%
+    unique() %>%
+    pivot_wider(names_from = "Job_roles",
+                values_from = Job_roles) %>%
+    unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management other", 
+        "Other","PhD", "Procurement & Logistics", "Project management", 
+        "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",
+        "Technician & Maintenance",
+          sep = ", ", na.rm = TRUE),
+    by = "Group", all.x = TRUE
+  )
+
+cluster_tbl_data_short_WITH_bold <- data.frame(
+  Group = character(),
+  Regions = character(),
+  Sectors = character(),
+  Job_Roles = character(),
+  stringsAsFactors = FALSE
+)
+
+for (i in 1:k) {
+  
+  total_jobs <- jobs_clustered %>%
+    filter(cluster == i) %>% 
+    nrow()
+  
+  minimum_jobs <- total_jobs*top_percentage
+  
+  bold_regions <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(place) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(place) %>%
+    mutate(place = gsub("(.*), (.*)", "\\1 (\\2)", place))
+  
+  bold_sectors <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(sector) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(sector)
+  
+  bold_job_role <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(competence) %>%
+    summarise(n = n()) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(competence)
+  
+  cluster_row <-   cluster_tbl_data_short %>%
+    filter(Group == i) %>%
+    mutate(
+    Regions = bold_words(Regions, bold_regions$place),
+    Sectors = bold_words(Sectors, bold_sectors$sector),
+    Job_Roles = bold_words(Job_Roles, bold_job_role$competence)
+  )
+  # Add numbber of jobs to table
+  
+  cluster_row <- cluster_row %>% 
+    cbind(data.frame( "n_jobs" =
+      jobs_clustered %>%
+        filter(cluster == i) %>%
+        nrow()
+      )
+    )
+  
+  cluster_tbl_data_short_WITH_bold <- cluster_tbl_data_short_WITH_bold %>%
+    rbind(cluster_row)
+  
+}
+
+# Create the gt table with HTML content
+cluster_tbl_short_WITH_BOLD <- cluster_tbl_data_short_WITH_bold %>%
+  gt() %>%
+  tab_header(
+    title = "Regions and Sectors by Group"
+  ) %>%
+  cols_label(
+    Group = "Group",
+    Regions = "Regions",
+    Sectors = "Sectors",
+    Job_Roles = "Job roles",
+    n_jobs = "Number of jobs"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Group, Regions, Sectors, Job_Roles, n_jobs)
+    )
+  ) %>%
+  # Enable HTML rendering in the cells
+  fmt_markdown(columns = c(Regions, Sectors, Job_Roles))
+
+# Print the table
+cluster_tbl_short_WITH_BOLD
+
+cluster_tbl_short_WITH_BOLD %>% gtsave(paste0("H2_paper/figs_W2425/clusters_exp/cluster_tbl_WITH_BOLD_",as.character(k),".png"), vheight = 800, vwidth = 2000)
+
+#####
+
+#View(cluster_tbl_sectors)
+#View(cluster_tbl_jobroles)
+#View(cluster_tbl_data)
+#View(cluster_tbl_data_short)
+#View(cluster_tbl_data_short_WITH_bold)
+
+}
+```
+
+```{r}
+all_cluster_functions_together_new <- function(k,matrx,top_percentage){
+  KM <- cluster_function_new(matrx,k)
+  cluster_result <- add_cluster_to_data_function_new(KM)
+  make_table_function_new(cluster_result$jobs_clustered,k,top_percentage)
+  
+  return(list(KM=KM,df_hcl = cluster_result$df_hcl,
+         sum_stat = cluster_result$sum_stat,pl_cl = cluster_result$pl_cl,
+         se_cl = cluster_result$se_cl,jobs_clustered = cluster_result$jobs_clustered))
+}
+
+
+
+###
+
+# Running for multiple k
+cluster_result_all <- tibble(
+  i = 3:8,      # First column (numeric values 1 to 10)
+  Result = letters[3:8]  # Second column (letters a to j))
+)
+
+j <- 0
+for (i in 3:8){
+  j <- j+1
+  cluster_result_i <- all_cluster_functions_together_new(i,mtrx_new,0.2)
+  
+  cluster_result_all$Result[j] <- I(list(cluster_result_i))
+}
+```
