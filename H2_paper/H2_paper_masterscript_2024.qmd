@@ -2386,6 +2386,125 @@ for (i in 3:10){
 }
 ```
 
+### Important organisations
+
+Function
+
+```{r}
+important_orgs <- function(cluster_result_multi,top_perc,cumulative_perc){
+  for (i in 1:nrow(cluster_result_multi)){
+    clustered_jobs <- cluster_result_multi[[2]][[i]][["jobs_clustered"]]
+    
+    k <- max(clustered_jobs$cluster)
+    
+    clustered_org <- clustered_jobs %>%
+      group_by(cluster, company) %>%
+      summarise(n =n()) %>%
+      ungroup() %>%
+      group_by(cluster) %>%
+      mutate(
+        total_n = sum(n),
+        share = n / total_n
+        ) %>%
+      ungroup()
+    
+    clust_top_org <- clustered_org %>%
+      filter(share > top_perc)
+    
+    clust_cumulative <- clustered_org %>%
+      group_by(cluster) %>%
+      arrange(desc(share), .by_group = TRUE) %>%   # Sort by share within each country
+      mutate(cumulative_share = cumsum(share)) %>% # Calculate cumulative share
+      filter(cumulative_share <= cumulative_perc | 
+               dplyr::lag(cumulative_share, default = 0) <= cumulative_perc) %>%
+      ungroup()
+    
+    clust_top_org_tbl <- clust_top_org %>%
+      select(cluster, company, n, share) %>%
+      arrange(cluster, desc(n)) %>%
+      gt() %>% 
+      tab_header(
+        title = paste0("Organisations in groups - each accounting for ",
+                       as.character(top_perc*100),"% of the jobs in each group")
+        ) %>%
+      cols_label(
+        cluster = "Group",
+        company = "Organisation",
+        n = 'Number of jobs',
+        share = 'Share'
+        ) %>% 
+      tab_options(
+        table.font.size = px(12),
+        heading.align = "left",
+        table.border.left.style = "solid",
+        table.border.left.width = px(1),
+        table.border.left.color = "lightgrey",
+        table.border.right.style = "solid",
+        table.border.right.width = px(1),
+        table.border.right.color = "lightgrey"
+        ) %>%
+      tab_style(
+        style = cell_borders(
+          sides = "right",
+          color = "lightgrey",
+          weight = px(1)
+          ),
+        locations = cells_body(
+          columns = c(cluster, company, n, share)
+          )
+        )
+    
+    clust_cumulative_tbl <- clust_cumulative %>%
+      select(cluster, company, n, share) %>%
+      arrange(cluster, desc(n)) %>%
+      gt() %>% 
+      tab_header(
+        title = paste0("Organisations in groups - accounting in total for ",
+                       as.character(cumulative_perc*100),"% of the jobs in each group")
+        ) %>%
+      cols_label(
+        cluster = "Group",
+        company = "Organisation",
+        n = 'Number of jobs',
+        share = 'Share'
+        ) %>% 
+      tab_options(
+        table.font.size = px(12),
+        heading.align = "left",
+        table.border.left.style = "solid",
+        table.border.left.width = px(1),
+        table.border.left.color = "lightgrey",
+        table.border.right.style = "solid",
+        table.border.right.width = px(1),
+        table.border.right.color = "lightgrey"
+        ) %>%
+      tab_style(
+        style = cell_borders(
+          sides = "right",
+          color = "lightgrey",
+          weight = px(1)
+          ),
+        locations = cells_body(
+          columns = c(cluster, company, n, share)
+          )
+        )
+    
+    clust_top_org_tbl %>% 
+      gtsave(paste0("H2_paper/figs_W2425/clusters/clust_top_org_tbl_",
+                    as.character(k),".png"), vheight = 800, vwidth = 2000)
+    clust_cumulative_tbl %>% 
+      gtsave(paste0("H2_paper/figs_W2425/clusters/clust_cumulative_tbl_",
+                    as.character(k),".png"), vheight = 800, vwidth = 2000)
+  }
+}
+```
+
+Run it
+
+```{r}
+important_orgs(cluster_result_all,0.04,0.5)
+```
+
 ## Slightly less organised code for making specific cluster-tables for H2-paper
 
 ### Elin - cluster table
