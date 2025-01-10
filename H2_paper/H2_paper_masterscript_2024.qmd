@@ -3201,6 +3201,8 @@ top_percent_table <- function(k,jobs_clustered){
 top_percent_table(3,cluster_result_all[[2]][[1]][["jobs_clustered"]])
 ```
 
+# Time series
+
 # Experimental section
 
 ## Testing to remove Akkodis
