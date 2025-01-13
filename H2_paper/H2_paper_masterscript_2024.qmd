@@ -784,7 +784,8 @@ jbrls_tbl %>% gtsave("H2_paper/tables_W2425/jbrls_tbl.png")
 ### Overview plot
 
 ```{r}
-jobroles_plot <- tbl %>% drop_na(job_role) %>% #removing NA:s here
+jobroles_plot <- tbl %>% 
+  drop_na(job_role) %>% #removing NA:s here
   group_by(Country, job_role) %>%
   summarise(n =n()) %>%
   ggplot(aes(x= n, y= fct_rev(job_role), 
@@ -3203,6 +3204,415 @@ top_percent_table(3,cluster_result_all[[2]][[1]][["jobs_clustered"]])
 
 # Time series
 
+Overall
+
+```{r}
+jobs_per_time <- jobs %>%
+  select(Scrape_date) %>%
+  group_by(Scrape_date) %>%
+  mutate(n = n()) %>%
+  unique() 
+
+jobs_per_time_bar_plt <- ggplot(data = jobs_per_time, aes(x = Scrape_date, y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") + # 'stat = "identity"' is required for bar charts with pre-computed y-values
+  labs(x = "Scrape date", y = "Number of jobs", title = "Number of jobs over time") +
+  theme_minimal()
+
+jobs_per_time_bar_plt
+
+jobs_per_month <- jobs %>%
+  select(Scrape_date) %>%
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(month) %>%
+  mutate(n = n()) %>%
+  ungroup() %>%
+  select(month, n) %>%
+  unique()
+
+jobs_per_month_bar_plt <- ggplot(data = jobs_per_month, aes(x = month, y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") + # 'stat = "identity"' is required for bar charts with pre-computed y-values
+  labs(x = "Scrape date", y = "Number of jobs", title = "Number of jobs over time") +
+  theme_minimal()
+
+jobs_per_month_bar_plt
+```
+
+```{r}
+jobs_per_month_country_plt <- tbl %>% 
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(Country, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x= month, y= n, 
+             fill = Country)) + 
+  geom_col()+
+    scale_y_continuous()+
+    scale_fill_colorblind("Country")+
+    labs(x= "Scrape date", y = "Number of jobs", title = "Number of jobs over time")+
+    theme_minimal()+
+    theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_country_plt
+
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_country_plt.png", dpi = 1200, width = 12, height = 8)
+```
+
+## Sector
+
+```{r}
+jobs_per_month_sector_plt <- tbl %>% 
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(Sector, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             group = Sector, color = Sector)) +
+  geom_line() + # Line plot
+  scale_y_continuous()+
+    scale_color_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse3", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per sector") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_sector_plt
+
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_sector_plt_LINE.png", dpi = 1200, width = 12, height = 8)
+```
+
+```{r}
+jobs_per_month_sector_bar_plt <- tbl %>% 
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(Sector, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             fill = Sector)) +
+  geom_col() + # Line plot
+  scale_y_continuous()+
+    scale_fill_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse3", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per sector") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_sector_bar_plt
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_sector_plt_BAR.png", dpi = 1200, width = 12, height = 8)
+```
+
+## Job role
+
+```{r}
+jobs_per_month_jobrole_plt <- tbl %>% 
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(job_role, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             group = job_role, color = job_role)) +
+  geom_line() + # Line plot
+  scale_y_continuous()+
+    scale_color_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse2", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen",
+                                  "cornflowerblue" , "darkseagreen1" , "lightblue4" , 
+                                  "red1"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per job role") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_jobrole_plt
+
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_jobrole_plt_LINE.png", dpi = 1200, width = 12, height = 8)
+```
+
+```{r}
+jobs_per_month_jobrole_bar_plt <- tbl %>% 
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(job_role, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             fill = job_role)) +
+  geom_col() + # Line plot
+  scale_y_continuous()+
+    scale_fill_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse3", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen",
+                                  "cornflowerblue" , "darkseagreen1" , "lightblue4" , 
+                                 "red1"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per job role") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_jobrole_bar_plt
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_jobrole_plt_BAR.png", dpi = 1200, width = 12, height = 8)
+```
+
+## Region
+
+### Denmark
+
+```{r}
+jobs_per_month_region_plt_DK <- tbl %>% 
+  filter(Country == 'DK') %>%
+  filter(!region == 'Greenland') %>%
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(region, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             group = region, color = region)) +
+  geom_line(size = 1.5) + # Line plot
+  geom_point() +
+  scale_y_continuous()+
+    scale_color_colorblind("Region")+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per region in Denmark") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_region_plt_DK
+
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_region_plt_DK_LINE.png", dpi = 1200, width = 12, height = 8)
+```
+
+```{r}
+jobs_per_month_region_bar_plt_DK <- tbl %>% 
+  filter(Country == 'DK') %>%
+  filter(!region == 'Greenland') %>%
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(region, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             fill = region)) +
+  geom_col() + # Line plot
+  scale_y_continuous()+
+    scale_fill_colorblind("Region")+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per region in Denmark") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_region_bar_plt_DK
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_region_plt_DK_BAR.png", dpi = 1200, width = 12, height = 8)
+```
+
+### Norway
+
+```{r}
+jobs_per_month_region_plt_NO <- tbl %>% 
+  filter(Country == 'NO') %>%
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(region, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             group = region, color = region)) +
+  geom_line(size = 1.5) + # Line plot
+  geom_point() +
+  scale_y_continuous()+
+    scale_color_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse2", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen",
+                                  "darkseagreen" , 
+                                  "red1"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per region in Norway") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_region_plt_NO
+
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_region_plt_NO_LINE.png", dpi = 1200, width = 12, height = 8)
+```
+
+```{r}
+jobs_per_month_region_bar_plt_NO <- tbl %>% 
+  filter(Country == 'NO') %>%
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(region, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             fill = region)) +
+  geom_col() + # Line plot
+  scale_y_continuous()+
+    scale_fill_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse2", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen",
+                                  "darkseagreen" , 
+                                  "red1"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per region in Norway") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_region_bar_plt_NO
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_region_plt_NO_BAR.png", dpi = 1200, width = 12, height = 8)
+```
+
+### Sweden
+
+```{r}
+jobs_per_month_region_plt_SE <- tbl %>% 
+  filter(Country == 'SE') %>%
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(region, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             group = region, color = region )) +#,
+             #linetype = region)) +
+  geom_line(size = 1.5) + # Line plot
+  geom_point() +
+  scale_y_continuous()+
+    scale_color_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse3", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen",
+                                  "cornflowerblue" , "darkseagreen1" , "lightblue4" , 
+                                 "red1", "slateblue"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per region in Sweden") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_region_plt_SE
+
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_region_plt_SE_LINE.png", dpi = 1200, width = 12, height = 8)
+```
+
+```{r}
+jobs_per_month_region_bar_plt_SE <- tbl %>% 
+  filter(Country == 'SE') %>%
+  mutate(date_as_date = as.Date(Scrape_date)) %>%
+  mutate(month = format(date_as_date, "%Y-%m")) %>%
+  group_by(region, month) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = month, y = n,
+             fill = region)) +
+  geom_col() + # Line plot
+  scale_y_continuous()+
+    scale_fill_manual(values = c("black", "blue", "purple", "aquamarine", "azure4",
+                                  "bisque1", "brown4", "chartreuse3", "darkorange", 
+                                  "darkgoldenrod4", "deeppink", "yellow", "darkgreen",
+                                  "cornflowerblue" , "darkseagreen1" , "lightblue4" , 
+                                 "red1", "slateblue"))+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per region in Sweden") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_region_bar_plt_SE
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_region_plt_SE_BAR.png", dpi = 1200, width = 12, height = 8)
+```
+
+## Cluster
+
+```{r}
+data_plt <- cluster_result_all_new[[2]][[4]][["jobs_clustered"]] %>%
+  mutate(date = sprintf("%04d-%02d", year, month))
+```
+
+```{r}
+jobs_per_month_cluster6_plt <- data_plt %>% 
+  group_by(cluster, date) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = date, y = n,
+             group = as.factor(cluster), color = as.factor(cluster))) +
+  geom_line(size = 1.5) + # Line plot
+  geom_point() +
+  scale_y_continuous()+
+    scale_color_colorblind("Cluster")+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per cluster") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_cluster6_plt
+
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_cluster6_plt_LINE.png", dpi = 1200, width = 12, height = 8)
+```
+
+```{r}
+jobs_per_month_cluster6_bar_plt <- data_plt %>% 
+  group_by(cluster, date) %>%
+  summarise(n =n()) %>%
+  ungroup() %>%
+  ggplot(aes(x = date, y = n,
+             fill = as.factor(cluster))) +
+  geom_col() + # Line plot
+  scale_y_continuous()+
+    scale_fill_colorblind("Cluster")+
+  labs(x = "Scrape date", y = "Number of jobs", 
+       title = "Number of jobs over time per cluster") +
+  theme(
+      legend.position = "bottom", 
+      text = element_text(size = 14), 
+      plot.title = element_text(size = 12),
+      axis.text.y = element_text(color = "black"))
+
+jobs_per_month_cluster6_bar_plt
+ggsave("H2_paper/figs_W2425/time_series/jobs_per_month_cluster6_bar_plt_BAR.png", dpi = 1200, width = 12, height = 8)
+```
+
 # Experimental section
 
 ## Testing to remove Akkodis
@@ -3896,7 +4306,7 @@ all_cluster_functions_together_new <- function(k,matrx,top_percentage){
 ###
 
 # Running for multiple k
-cluster_result_all <- tibble(
+cluster_result_all_new <- tibble(
   i = 3:8,      # First column (numeric values 1 to 10)
   Result = letters[3:8]  # Second column (letters a to j))
 )
@@ -3906,6 +4316,6 @@ for (i in 3:8){
   j <- j+1
   cluster_result_i <- all_cluster_functions_together_new(i,mtrx_new,0.2)
   
-  cluster_result_all$Result[j] <- I(list(cluster_result_i))
+  cluster_result_all_new$Result[j] <- I(list(cluster_result_i))
 }
 ```
