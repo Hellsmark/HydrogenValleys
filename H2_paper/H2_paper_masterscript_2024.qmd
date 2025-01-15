@@ -4024,6 +4024,8 @@ df_knee %>%
 
 # Best at: ~ 6
 
+ggsave("H2_paper/figs_W2425/clusters_exp/elbow_plt.png", dpi = 1200, width = 12, height = 8)
+
 
 
 sil_width <- map_dbl(2:60, function(k){
@@ -4038,6 +4040,9 @@ df_sil %>% ggplot(aes(k, sil_width)) + geom_line() +
   scale_x_continuous(breaks = 2:60)
 
 # Best at: 3 - 8
+
+ggsave("H2_paper/figs_W2425/clusters_exp/silhouette_plt.png", dpi = 1200, width = 12, height = 8)
+
 ```
 
 ```{r}
@@ -4318,4 +4323,167 @@ for (i in 3:8){
   
   cluster_result_all_new$Result[j] <- I(list(cluster_result_i))
 }
+```
+
+### Important organisations
+
+Functions
+
+```{r}
+important_orgs_new <- function(cluster_result_multi,top_perc,cumulative_perc){
+  for (i in 1:nrow(cluster_result_multi)){
+    clustered_jobs <- cluster_result_multi[[2]][[i]][["jobs_clustered"]]
+    
+    k <- max(clustered_jobs$cluster)
+    
+    clustered_org <- clustered_jobs %>%
+      group_by(cluster, company) %>%
+      summarise(n =n()) %>%
+      ungroup() %>%
+      group_by(cluster) %>%
+      mutate(
+        total_n = sum(n),
+        share = n / total_n
+        ) %>%
+      ungroup()
+    
+    clust_top_org <- clustered_org %>%
+      filter(share > top_perc)
+    
+    clust_cumulative <- clustered_org %>%
+      group_by(cluster) %>%
+      arrange(desc(share), .by_group = TRUE) %>%   # Sort by share within each country
+      mutate(cumulative_share = cumsum(share)) %>% # Calculate cumulative share
+      filter(cumulative_share <= cumulative_perc | 
+               dplyr::lag(cumulative_share, default = 0) <= cumulative_perc) %>%
+      ungroup()
+    
+    clust_top_org_tbl <- clust_top_org %>%
+      select(cluster, company, n, share) %>%
+      arrange(cluster, desc(n)) %>%
+      gt() %>% 
+      tab_header(
+        title = paste0("Organisations in groups - each accounting for ",
+                       as.character(top_perc*100),"% of the jobs in each group")
+        ) %>%
+      cols_label(
+        cluster = "Group",
+        company = "Organisation",
+        n = 'Number of jobs',
+        share = 'Share'
+        ) %>% 
+      tab_options(
+        table.font.size = px(12),
+        heading.align = "left",
+        table.border.left.style = "solid",
+        table.border.left.width = px(1),
+        table.border.left.color = "lightgrey",
+        table.border.right.style = "solid",
+        table.border.right.width = px(1),
+        table.border.right.color = "lightgrey"
+        ) %>%
+      tab_style(
+        style = cell_borders(
+          sides = "right",
+          color = "lightgrey",
+          weight = px(1)
+          ),
+        locations = cells_body(
+          columns = c(cluster, company, n, share)
+          )
+        )
+    
+    clust_cumulative_tbl <- clust_cumulative %>%
+      select(cluster, company, n, share) %>%
+      arrange(cluster, desc(n)) %>%
+      gt() %>% 
+      tab_header(
+        title = paste0("Organisations in groups - accounting in total for ",
+                       as.character(cumulative_perc*100),"% of the jobs in each group")
+        ) %>%
+      cols_label(
+        cluster = "Group",
+        company = "Organisation",
+        n = 'Number of jobs',
+        share = 'Share'
+        ) %>% 
+      tab_options(
+        table.font.size = px(12),
+        heading.align = "left",
+        table.border.left.style = "solid",
+        table.border.left.width = px(1),
+        table.border.left.color = "lightgrey",
+        table.border.right.style = "solid",
+        table.border.right.width = px(1),
+        table.border.right.color = "lightgrey"
+        ) %>%
+      tab_style(
+        style = cell_borders(
+          sides = "right",
+          color = "lightgrey",
+          weight = px(1)
+          ),
+        locations = cells_body(
+          columns = c(cluster, company, n, share)
+          )
+        )
+    
+    clust_top_org_tbl %>% 
+      gtsave(paste0("H2_paper/figs_W2425/clusters_exp/clust_top_org_tbl_",
+                    as.character(k),".png"), vheight = 800, vwidth = 2000)
+    clust_cumulative_tbl %>% 
+      gtsave(paste0("H2_paper/figs_W2425/clusters_exp/clust_cumulative_tbl_",
+                    as.character(k),".png"), vheight = 800, vwidth = 2000)
+  }
+}
+```
+
+Run it
+
+```{r}
+important_orgs_new(cluster_result_all,0.1,1)
+```
+
+### Silhouette score plot
+
+```{r}
+KM5_new <- cluster_result_all_new[[2]][[3]][["KM"]]
+KM6_new <- cluster_result_all_new[[2]][[4]][["KM"]]
+
+# Compute the distance matrix (e.g., Euclidean distance)
+dist_matrix <- dist(mtrx_new)
+
+# Calculate silhouette scores
+sil_scores5 <- silhouette(KM5_new$cluster, dist_matrix)
+sil_scores6 <- silhouette(KM6_new$cluster, dist_matrix)
+```
+
+```{r}
+# View silhouette object
+print(sil_scores5)
+
+# Summary statistics for silhouette scores
+summary(sil_scores5)
+
+# Plot the silhouette scores
+plot(sil_scores5, main = "Silhouette Plot for K-Means Clustering")
+
+# View silhouette object
+print(sil_scores6)
+
+# Summary statistics for silhouette scores
+summary(sil_scores6)
+
+# Plot the silhouette scores
+plot(sil_scores6, main = "Silhouette Plot for K-Means Clustering")
+
+# Average silhouette score for each cluster
+avg_sil_by_cluster5 <- tapply(sil_scores5[, "sil_width"], KM5_new$cluster, mean)
+
+print(avg_sil_by_cluster5)
+
+# Average silhouette score for each cluster
+avg_sil_by_cluster6 <- tapply(sil_scores6[, "sil_width"], KM6_new$cluster, mean)
+
+print(avg_sil_by_cluster6)
 ```
