@@ -20,6 +20,7 @@ library(ggraph)
 library(ggplot2)
 library(ggthemes)
 library(visNetwork)
+library(igraph)
 ```
 
 ## Gather data
@@ -52,7 +53,7 @@ Illustrating how many projects that are dedicated to the different end use categ
 ```{r}
 
 enduse<- c(end_use_mobility="Mobility",end_use_heat_power="Heat and Power",end_use_grid_export
-="Export")  
+="Grid/Export")  
 
 ppl_df <- df_c %>%
   pivot_longer(starts_with("end"), names_to = "end_use", values_to = "nr") %>%
@@ -116,14 +117,14 @@ sel<- df_c %>%
   mutate(electrolyser_mw = as.numeric(electrolyser_mw))
  
 box<- sel %>% 
-  ggplot(aes(x = country, y = electrolyser_mw,
+  ggplot(aes(x = status, y = electrolyser_mw,
              label = project_name,
-             fill = country)) +
+             fill = status)) +
   geom_boxplot() +
   geom_jitter(alpha = 0.7) +
   scale_y_log10()+
-  facet_wrap(~status)+
-  labs(x = "Country", y = "MW", title = "Electrolyser Consumption by Country") +
+  facet_wrap(~country)+
+  labs(x = "Status", y = "MW", title = "Electrolyser capacity and Status") +
   theme_minimal() +
   theme(legend.position = "none")  # Valfritt, om du vill dölja legenden
 
@@ -145,7 +146,7 @@ sel<- df %>% filter(electrolyser_mw !="N/A")%>%
 sel %>% ggplot(aes(x = country, y = electrolyser_mw, fill = country)) +
   geom_boxplot() +
   scale_y_log10()+
-  labs(x = "Country", y = "MW", title = "Electrolyser Consumption by Country") +
+  labs(x = "Country", y = "MW", title = "Electrolyser capacity by Country") +
   theme_minimal() +
   theme(legend.position = "none")  # Valfritt, om du vill dölja legenden
 
@@ -157,18 +158,31 @@ ggsave("figs/Box_plot_MW2.png")
 Showing GW produciton for the status of each project.
 
 ```{r}
+status_colors <- c(
+  "SWE" = "#27AE60",      
+  "DNK" = "#C0392B", 
+  "FIN" = "#D4AC0D", 
+  "NOR" = "#2874A6")
+
+sel <- df %>% filter(electrolyser_mw!="N/A")%>%
+  select(country, status, electrolyser_mw) %>%
+  mutate(electrolyser_mw= as.numeric(electrolyser_mw))%>%
+  rename(Country=country)
+
 status <- sel %>% 
-  group_by(status, country) %>% 
+  group_by(status, Country) %>% 
   summarise(mw = sum(electrolyser_mw), n = n())%>%
-  mutate(mw= mw*0.001)
+  mutate(gw= mw*0.001)
 
 st_plot <- status %>% 
-  ggplot(aes(mw, status, 
+  ggplot(aes(gw, status, 
              label = n,
-             fill = country)) + 
+             fill = Country)) + 
   geom_col() +
   theme_minimal() +
-  labs(y = "",x="GW")
+  labs(y = "",x="GW", title = "Current status and planned electrolyser capacity") + 
+  scale_fill_manual(values = status_colors)  # Lägg till anpassade färger
+
   
 st_plot
 ggplotly(st_plot)
@@ -204,13 +218,14 @@ summarized_data <- mw_year %>%
 ggplot(summarized_data, aes(x = date_online, y = cumulative_mw, fill = country)) +
   geom_area(alpha = 0.6) + # Skapa områdeplot
   labs(
-    title = "Accumulated MW per country over time",
+    title = "Accumulated GW per country planned over time",
     x = "Year",
     y = "Accumulated GW",
     fill = "Country"
   ) +
   theme_minimal() +
   scale_x_continuous(breaks = seq(min(summarized_data$date_online), max(summarized_data$date_online), by = 1)) # Anpassa x-axeln
+  #scale_fill_viridis_d(option = "G") # Här lägger du in färgskalan D eller G var nice tycker jag
 ggsave("figs/Accumulated_GW.png")
 ```
 
@@ -294,7 +309,7 @@ ggplot(p_year,aes(x=factor(date_online),y=n)) +
 ggsave("figs/Projects_operational.png")
 ```
 
-### Bar diagram
+### Intervall
 
 Illustrating how many projects that are planned for different sizes (divided in intervals of MW capacity).
 
@@ -308,15 +323,15 @@ mw <- df%>%
 
 mw$MW_interval <- cut(
   mw$electrolyser_mw,
-  breaks = c(-Inf, 1, 10,100,500, 1001, Inf), # Define interval boundaries
-  labels = c("<1","1-9","10-99","100-499", "500-1000", ">1000"), # Label intervals
+  breaks = c(-Inf, 1, 10,100,500, 1000, Inf), # Define interval boundaries
+  labels = c("<1","1-9","10-99","100-499", "500-999", "1000≤"), # Label intervals
   right = FALSE # Intervals are left-closed
 )
 
 ggplot(mw, aes(x = MW_interval, fill = country)) +
   geom_bar(position = "stack") +
   labs(
-    title = "Distribution of Countries by MW Intervals",
+    title = "Project size distribution",
     x = "MW Intervals",
     y = "Number of Projects",
     fill = "Country"
@@ -381,10 +396,18 @@ V(g)$label <- ifelse(V(g)$name %in% cont$product, V(g)$name, NA)
 V(g)$size <- ifelse(V(g)$name %in% cont$product, 10, 5)   # Större noder för namn i kolumn 1
 V(g)$color <- ifelse(V(g)$name %in% cont$product, "orange", "lightblue")  # Färg för noder i kolumn 1
 
+
+# Öppna en grafisk enhet (t.ex. png)
+png("figs/Network_Network.png", width = 800, height = 800)
+
+# Skapa nätverksdiagrammet
 plot(g, vertex.size = V(g)$size, vertex.color = V(g)$color, edge.color = "gray",
      main = "Product-Companies network", vertex.label = V(g)$label,
      vertex.label.color = "black", vertex.frame.color = "white")
-ggsave("figs/Network_Product_companies.png")
+
+# Stäng den grafiska enheten
+dev.off()
+
 ```
 
 ### Countries and companies
