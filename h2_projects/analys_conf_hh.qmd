@@ -7,6 +7,7 @@ editor_options:
 ---
 
 # Libraries
+
 ```{r}
 library(tidyverse)
 library(googlesheets4)
@@ -20,6 +21,7 @@ library(corrplot)
 ```
 
 # Data
+
 ```{r}
 
 ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736"
@@ -52,22 +54,13 @@ comp <- comp %>%
 
 # Notes
 
-options: 
- - map
- - H2 over time
- - Illustrate actors across - countries, see who connects across multiple projects
- - illustrate correlation between variables? Here one could also do a cluster analysis - later
+options: - map - H2 over time - Illustrate actors across - countries, see who connects across multiple projects - illustrate correlation between variables? Here one could also do a cluster analysis - later
 
-
-
-# H2 Map?
-- 
+## \# H2 Map?
 
 # H2 over time - Done
-Illustrates what year the projects are planned to be operational in different countries
-- For this figure mention main project
-- The number of projects per country
-- And outline main differences.
+
+Illustrates what year the projects are planned to be operational in different countries - For this figure mention main project - The number of projects per country - And outline main differences.
 
 ```{r}
 status_colors <- c(
@@ -78,8 +71,8 @@ status_colors <- c(
 )
 ```
 
-
 ## Projects online or being planned to be online
+
 ```{r}
 over_time <- df_c %>% 
   filter(!status %in% c("Paused/Cancelled")) %>%
@@ -101,6 +94,7 @@ ggsave("h2_projects/figs_conf/1_over_time_active.png")
 ```
 
 ## Table
+
 ```{r}
 tot <- sum(over_time$mw)
 over_time %>% group_by(status) %>% 
@@ -110,9 +104,10 @@ over_time %>% group_by(status) %>%
 ```
 
 ## Projects being abandoned
-- quite a few projects being abandon
-- mention the largest one for each country 
-- This can however be expected as plan are progressing and tested against reality.
+
+-   quite a few projects being abandon
+-   mention the largest one for each country
+-   This can however be expected as plan are progressing and tested against reality.
 
 ```{r}
 over_time_2 <- df_c %>% 
@@ -134,7 +129,8 @@ ggsave("h2_projects/figs_conf/2_over_time_cancelled.png")
 ```
 
 # Actors across
-- How connected are projects in countries through single actors?
+
+-   How connected are projects in countries through single actors?
 
 ```{r}
 netw_colors <- c(
@@ -147,9 +143,7 @@ background <- "#F5F5F5"
 
 ```
 
-
 ```{r}
-
 pr_country <- df_c %>% 
   filter(!status %in% c("Paused/Cancelled", "Unknown")) %>%
   select(id, country, electrolyser_mw)
@@ -193,8 +187,8 @@ ggsave("h2_projects/figs_conf/3_actors_across_countries.png", width = 13.33, hei
 
 ```
 
-
 ## Actors across projects and countries
+
 ```{r}
 
 pr_country <- df_c %>% 
@@ -234,8 +228,8 @@ ggsave("h2_projects/figs_conf/4_most_central_actors_projects_wide.png",  width =
 
 ```
 
-
 ## Data on the graph
+
 ```{r}
 comps <- components(gs)
 comps$csize
@@ -244,7 +238,5 @@ share <- max(comps$csize)/sum(comps$csize)
 
 ```
 
-- The network consist of 25 components,
-- The largest component consist of 302 nodes and 70% of all nodes
-
-
+-   The network consist of 25 components,
+-   The largest component consist of 302 nodes and 70% of all nodes
