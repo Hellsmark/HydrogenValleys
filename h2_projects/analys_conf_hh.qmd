@@ -96,9 +96,13 @@ ggsave("h2_projects/figs_conf/1_over_time_active.png")
 ## Table
 
 ```{r}
-tot <- sum(over_time$mw)
-over_time %>% group_by(status) %>% 
-  summarise(mw = sum(mw), share = round(mw/tot, 2), TWH = round(mw*8000/1e6)) %>% arrange(TWH) %>% gt::gt() %>% gt_theme_espn() %>% gt::gtsave("h2_projects/figs_conf/1_table.png")
+mw_rates_ish <- df_c %>% 
+  group_by( status) %>%
+  summarise(n = n(), mw = round(sum(electrolyser_mw, na.rm = TRUE)))
+
+tot <- sum(mw_rates_ish$mw)
+mw_rates_ish %>% group_by(status) %>% 
+  summarise(mw = sum(mw), 'share [%]' = round(mw/tot, 4)*100, TWH = round(mw*8000/1e6)) %>% arrange(TWH) %>% gt::gt() %>% gt_theme_espn() %>% gt::gtsave("h2_projects/figs_conf/1_table.png")
   
 
 ```
