@@ -4487,3 +4487,415 @@ avg_sil_by_cluster6 <- tapply(sil_scores6[, "sil_width"], KM6_new$cluster, mean)
 
 print(avg_sil_by_cluster6)
 ```
+
+## Luleå conference
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(ggthemes)
+library(gtExtras)
+library(tidygraph)
+library(igraph)
+library(ggraph)
+library(lsr)
+library(corrplot)
+```
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+df_main_raw <- read_sheet(ss, sheet = "Main")
+df_geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:M")
+df_companies_raw <- read_sheet(ss, sheet = "CompanyAnalysis")
+
+geo <- df_geo_locations_raw %>% janitor::clean_names()
+
+df_jobs <- df_main_raw %>% 
+  inner_join(geo, by = c("Location"="new_name"), relationship = "many-to-many") %>%
+  mutate(publish_country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%
+  mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
+  left_join(job_roles) %>%
+  mutate(Company = ifelse(Company == "Rekryteringsföretag", "Recruitment companies", Company)) %>%
+  filter(Scrape_date >= "2023-08-20") %>%  
+  filter(is.na(Hydrogen_relevance)) %>%
+  filter(country %in% c("Denmark","Norway","Sweden")) %>%
+  select(ID, Company, Location, country_code) %>%
+  janitor::clean_names() %>%
+  filter(!company == 'UNKNOWN_COMPANY') %>%
+  filter(!company == 'Employment/staffing agency')
+
+companies <- df_companies_raw %>%
+  mutate(Name = ifelse(Name == "Rekryteringsföretag", "Recruitment companies", Name)) %>%
+  janitor::clean_names() 
+```
+
+### Actors across
+
+```{r}
+netw_colors <- c(
+  "comp" = "#356D94",     
+  "country" = "#6C8B72"
+  )
+
+background <- "#F5F5F5"  
+
+```
+
+```{r}
+pr_country_jobs <- df_jobs %>%
+  group_by(company, country_code) %>%
+  mutate(n = n()) %>%
+  select(company, country_code, n) %>%
+  unique() %>%
+  rename(comp_name = company) %>% rename(country = country_code)
+
+comp_n <- pr_country_jobs %>%
+  group_by(comp_name) %>% 
+  summarise(n = sum(n)) %>%
+  rename(name = comp_name)
+
+gc_jobs <- as_tbl_graph(pr_country_jobs) %>%
+   mutate(type = ifelse(name %in% pr_country_jobs$comp_name, "comp", "country")) %>%
+  mutate(degree = centrality_degree(mode = "all")) %N>%
+  left_join(comp_n)
+
+nodes_jobs <- gc_jobs %N>% as_tibble()
+edges_jobs <- gc_jobs %E>% as_tibble()
+
+set.seed(123)
+gc_jobs %>% ggraph(layout = "nicely") + 
+  geom_edge_link(color = "grey", show.legend = FALSE) + 
+  geom_node_point(aes(fill = type, 
+                      size = ifelse(type == "comp", log(n+1), 10), #sum(comp_n$n) nrow(comp_n) nrow(comp_n %>% filter(n > 3))
+                      shape = type), color = "white") + # Node attributes
+  geom_node_label(aes(label = 
+                        ifelse(
+                          (type == "comp" & ((degree > 1 & n >= sum(comp_n$n)*.001) | 
+                                               n >= sum(comp_n$n)*.01)) |
+                          type == "country" & degree > 1, 
+                          name, NA), 
+                      color = type), repel = TRUE, size = 3) +
+  scale_shape_manual(values =  c(21, 22))+
+  scale_fill_manual(values = netw_colors)+
+  scale_color_manual(values = netw_colors)+
+  labs(title = "Actors cutting across the Nordic countries or recruiting at large within countries", 
+       caption = "Most central actors cutting across multiple countries accounting for 1‰ or more of all jobs found, as well as actors recruiting within single countries accounting for 1% or more of all jobs found.")+
+  theme_graph(background = background) + 
+  theme(legend.position = 'none')
+
+ggsave("H2_paper/figs_W2425/actors_across_countries.png", width = 23.2, height = 13.7, units = "in", dpi = 200)
+```
+
+## New map attempt for clustering
+
+```{r}
+library(rnaturalearth)
+library(rnaturalearthdata)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+admin1 <- ne_states(country = c("Sweden", "Norway", "Denmark"), returnclass = "sf")
+
+
+regionsss <- geo %>% 
+  select(country_code,region) %>% 
+  unique() %>%
+  filter(country_code %in% c('SE','DK','NO')) %>%
+  filter(!region == 'Greenland')
+```
+
+```{r}
+library(ggspatial)
+library(osmdata)
+library(sf)
+library(tidyverse)
+library(ggpattern)
+
+#Maps collected from
+#SE - https://github.com/okfse/sweden-geojson/blob/master/swedish_regions.geojson
+#NO - https://github.com/ivanhjel/counties_norway_2024/blob/main/counties_norway_2024.geojson
+#DK - https://github.com/ok-dk/dagi/blob/master/geojson/regioner.geojson
+
+swedish_regions <- read_sf("https://raw.githubusercontent.com/okfse/sweden-geojson/master/swedish_regions.geojson") %>%
+  janitor::clean_names() %>%
+  select(name)
+
+regions_of_interest_se <- c("Norrbotten", "Västra Götaland", "Uppsala", "Södermanland",
+                         "Halland", "Dalarna", "Östergötland", "Gotland", "Gävleborg",
+                         "Skåne", "Värmland", "Västernorrland", "Kalmar", "Västerbotten",
+                         "Stockholm", "Västmanland", "Kronoberg", "Jämtland")
+
+specific_regions_se <- swedish_regions %>%
+  filter(name %in% regions_of_interest_se)
+
+
+#bus_stops <- specific_regions_se %>% 
+ # st_bbox() %>%
+  #opq() %>%
+#  add_osm_feature(key = "highway", value = "bus_stop") %>%
+ # osmdata_sf()
+
+#bus_stop_points <- bind_rows(
+ # pluck(bus_stops,"osm_points"),
+  #st_centroid(pluck(bus_stops,"osm_polygons"))
+#)
+
+region_map_se <- ggplot() + 
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = specific_regions_se, colour = "grey40", fill = NA, linewidth = 1.5) +
+  theme_void()
+
+###
+
+norwegian_regions <- read_sf("https://raw.githubusercontent.com/ivanhjel/counties_norway_2024/main/counties_norway_2024.geojson") %>%
+  janitor::clean_names() %>%
+  select(name = navn)
+
+regions_of_interest_no <- c("Agder", "Akershus","Rogaland", "Finnmark", "Vestland", "Buskerud",
+                            "Møre og Romsdal", "Østfold", "Troms", "Vestfold", "Nordland", 
+                            "Telemark", "Oslo", "Trøndelag")
+
+specific_regions_no <- norwegian_regions %>%
+  filter(name %in% regions_of_interest_no)
+
+region_map_no <- ggplot() + 
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = norwegian_regions, colour = "grey40", fill = NA, linewidth = 1.5) +
+  theme_void()
+
+
+
+
+###
+
+danish_regions <- read_sf("https://raw.githubusercontent.com/ok-dk/dagi/master/geojson/regioner.geojson") %>%
+  janitor::clean_names() %>%
+  select(name = regionnavn)
+
+regions_of_interest_dk <- c("Region Hovedstaden", "Region Nordjylland", "Region Syddanmark",
+                            "Region Sjælland", "Region Midtjylland")
+
+specific_regions_dk <- norwegian_regions %>%
+  filter(name %in% regions_of_interest_no)
+
+region_map_dk <- ggplot() + 
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = danish_regions, 
+          aes(fill = case_when(
+            name == "Region Hovedstaden" ~ "red",
+            name == "Region Nordjylland" ~ "blue",  # Replace with the actual region name
+            TRUE ~ NA_character_  # Default to no fill
+          )), 
+          colour = "grey40", linewidth = 0.5) +
+  scale_fill_identity() +  # Use scale_fill_identity for direct color mapping
+  theme_void()
+###
+```
+
+```{r}
+# Function to check and repair geometries
+repair_geometries <- function(data) {
+  # Check validity
+  if (!all(st_is_valid(data))) {
+    # Repair invalid geometries
+    data <- st_make_valid(data)
+  }
+  return(data)
+}
+
+# Apply the function to each dataset
+swedish_regions <- repair_geometries(swedish_regions)
+norwegian_regions <- repair_geometries(norwegian_regions)
+danish_regions <- repair_geometries(danish_regions)
+
+# Function to convert 3D geometries to 2D by removing Z-dimension
+convert_to_2d <- function(data) {
+  st_transform(data, crs = st_crs(4326)) %>%  # Ensure CRS is WGS84
+    st_zm(drop = TRUE, what = "ZM")  # Remove Z-dimension
+}
+
+# Convert Danish geometries to 2D
+danish_regions_2d <- convert_to_2d(danish_regions) %>%
+  mutate(name = sub("^Region ", "", name))
+
+all_regions <- bind_rows(
+  swedish_regions %>% mutate(country = "Sweden"),
+  norwegian_regions %>% mutate(country = "Norway"),
+  danish_regions_2d %>% mutate(country = "Denmark")
+)
+
+# Plot the combined map
+combined_map <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = all_regions, aes(fill = country), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("Sweden" = "lightblue", "Norway" = "lightgreen", "Denmark" = "lightpink")) +
+ theme_void()
+```
+
+```{r}
+data_cluster_df <- final_cluster_choice %>%
+  mutate(cluster = ifelse(cluster == 6, 2, cluster))
+
+# Define your group memberships
+all_regions <- bind_rows(
+  swedish_regions %>% mutate(country = "Sweden"),
+  norwegian_regions %>% mutate(country = "Norway"),
+  danish_regions_2d %>% mutate(country = "Denmark")
+)
+
+regions_for_groups <- data_cluster_df %>%
+  separate(place, into = c("region", "country"), sep = ", ") %>%
+  select(region,cluster) %>% unique()
+
+
+group_definitions <- list(
+  Group1 = regions_for_groups %>% 
+    filter(cluster == 1) %>% unique() %>% pull(region),
+  Group2 = regions_for_groups %>% 
+    filter(cluster == 3) %>% unique() %>% pull(region),
+  Group3 = regions_for_groups %>% 
+    filter(cluster == 4) %>% unique() %>% pull(region),
+  Group4 = regions_for_groups %>% 
+    filter(cluster == 5) %>% unique() %>% pull(region)
+)
+
+# Assign colors to groups, using "0" for non-grouped regions
+group_colors <- c(
+  "0" = "grey", "1" = "blue", "3" = "yellow", "4" = "green", "5" = "red"
+)
+
+# Create a new column for group pattern
+all_regions <- all_regions %>%
+  rowwise() %>%
+  mutate(
+    group_pattern = paste0(
+      ifelse(name %in% group_definitions$Group1, "1", ""),
+      ifelse(name %in% group_definitions$Group2, "3", ""),
+      ifelse(name %in% group_definitions$Group3, "4", ""),
+      ifelse(name %in% group_definitions$Group4, "5", "")
+    ),
+    # Assign "0" for non-grouped regions
+    group_pattern = ifelse(group_pattern == "", "0", group_pattern)
+  ) %>%
+  ungroup()
+
+# Function to get stripe colors for overlaps
+get_stripe_colors <- function(pattern) {
+  colors <- unlist(strsplit(pattern, ""))
+  return(group_colors[colors])
+}
+
+# Build color mapping for overlaps
+overlap_colors <- unique(all_regions$group_pattern)
+stripe_colors <- lapply(overlap_colors, get_stripe_colors)
+
+names(stripe_colors) <- overlap_colors
+
+# Create the plot
+combined_map <- ggplot() +
+  # Use geom_sf for solid regions
+  geom_sf(
+    data = all_regions %>% filter(nchar(group_pattern) <= 1),
+    aes(fill = group_pattern),
+    colour = "grey40",
+    linewidth = 0.5
+  ) +
+  # Use geom_sf_pattern for striped regions
+  geom_sf_pattern(
+    data = all_regions %>% filter(nchar(group_pattern) > 1),
+    aes(pattern = group_pattern, pattern_fill = group_pattern),
+    colour = "grey40",
+    linewidth = 0.5,
+    pattern_density = 1,
+    pattern_spacing = 0.01
+  ) +
+  # Scale for solid fill colors
+  scale_fill_manual(values = group_colors) +
+  # Scale for striped pattern fill colors
+  scale_pattern_manual(values = rep("stripe", length(overlap_colors))) +
+  scale_pattern_fill_manual(values = stripe_colors) +
+  theme_void() +
+  theme(legend.position = "none")
+
+combined_map
+```
+
+```{r}
+library(scales)
+library(RColorBrewer)
+
+blues_palette <- brewer.pal(9, "Blues") # 9 shades of blue
+
+regions_norwegian_engineering <- all_regions %>%
+  mutate(cluster = ifelse(name %in% c('Oslo','Akershus','Rogaland','Vestland'), "1", "0")) %>%
+  mutate(n = ifelse(name %in% c('Oslo','Akershus'), 468,
+                    ifelse(name == 'Rogaland', 311,
+                           ifelse(name == 'Vestland', 313, 0)
+                           )
+                    )
+         )
+
+#View(final_cluster_choice %>% filter(cluster == 1) %>% group_by(place) %>% mutate(n = n()) %>% select(place, n) %>% unique())
+
+map_norwegian_engineering <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = regions_norwegian_engineering, aes(fill = cluster), 
+          colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("1" = "blue", "0" = "grey")) +
+ theme_void() +
+  theme(legend.position = "none")
+
+map_norwegian_engineering
+
+ggsave(filename = "H2_paper/figs_W2425/clusters_exp/maps/map_norwegian_engineering.png", plot = map_norwegian_engineering, limitsize = FALSE, width = 8, height = 5)
+###
+
+regions_scandinavian_energy <- all_regions %>%
+  mutate(cluster = ifelse(name %in% c('Gävleborg','Hovedstaden','Östergötland','Rogaland',
+                                      'Södermanland', 'Stockholm', 'Syddanmark', 'Telemark',
+                                      'Uppsala', 'Västmanland', 'Västra Götaland'), "3", "0"))
+
+map_scandinavian_energy <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = regions_scandinavian_energy, aes(fill = cluster), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("3" = "yellow", "0" = "grey")) +
+ theme_void() +
+  theme(legend.position = "none")
+
+map_scandinavian_energy
+
+ggsave(filename = "H2_paper/figs_W2425/clusters_exp/maps/map_scandinavian_energy.png", plot = map_scandinavian_energy, limitsize = FALSE, width = 8, height = 5)
+###
+
+regions_money <- all_regions %>%
+  mutate(cluster = ifelse(name %in% c('Hovedstaden','Oslo','Akershus'), "4", "0"))
+
+map_money <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = regions_money, aes(fill = cluster), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("4" = "green", "0" = "grey")) +
+ theme_void() +
+  theme(legend.position = "none")
+
+map_money
+
+ggsave(filename = "H2_paper/figs_W2425/clusters_exp/maps/map_money.png", plot = map_money, limitsize = FALSE, width = 8, height = 5)
+###
+
+regions_research <- all_regions %>%
+  mutate(cluster = ifelse(name %in% c('Hovedstaden','Midtjylland','Trøndelag','Vestland'), "5", "0"))
+
+map_research <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = regions_research, aes(fill = cluster), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("5" = "red", "0" = "grey")) +
+ theme_void() +
+  theme(legend.position = "none")
+
+map_research
+
+ggsave(filename = "H2_paper/figs_W2425/clusters_exp/maps/map_research.png", plot = map_research, limitsize = FALSE, width = 8, height = 5)
+```
