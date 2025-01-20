@@ -4575,19 +4575,20 @@ gc_jobs %>% ggraph(layout = "nicely") +
                       shape = type), color = "white") + # Node attributes
   geom_node_label(aes(label = 
                         ifelse(
-                          (type == "comp" & (degree > 1 | n >= sum(comp_n$n)*.01)) |
+                          (type == "comp" & ((degree > 1 & n >= sum(comp_n$n)*.001) | 
+                                               n >= sum(comp_n$n)*.01)) |
                           type == "country" & degree > 1, 
                           name, NA), 
                       color = type), repel = TRUE, size = 3) +
   scale_shape_manual(values =  c(21, 22))+
   scale_fill_manual(values = netw_colors)+
   scale_color_manual(values = netw_colors)+
-  labs(title = "Actors Cutting Across the Nordic countries or recruiting at large within countries", 
-       caption = "Most central actors cutting across multiple countries, as well as actors recruiting within single countries accounting for 1% or more of all jobs found.")+
+  labs(title = "Actors cutting across the Nordic countries or recruiting at large within countries", 
+       caption = "Most central actors cutting across multiple countries accounting for 1‰ or more of all jobs found, as well as actors recruiting within single countries accounting for 1% or more of all jobs found.")+
   theme_graph(background = background) + 
   theme(legend.position = 'none')
 
-ggsave("H2_paper/figs_W2425/actors_across_countries.png", width = 13.33, height = 7.5, units = "in", dpi = 300)
+ggsave("H2_paper/figs_W2425/actors_across_countries.png", width = 23.2, height = 13.7, units = "in", dpi = 200)
 ```
 
 ## New map attempt for clustering
