@@ -4571,19 +4571,19 @@ set.seed(123)
 gc_jobs %>% ggraph(layout = "nicely") + 
   geom_edge_link(color = "grey", show.legend = FALSE) + 
   geom_node_point(aes(fill = type, 
-                      size = ifelse(type == "comp", log(n+1), 10), 
+                      size = ifelse(type == "comp", log(n+1), 10), #sum(comp_n$n) nrow(comp_n) nrow(comp_n %>% filter(n > 3))
                       shape = type), color = "white") + # Node attributes
   geom_node_label(aes(label = 
                         ifelse(
-                          (type == "comp" & degree > 1 & n > 1) |
+                          (type == "comp" & (degree > 1 | n > sum(comp_n$n)*.01)) |
                           type == "country" & degree > 1, 
                           name, NA), 
                       color = type), repel = TRUE, size = 3) +
   scale_shape_manual(values =  c(21, 22))+
   scale_fill_manual(values = netw_colors)+
   scale_color_manual(values = netw_colors)+
-  labs(title = "Actors Cutting Across the Nordic countries", 
-       caption = "Most central actors cutting across multiple countries. Each actor have announced a total of jobs equal to or more than 1 jobs")+
+  labs(title = "Actors Cutting Across the Nordic countries or recruiting at large within countries", 
+       caption = "Most central actors cutting across multiple countries, as well as actors recruiting within single countries accounting for 1% or more of all jobs found.")+
   theme_graph(background = background) + 
   theme(legend.position = 'none')
 
@@ -4823,12 +4823,26 @@ combined_map
 ```
 
 ```{r}
+library(scales)
+library(RColorBrewer)
+
+blues_palette <- brewer.pal(9, "Blues") # 9 shades of blue
+
 regions_norwegian_engineering <- all_regions %>%
-  mutate(cluster = ifelse(name %in% c('Oslo','Akershus','Rogaland','Vestland'), "1", "0"))
+  mutate(cluster = ifelse(name %in% c('Oslo','Akershus','Rogaland','Vestland'), "1", "0")) %>%
+  mutate(n = ifelse(name %in% c('Oslo','Akershus'), 468,
+                    ifelse(name == 'Rogaland', 311,
+                           ifelse(name == 'Vestland', 313, 0)
+                           )
+                    )
+         )
+
+#View(final_cluster_choice %>% filter(cluster == 1) %>% group_by(place) %>% mutate(n = n()) %>% select(place, n) %>% unique())
 
 map_norwegian_engineering <- ggplot() +
   annotation_map_tile(type = "cartolight", zoomin = 0) +
-  geom_sf(data = regions_norwegian_engineering, aes(fill = cluster), colour = "grey40", linewidth = 0.5) +
+  geom_sf(data = regions_norwegian_engineering, aes(fill = cluster), 
+          colour = "grey40", linewidth = 0.5) +
   scale_fill_manual(values = c("1" = "blue", "0" = "grey")) +
  theme_void() +
   theme(legend.position = "none")
