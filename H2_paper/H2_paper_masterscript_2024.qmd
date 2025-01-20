@@ -4575,7 +4575,7 @@ gc_jobs %>% ggraph(layout = "nicely") +
                       shape = type), color = "white") + # Node attributes
   geom_node_label(aes(label = 
                         ifelse(
-                          (type == "comp" & (degree > 1 | n > sum(comp_n$n)*.01)) |
+                          (type == "comp" & (degree > 1 | n >= sum(comp_n$n)*.01)) |
                           type == "country" & degree > 1, 
                           name, NA), 
                       color = type), repel = TRUE, size = 3) +
