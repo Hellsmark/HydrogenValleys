@@ -92,7 +92,6 @@ jobs <- df_main_raw %>%
   )) %>%
   mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
   left_join(job_roles) %>%
-  mutate(Company = ifelse(Company == "Rekryteringsföretag", "Recruitment companies", Company)) %>%
   filter(Scrape_date >= "2023-08-20") %>%  
   filter(is.na(Hydrogen_relevance)) %>%
   filter(country %in% c("Denmark","Norway","Sweden"))
@@ -2506,6 +2505,451 @@ Run it
 important_orgs(cluster_result_all,0.04,0.5)
 ```
 
+# New clustering - aiming for robustness
+
+## Wrangle
+
+```{r}
+df_for_cluster <- jobs %>%
+  left_join(companies, by =c("Company" = "Name")) %>%
+  select(ID,region,country_code,sector= Industry_Sector,competence = job_role,
+         organisation = Company,city = Location,country,engineer_type = Type,
+         engineer_generalType = Type_2) %>%
+  filter(!sector == 'NaN') %>%
+  filter(!region == 'NaN') %>%
+  filter(!competence == 'NaN') %>%
+  filter(!organisation == 'Employment/staffing agency')
+
+df_factor_count <- df_for_cluster %>%
+  group_by(country_code, region, sector, competence) %>%
+  summarise(n = n())
+
+df_factor_count_WIDE <- df_factor_count %>% 
+  unite(place, c("region", "country_code"), sep = ", ") %>%
+  pivot_wider(names_from = "competence", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+
+#mutate(place = paste(region, "(", country_code, ")", sep = ""))
+
+mtrx_factor_count <- as.matrix(df_factor_count_WIDE %>% select(-place, -sector))
+```
+
+## Checking for best k
+
+Calculate scores for WSS & silhoette and plot for visual determination of k
+
+```{r}
+library(tidyverse)
+library(cluster)
+
+# Step 1: Compute Silhouette Scores (your original code)
+sil_width <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = mtrx_factor_count, k = k)
+  pam_k$silinfo$avg.width
+})
+
+df_sil <- tibble(k = 2:60, sil_width = sil_width)
+
+# Step 2: Compute WSS (your original k-means elbow method)
+wss <- map_dbl(2:60, function(k){
+  km <- kmeans(x= mtrx_factor_count, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_wss <- tibble(k = 2:60, wss = wss)
+
+# Step 3: Normalize both metrics using min-max scaling
+df_combined <- df_sil %>%
+  inner_join(df_wss, by = "k") %>%
+  mutate(
+    sil_scaled = (sil_width - min(sil_width)) / (max(sil_width) - min(sil_width)),
+    wss_scaled = (wss - min(wss)) / (max(wss) - min(wss))
+  )
+
+# Step 4: Plot both curves together
+ggplot(df_combined, aes(x = k)) +
+  geom_line(aes(y = sil_scaled, color = "Silhouette Score"), linewidth = 1) +
+  geom_point(aes(y = sil_scaled, color = "Silhouette Score")) +
+  geom_line(aes(y = wss_scaled, color = "WSS (Elbow Method)"), linewidth = 1, linetype = "dashed") +
+  geom_point(aes(y = wss_scaled, color = "WSS (Elbow Method)")) +
+  scale_x_continuous(breaks = seq(2, 60, by = 2)) +
+  labs(
+    x = "Number of Clusters (k)",
+    y = "Normalized Score (0-1)",
+    title = "Comparison of Silhouette Score & WSS for Clustering",
+    color = "Metric"
+  ) +
+  theme_minimal()
+```
+
+Automatic best choice for k - results not very useful
+
+```{r}
+best_k_sil <- df_combined %>%
+  filter(sil_width == max(sil_width)) %>%
+  pull(k)
+
+print(paste("Optimal k based on Silhouette Score:", best_k_sil))
+
+##
+
+# Compute first derivative (rate of change)
+wss_diff <- diff(df_combined$wss)
+
+# Compute second derivative (acceleration of change)
+wss_ddiff <- diff(wss_diff)
+
+# Find the k where the second derivative is minimized (sharpest bend)
+best_k_wss <- df_combined$k[which.min(wss_ddiff) + 1]  # +1 to adjust for indexing
+
+print(paste("Optimal k based on Elbow Method:", best_k_wss))
+
+##
+
+library(cluster)
+
+gap_stat <- clusGap(mtrx_factor_count, FUN = kmeans, K.max = 60, B = 50) # B = 50 bootstrap iterations
+
+best_k_gap <- which.max(gap_stat$Tab[, "gap"])  # Select k with highest gap statistic
+
+print(paste("Optimal k based on Gap Statistic:", best_k_gap))
+
+##
+
+ggplot(df_combined, aes(x = k)) +
+  geom_line(aes(y = sil_scaled, color = "Silhouette Score"), size = 1) +
+  geom_point(aes(y = sil_scaled, color = "Silhouette Score")) +
+  geom_line(aes(y = wss_scaled, color = "WSS (Elbow Method)"), size = 1, linetype = "dashed") +
+  geom_point(aes(y = wss_scaled, color = "WSS (Elbow Method)")) +
+  
+  # Annotate best k values
+  geom_vline(xintercept = best_k_sil, linetype = "dotted", color = "blue", size = 1) +
+  geom_vline(xintercept = best_k_wss, linetype = "dotted", color = "red", size = 1) +
+  
+  annotate("text", x = best_k_sil, y = 1, label = paste("Best k (Silhouette):", best_k_sil), color = "blue", hjust = -0.2) +
+  annotate("text", x = best_k_wss, y = 0.9, label = paste("Best k (WSS):", best_k_wss), color = "red", hjust = -0.2) +
+  
+  scale_x_continuous(breaks = seq(2, 60, by = 2)) +
+  labs(
+    x = "Number of Clusters (k)",
+    y = "Normalized Score (0-1)",
+    title = "Automated Selection of Optimal k",
+    color = "Metric"
+  ) +
+  theme_minimal()
+```
+
+## Run multiple seeds for robustness 1
+
+```{r}
+set.seed(123)  # Set an initial seed for reproducibility
+num_runs <- 500  # Number of times to run k-means
+k <- 6  # Set number of clusters (adjust as needed)
+cluster_results <- list()  # Empty list to store results
+seeds_used <- list()
+
+# Run k-means multiple times with different seeds
+for (i in 1:num_runs) {
+  seed_current <- sample(1:10000, 1) # Randomize seed for each run
+  set.seed(seed_current) 
+  km <- kmeans(mtrx_factor_count, centers = k, iter.max = 40, nstart = 50)
+  cluster_results[[i]] <- km$cluster  # Store cluster assignments
+  seeds_used[[i]] <- seed_current
+}
+
+# Convert list to a dataframe for comparison
+df_clusters <- as.data.frame(do.call(cbind, cluster_results))
+df_clusters <- df_clusters %>% mutate(run_id = row_number())  # Add row index
+
+####
+
+# Convert each run's cluster assignment (column) into a string pattern
+cluster_patterns <- apply(df_clusters[, 1:num_runs], 2, paste, collapse = "-")
+
+# Count occurrences of each unique clustering result
+cluster_counts <- as.data.frame(table(cluster_patterns)) %>%
+  arrange(desc(Freq))
+
+# Print the most common result
+most_common_count <- max(cluster_counts$Freq)
+most_common_config <- cluster_counts$cluster_patterns[1]
+
+print(paste("Most common cluster configuration occurred", most_common_count, "times out of", num_runs))
+print(paste("Most common configuration:", most_common_config))
+
+####
+
+
+library(mclust)
+
+# Compute pairwise Adjusted Rand Index (ARI) across runs
+ari_values <- combn(1:num_runs, 2, function(idx) {
+  adjustedRandIndex(df_clusters[[idx[1]]], df_clusters[[idx[2]]])
+})
+
+# Compute mean ARI across all pairs
+mean_ari <- mean(ari_values)
+
+print(paste("Mean Adjusted Rand Index across runs:", round(mean_ari, 4)))
+```
+
+```{r}
+library(pheatmap)
+
+# Create a matrix of cluster assignments (rows = data points, columns = runs)
+cluster_matrix <- as.matrix(df_clusters[, 1:num_runs])
+
+# Create a heatmap where colors represent different clusters
+# Optionally, you can use a color palette to distinguish the clusters
+pheatmap(cluster_matrix, cluster_rows = FALSE, cluster_cols = FALSE, 
+         color = colorRampPalette(c("white", "steelblue", "red"))(k), 
+         main = "Cluster Assignments Across Runs")
+
+###
+
+# Create a comparison matrix: each cell (i,j) represents how often run i and run j agree
+comparison_matrix <- matrix(0, nrow = num_runs, ncol = num_runs)
+
+# Compare each pair of runs
+for (i in 1:num_runs) {
+  for (j in 1:num_runs) {
+    comparison_matrix[i, j] <- sum(df_clusters[[i]] == df_clusters[[j]]) / nrow(df_clusters)
+  }
+}
+
+# Visualize comparison matrix as a heatmap
+pheatmap(comparison_matrix, cluster_rows = FALSE, cluster_cols = FALSE, 
+         main = "Pairwise Comparison of Clustering Across Runs")
+
+###
+
+# Calculate how often each data point is assigned to each cluster across runs
+cluster_freq <- apply(df_clusters[, 1:num_runs], 1, table)  # Table of frequencies for each data point
+
+# Convert to data frame for ggplot
+df_freq <- as.data.frame(do.call(rbind, cluster_freq))
+colnames(df_freq) <- paste0("Cluster_", 1:k)  # Name columns as Cluster_1, Cluster_2, etc.
+df_freq$Point <- 1:nrow(df_freq)
+
+# Reshape for ggplot
+df_freq_long <- gather(df_freq, key = "Cluster", value = "Frequency", -Point)
+
+# Plot
+ggplot(df_freq_long, aes(x = Point, y = Frequency, fill = Cluster)) + 
+  geom_bar(stat = "identity", position = "stack") +
+  theme_minimal() +
+  labs(title = "Frequency of Cluster Assignments Across Runs",
+       x = "Data Point", y = "Frequency of Cluster Assignment")
+
+###
+
+library(mclust)
+
+# Example: Compute the Adjusted Rand Index (ARI) for two runs
+ari_value <- adjustedRandIndex(df_clusters[[1]], df_clusters[[2]])
+
+# Print ARI value
+print(paste("Adjusted Rand Index between Run 1 and Run 2: ", round(ari_value, 4)))
+```
+
+## Multiple seeds 2
+
+First we perform clustering on the data 1000 times with nstart set to 1000 using k-means++ to see what results we get
+
+```{r}
+set.seed(123)  # Set an initial seed for reproducibility
+num_runs <- 1000  
+ks <- c(5,6,7)  
+
+for (j in 1:length(ks)) {
+  cluster_results <- list() 
+  seeds_used <- list()
+  sil_data <- list()
+  sil_sd <- list()
+  wss_data <- list()
+  k <- ks[j]
+  for (i in 1:num_runs) {
+    seed_current <- sample(1:10000, 1)
+    set.seed(seed_current) 
+    km <- kmeans(mtrx_factor_count, centers = k, iter.max = 100, 
+                 nstart = 1000, algorithm = "Lloyd") 
+    cl <- km$cluster
+    cluster_results[[i]] <- cl
+    seeds_used[[i]] <- seed_current
+    
+    dist_matrix <- dist(mtrx_factor_count)
+    sil_scores <- silhouette(cl, dist_matrix)
+    avg_sil_by_cluster <- data.frame(cluster = 1:k,
+                                     sil_cl = tapply(sil_scores[, "sil_width"],cl, mean)
+                                     )
+    sil_data[[i]] <- mean(avg_sil_by_cluster[, 2])
+    sil_sd[[i]] <- sd(avg_sil_by_cluster[, 2])
+                          
+    wss_value <- km$tot.withinss
+    wss_by_cluster <- km$withinss  # This gives a vector of WSS per cluster
+    df_wss <- data.frame(cluster = 1:k, wss_cl = wss_by_cluster)
+    wss_data[[i]] <- wss_value
+
+    df_hcl <- df_factor_count_WIDE %>%
+      rowid_to_column("id") %>%
+      mutate(cl = cl) %>% 
+      mutate(sil_score = sil_scores[, "sil_width"]) %>%
+      relocate(cl, .after = "id") %>% 
+      select(cluster = cl, place, sector,sil_score) 
+    
+    df_to_save <- df_for_cluster %>%
+      select(ID, region, country_code, sector, competence) %>%
+      unite(place, c("region", "country_code"), sep = ", ") %>%
+      merge(df_hcl, by = c("place", "sector"), all.x = TRUE) %>%
+      merge(avg_sil_by_cluster, by = c('cluster')) %>%
+      merge(df_wss, by = c('cluster')) %>%
+      select(ID, place, sector, competence, cluster, sil_score, sil_cl, wss_cl)
+    
+    saveRDS(df_to_save,
+            file = paste0("H2_paper/cluster_new/k=",
+                          as.character(k),'/all_seeds/',
+                          as.character(seed_current),'_df.rds'))
+    
+    # Open a graphics device to save the plot as a PNG file
+    plot_file <- paste0("H2_paper/cluster_new/k=",as.character(k),
+                        '/all_seeds/',as.character(seed_current),
+                        "_silhouette.png")
+    png(plot_file, width = 900, height = 1200)  
+    plot(sil_scores, main = "Silhouette Plot for K-Means Clustering")
+    dev.off()
+    
+    wss_plot <- ggplot(df_wss, aes(x = cluster, y = wss_cl)) +
+      geom_bar(stat = "identity", fill = "steelblue") +
+      labs(title = "WSS per Cluster", x = "Cluster", y = "Within-Cluster Sum of Squares") +
+      theme_minimal()
+    ggsave(filename = paste0("H2_paper/cluster_new/k=",as.character(k),
+                  '/all_seeds/',as.character(seed_current),"_WSS.png"),
+           plot = wss_plot)
+    
+    print(paste0('run ',as.character(i),' done!'))
+  }
+  ## CONTINUE HERE  
+  
+  # Convert list to a dataframe for comparison
+  df_clusters <- as.data.frame(cluster_results)
+  df_clusters <- df_clusters %>% mutate(run_id = row_number())  # Add row index
+
+  # Convert each run's cluster assignment (column) into a string pattern
+  cluster_patterns <- apply(df_clusters[, 1:num_runs], 2, paste, collapse = "-")
+
+  # Count occurrences of each unique clustering result
+  cluster_counts <- as.data.frame(table(cluster_patterns)) %>%
+    arrange(desc(Freq)) %>%
+    rename(pattern = cluster_patterns)
+
+  # Compute pairwise Adjusted Rand Index (ARI) across runs
+  ari_values <- combn(1:num_runs, 2, function(idx) {
+    adjustedRandIndex(df_clusters[[idx[1]]], df_clusters[[idx[2]]])
+    })
+
+  mean_ari <- mean(ari_values)
+      ###
+  
+# Combine everything into a final data frame
+  df_patterns_seeds <- data.frame(
+    pattern = cluster_patterns,
+    seed = unlist(seeds_used),  
+    sil_score = unlist(sil_data),
+    sil_sd_cl = unlist(sil_sd),
+    wss_score = unlist(wss_data)
+    )
+
+# Keep only the first occurrence of each unique pattern
+  unique_patterns_seeds <- df_patterns_seeds %>%
+    distinct(pattern, .keep_all = TRUE) %>%
+    left_join(cluster_counts, by = "pattern")
+  
+  df_to_csv <- unique_patterns_seeds %>%
+    arrange(desc(Freq), desc(sil_score), wss_score) %>%
+    select(seed,Freq,sil_score,sil_sd_cl,wss_score,pattern)
+  
+  write.csv(df_to_csv,
+            paste0("H2_paper/cluster_new/k=",as.character(k),
+                   '/general_info_ARI=',as.character(mean_ari),
+                   '_df.csv'),
+            row.names = FALSE) 
+  
+  ### Re-laberling
+  library(clue)
+  
+  # Function to relabel clusters for consistent comparison
+  relabel_clusters <- function(reference, to_match) {
+    k <- length(unique(reference))  # Number of clusters
+    cost_matrix <- table(reference, to_match)  # Contingency table
+  
+  # Solve assignment problem
+    assignment <- solve_LSAP(cost_matrix, maximum = TRUE)  
+    new_labels <- setNames(seq_along(assignment), assignment)
+  
+    return(new_labels[to_match])  # Apply new labels
+  }
+
+# Step 2: Choose the first run as the reference for consistent relabeling
+  reference_labels <- df_clusters[[1]]
+
+# Step 3: Relabel all cluster assignments to match reference labels
+  df_clusters_relabel <- df_clusters
+  for (i in 1:num_runs) {
+    df_clusters_relabel[[i]] <- relabel_clusters(reference_labels,
+                                                 df_clusters[[i]])
+  }
+  
+# Step 4: Convert cluster assignments to a pattern string
+  cluster_patterns_reL <- apply(df_clusters_relabel[, 1:num_runs], 2, paste,
+                            collapse = "-")
+
+# Step 5: Count occurrences of each unique pattern
+  cluster_counts_reL <- as.data.frame(table(cluster_patterns_reL)) %>%
+    arrange(desc(Freq)) %>%
+    rename(pattern = cluster_patterns_reL)
+
+# Step 6: Combine patterns, seeds, and metrics into final data frame
+  df_patterns_seeds_reL <- data.frame(
+    pattern = cluster_patterns_reL,
+    seed = unlist(seeds_used),  
+    sil_score = unlist(sil_data),
+    sil_sd_cl = unlist(sil_sd),
+    wss_score = unlist(wss_data),
+    row.names = NULL
+    )
+  
+# Step 7: Keep only first occurrence of each unique pattern
+  unique_patterns_seeds_reL <- df_patterns_seeds_reL %>%
+    distinct(pattern, .keep_all = TRUE) %>%
+    left_join(cluster_counts_reL, by = "pattern")
+  
+  df_to_csv_reL <- unique_patterns_seeds_reL %>%
+    arrange(desc(Freq), desc(sil_score), wss_score) %>%
+    select(seed,Freq,sil_score,sil_sd_cl,wss_score,pattern)
+  
+  write.csv(df_to_csv_reL,
+            paste0("H2_paper/cluster_new/k=",as.character(k),
+                   '/general_info_ARI=',as.character(mean_ari),
+                   '_df_relabeled.csv'),
+            row.names = FALSE) 
+
+  print(paste0('k = ',as.character(j),' done!'))
+}
+
+  
+
+    # LATER STEP IS TO EVALUATE THE RESULTS FROM THIS AND THEN MAKE A SELECTION OF SEEDS/CLUSTER CONFIGURATIONS AND WITH THAT HAVE PLOTS MADE FOR THE SILHOUETTE SCORES AND THE WSS IN ORDER TO VISUALLY SEE HOW GOOD THEY ARE - ALSO MAKE REGULAR K-MEANS COLORFUL PLOTS IN ORDER TO VISUALISE RESULTS OF THIS - ALSO MAKE CLUSTER TABLES IN ORDER TO SEE HOW THESE CLUSTERS LOOK LIKE
+
+```
+
+```{r}
+
+```
+
+# Other - mostly clusterrelated
+
 ## Slightly less organised code for making specific cluster-tables for H2-paper
 
 ### Elin - cluster table
@@ -4312,12 +4756,12 @@ all_cluster_functions_together_new <- function(k,matrx,top_percentage){
 
 # Running for multiple k
 cluster_result_all_new <- tibble(
-  i = 3:8,      # First column (numeric values 1 to 10)
-  Result = letters[3:8]  # Second column (letters a to j))
+  i = 5:6,      # First column (numeric values 1 to 10)
+  Result = letters[5:6]  # Second column (letters a to j))
 )
 
 j <- 0
-for (i in 3:8){
+for (i in 5:6){
   j <- j+1
   cluster_result_i <- all_cluster_functions_together_new(i,mtrx_new,0.2)
   
@@ -4588,24 +5032,10 @@ gc_jobs %>% ggraph(layout = "nicely") +
   theme_graph(background = background) + 
   theme(legend.position = 'none')
 
-ggsave("H2_paper/figs_W2425/actors_across_countries.png", width = 23.2, height = 13.7, units = "in", dpi = 200)
+ggsave("H2_paper/figs_W2425/actors_across_countries.png", width = 12, height = 7, units = "in", dpi = 500)
 ```
 
 ## New map attempt for clustering
-
-```{r}
-library(rnaturalearth)
-library(rnaturalearthdata)
-world <- ne_countries(scale = "medium", returnclass = "sf")
-admin1 <- ne_states(country = c("Sweden", "Norway", "Denmark"), returnclass = "sf")
-
-
-regionsss <- geo %>% 
-  select(country_code,region) %>% 
-  unique() %>%
-  filter(country_code %in% c('SE','DK','NO')) %>%
-  filter(!region == 'Greenland')
-```
 
 ```{r}
 library(ggspatial)
@@ -4898,4 +5328,125 @@ map_research <- ggplot() +
 map_research
 
 ggsave(filename = "H2_paper/figs_W2425/clusters_exp/maps/map_research.png", plot = map_research, limitsize = FALSE, width = 8, height = 5)
+```
+
+```{r}
+regions_Other1 <- all_regions %>%
+  mutate(cluster = ifelse(name %in% c('Agder','Hovedstaden','Kalmar','Kronoberg',
+                                      'Midtjylland','Norrbotten','Oslo','Akershus','Skåne',
+                                      'Syddanmark','Troms','Finnmark','Trøndelag',
+                                      'Vestfold','Buskerud','Västra Götaland'),
+                          "2", "0"))
+
+map_other1 <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = regions_Other1, aes(fill = cluster), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("2" = "purple", "0" = "grey")) +
+ theme_void() +
+  theme(legend.position = "none")
+
+map_other1
+
+ggsave(filename = "H2_paper/figs_W2425/clusters_exp/maps/map_other1.png", plot = map_other1, limitsize = FALSE, width = 8, height = 5)
+
+
+
+regions_Other2 <- all_regions %>%
+  mutate(cluster = ifelse(name %in% c('Agder','Dalarna','Gotland','Gävleborg','Halland',
+                                      'Halland','Hovedstaden','Jämtland','Kronoberg',
+                                      'Midtjylland','Møre og Romsdal','Nordjylland',
+                                      'Nordland','Norrbotten','Oslo','Akershus','Rogaland',
+                                      'Sjælland','Skåne','Stockholm','Syddanmark',
+                                      'Södermanland','Troms','Finnmark','Trøndelag',
+                                      'Uppsala','Telemark','Vestland','Buskerud','Østfold',
+                                      'Värmland','Västerbotten','Västernorrland',
+                                      'Västmanland','Västra Götaland','Östergötland'),
+                          "6", "0"))
+
+map_other2 <- ggplot() +
+  annotation_map_tile(type = "cartolight", zoomin = 0) +
+  geom_sf(data = regions_Other2, aes(fill = cluster), colour = "grey40", linewidth = 0.5) +
+  scale_fill_manual(values = c("6" = "orange", "0" = "grey")) +
+ theme_void() +
+  theme(legend.position = "none")
+
+map_other2
+
+ggsave(filename = "H2_paper/figs_W2425/clusters_exp/maps/map_other2.png", plot = map_other2, limitsize = FALSE, width = 8, height = 5)
+```
+
+```{r}
+library(ggplot2)
+library(patchwork)
+
+# Define captions using plot_annotation or wrap_elements from patchwork
+caption_text <- function(name, n, description) {
+  ggplot() + 
+    theme_void() + 
+    annotate("text", x = 0.5, y = 0.5, 
+             label = paste0("**", name, "** (n = ", n, ")\n", description), 
+             size = 4, hjust = 0.5, vjust = 0.5) +
+    theme(plot.margin = margin(5, 5, 5, 5))  # Adjust margins if needed
+}
+
+# Define captions for each map
+cap_norwegian_engineering <- caption_text("Norwegian Engineering", 100, "Description of Norwegian Engineering")
+cap_research <- caption_text("Research", 120, "Description of Research")
+cap_money <- caption_text("Money", 90, "Description of Money")
+cap_scandinavian_energy <- caption_text("Scandinavian Energy", 80, "Description of Energy Sector")
+cap_other1 <- caption_text("Other 1", 70, "Description of Other 1")
+cap_other2 <- caption_text("Other 2", 60, "Description of Other 2")
+
+# First row
+row1 <- (map_norwegian_engineering / cap_norwegian_engineering) | 
+        (map_research / cap_research) | 
+        (map_money / cap_money)
+
+# Second row
+row2 <- (map_scandinavian_energy / cap_scandinavian_energy) | 
+        (map_other1 / cap_other1) | 
+        (map_other2 / cap_other2)
+
+# Combine rows into final layout
+final_plot <- row1 / row2
+
+# Save the final figure
+ggsave("H2_paper/figs_W2425/combined_map_figure.png", plot = final_plot, width = 16, height = 10, dpi = 300)
+```
+
+```{r}
+library(gridExtra)
+library(grid)
+library(patchwork)
+
+# Function to create text as a separate grob
+caption_grob <- function(name, n, description) {
+  textGrob(
+    label = bquote(bold(.(name)) ~ "(n =" ~ .(n) ~ ")\n" ~ .(description)), 
+    x = 0.5, hjust = 0.5, gp = gpar(fontsize = 10)
+  )
+}
+
+# Define captions for each map
+cap_norwegian_engineering <- caption_grob("Norwegian Engineering", 100, "Description of Norwegian Engineering")
+cap_research <- caption_grob("Research", 120, "Description of Research")
+cap_money <- caption_grob("Money", 90, "Description of Money")
+cap_scandinavian_energy <- caption_grob("Scandinavian Energy", 80, "Description of Energy Sector")
+cap_other1 <- caption_grob("Other 1", 70, "Description of Other 1")
+cap_other2 <- caption_grob("Other 2", 60, "Description of Other 2")
+
+# Arrange the maps in rows
+row1 <- (map_norwegian_engineering + plot_spacer() + map_research + plot_spacer() + map_money) /
+        (wrap_elements(full = cap_norwegian_engineering) + plot_spacer() + 
+         wrap_elements(full = cap_research) + plot_spacer() + wrap_elements(full = cap_money))
+
+row2 <- (map_scandinavian_energy + plot_spacer() + map_other1 + plot_spacer() + map_other2) /
+        (wrap_elements(full = cap_scandinavian_energy) + plot_spacer() + 
+         wrap_elements(full = cap_other1) + plot_spacer() + wrap_elements(full = cap_other2))
+
+# Combine the full plot
+final_plot <- row1 / row2 + plot_layout(heights = c(5, 1))
+
+# Save the final figure
+ggsave("H2_paper/figs_W2425/combined_map_figure.png", plot = final_plot, width = 16, height = 10, dpi = 300)
 ```
