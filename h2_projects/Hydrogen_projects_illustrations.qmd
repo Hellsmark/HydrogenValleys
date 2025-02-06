@@ -224,8 +224,8 @@ ggplot(summarized_data, aes(x = date_online, y = cumulative_mw, fill = country))
     fill = "Country"
   ) +
   theme_minimal() +
-  scale_x_continuous(breaks = seq(min(summarized_data$date_online), max(summarized_data$date_online), by = 1)) # Anpassa x-axeln
-  #scale_fill_viridis_d(option = "G") # Här lägger du in färgskalan D eller G var nice tycker jag
+  scale_x_continuous(breaks = seq(min(summarized_data$date_online), max(summarized_data$date_online), by = 1))+ # Anpassa x-axeln
+  scale_fill_viridis_d(option = "G") # Här lägger du in färgskalan D eller G var nice tycker jag
 ggsave("figs/Accumulated_GW.png")
 ```
 
@@ -346,32 +346,39 @@ ggsave("figs/MW_intervals.png")
 Plot over what companies are represented the most times in different projects, NOT DONE
 
 ```{r}
+
 actors <- df_a %>%
   select(id, comp_name) %>% 
   mutate(country = case_when(grepl("F", id) ~ "Finland",
                              grepl("S", id) ~ "Sweden",
                              grepl("N", id) ~ "Norway",
                              grepl("D", id) ~ "Denmark"))
-
 data_summary <- actors %>%
-  count(comp_name, country) %>%
-  arrange(desc(n)) %>%
-  head(30)
+  count(comp_name, country) %>% # Antal förekomster per företag och land
+  group_by(comp_name) %>%
+  mutate(total = sum(n)) %>%    # Totala förekomster per företag
+  ungroup() %>%
+  arrange(desc(total)) %>%      # Sortera efter totala förekomster
+  slice_head(n = 22)            # Välj de 10 vanligaste företagen
 
-ggplot(data_summary, aes(x = comp_name, y = n, fill = country)) +
+# Rita stapelgraf
+ggplot(data_summary, aes(x = reorder(comp_name, -total), y = n, fill = country)) +
   geom_bar(stat = "identity", position = "stack") +
   labs(
-    title = "Most represented actors",
+    title = "Top 10 Most Represented Companies by Country",
     x = "Companies",
-    y = "Number of projects",
+    y = "Number of Appearances",
     fill = "Country"
   ) +
   theme_minimal() +
-  scale_y_continuous(breaks = seq(0, 10, by = 2)) +
+  scale_y_continuous(limits = c(0,12), breaks = seq(0,12,2))+
   theme(
-  axis.text.x = element_text(angle = 45, hjust = 1)  # Snedställda etiketter
-  )
-ggsave("figs/Most_represented_actors.png")
+    axis.text.x = element_text(angle = 30, hjust = 1),  # Snedställda etiketter
+    legend.position = "right")
+
+# Spara grafen
+ggsave("figs/Most_represented_actors.png", width = 10, height = 6)
+
 ```
 
 # Networks
