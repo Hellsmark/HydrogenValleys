@@ -29,7 +29,7 @@ unique <- collaborations_raw %>%
 
 unique <- unique %>%
   left_join(check_collab, by = "Old_name") %>%
-  select(Old_name,New_name, Comment)
+  select(Old_name,New_name, Comment, organization_type)
 
 write_sheet(unique, ss, sheet = "new_names")
 
@@ -58,6 +58,7 @@ id_comp_new <- id_comp %>%
 id_comp_new <- subset(id_comp_new, select = -confirmed_partners) %>%
   rename("Comp_name"="New_name")
 id_comp_new <- id_comp_new %>% distinct(id, Comp_name, .keep_all = TRUE)
+
 write_sheet(id_comp_new,ss, sheet="collaborations")
 
 #################################################### UNIQUE ACTORS ########################################
@@ -75,4 +76,16 @@ ref<- df %>%
   na.omit()
 write_sheet(ref,ss,sheet="references")
 
+######################################### PRODUCTS ##########################################
 
+prod<- df %>%
+  select(id, country, status,product, electrolyser_mw,production_ammount, end_use_mobility,end_use_heat_power,end_use_grid_export)%>%
+  separate_rows(product,production_ammount, sep=", ")
+
+write_sheet(prod, ss, sheet="products")
+
+####################################### MAIN-PROJECTS #####################################
+
+main <- df %>%
+  select(id,country,location,date_online,status,technology,electricity, electricity_details, electrolyser_mw,product,production_ammount, end_use_mobility,end_use_heat_power,end_use_grid_export, description,financing,kommentar)
+write_sheet(main, ss, sheet="main_projects")
