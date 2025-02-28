@@ -1,0 +1,24 @@
+---
+title: "Masterscript2"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+## 
+
+# Intro
+
+This script includes all code for analysis, calculations, plots and tables used in the H2 paper as of february 2025. The script is ordered as follows:
+
+1.  Libraries - All libraries needed for the script is imported at this step
+2.  Data - This is where the data from the Google sheet is imported - this only works for those who have access to the Google sheet which is not public. Note that during the analysis may results be stored, the use of these results are imported into the working environment at a later stage.
+3.  Wrangle - Here the raw data is set up to form the main data frame used for analysis. At this point is also data sorted out which is not to be part of the analysis. Oslo and Akershus is also combined here into one region as they are treated as one in the analysis.
+4.  Data overview - This section is for making simple figures used to get an overview of the data. At this section is also the tables used to describe and present the categories in the data set made.
+5.  General cluster analysis - Here the general cluster analysis of all jobs is performed. This section starts with an analysis of what number of clusters that should fit the data, followed by performing the analysis on multiple seeds, ended by creating maps to illustrate the preferred cluster configuration. Note that this section requires the user to go through one step at a time and make decisions of how to continue based on the results. Also note the feature for running analysis on only one k and seed, if one wishes to run the analysis of a specific configuration not saved.
+6.  Engineering cluster analysis - This section is much like section 5, only that the analysis is made only for engineering jobs.
+
+NOTE: During running of the script will some files be created, being csv, rds and png. Some of these should be saved to the git, some should not. In sections where files are being created which should not be pushed to the git this will be made clear. At those sections you will be asked to add a certain folder to your ".gitignore" document.
+
+ALSO NOTE: There are many tables and plots from previous scripts which are not included here regarding sectors, job roles, population size of cities which have been used in previous iterations of the paper as well as during the conferences in Helsinki and Luleå. The script behind these figures can be found in previous scripts.
