@@ -27,7 +27,8 @@ library(corrplot)
 ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=1138676736#gid=1138676736"
 
 # Read project sheet and clean 
-df_raw <- read_sheet(ss, sheet = "main_projects") 
+df_raw <- read_sheet(ss, sheet = "Projects_2") 
+
 df <- df_raw %>% 
   janitor::clean_names() %>% 
   mutate(date_online = unlist(date_online)) %>%
@@ -56,7 +57,7 @@ comp <- comp %>%
 
 options: - map - H2 over time - Illustrate actors across - countries, see who connects across multiple projects - illustrate correlation between variables? Here one could also do a cluster analysis - later
 
-## \# H2 Map?
+## H2 Map?
 
 # H2 over time - Done
 

@@ -48,6 +48,7 @@ library(patchwork)
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 df_main_raw <- read_sheet(ss, sheet = "Main")
+2
 df_geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:M")
 
 df_companies_raw <- read_sheet(ss, sheet = "CompanyAnalysis")
@@ -132,8 +133,29 @@ This section need modification so that the violin plot is in the table and not n
 
 ## 4.1 Table & violin
 
-Table with overview data
+Violin plot function - used in table
 
+```{r}
+df_distribution <- jobs %>% 
+  group_by(Company,country_code) %>%
+  mutate(n=sum(Weight)) %>%
+  ungroup() %>%
+  select(Company,country_code,n) %>%
+  unique()
+
+plot_violin <- function(country){
+  df_distribution %>% filter(country_code == country) %>%
+  rename(Country = country_code) %>%
+  ggplot(aes(n, Country, fill = Country), alpha = 0.5) + 
+  geom_violin(fill = "dodgerblue4", show.legend = F) + 
+  coord_cartesian((xlim = range(df_distribution$n)))+ 
+  theme_void()
+}
+plot_violin("NO")
+
+```
+
+Table with overview data
 ```{r}
 comp <- jobs %>% 
   select(country_code, Company) %>% 
@@ -153,10 +175,12 @@ tbl_country_comp <- jobs %>%
   left_join(workforce_gdp, by = c("country_code"="Country")) 
 
 gt_tbl_country_comp <- tbl_country_comp %>% 
+  mutate(Distribution = country_code) %>%
+  relocate(Distribution, .after = "country_code") %>%
   gt(rowname_col = "country_code") %>%
   tab_stubhead(label = "Country") %>%
   grand_summary_rows(
-    columns = -country_code,
+    columns = c(Jobs, perc, nr_comp, perc_c, Workforce, GDP_total_billion_USD, GDP_per_capita_kUSD),
     fns = list(
       Total ~sum(.)
     )
@@ -171,6 +195,7 @@ gt_tbl_country_comp <- tbl_country_comp %>%
   tab_spanner(columns = c(Workforce, GDP_total_billion_USD, GDP_per_capita_kUSD),
               label = "Country Statistics") %>%
   cols_label(
+    Distribution = "Distribution",
     Jobs ~ "Nr.",
     perc ~ "(%)",
     nr_comp ~ "Nr.",
@@ -179,63 +204,19 @@ gt_tbl_country_comp <- tbl_country_comp %>%
     GDP_total_billion_USD ~ "GDP<br>(b$)",
     GDP_per_capita_kUSD ~ "GDP/Cap.<br>(k$)",
     .fn = md
-  ) %>% gt_theme_espn()
+  ) %>% 
+  text_transform(
+    locations = cells_body(columns = 'Distribution'),
+    fn = function(column) {
+      purrr::map(column, plot_violin) %>%
+        ggplot_image(height = px(40), aspect_ratio = 2)
+    }) %>%
+  gt_theme_espn()
 gt_tbl_country_comp
 
 gtsave(gt_tbl_country_comp, filename = "H2_paper/tables_2025/countries_jobs.png")
 ```
 
-Figure of violin plot
-
-```{r}
-df_distribution <- jobs %>% 
-  group_by(Company,country_code) %>%
-  mutate(n=sum(Weight)) %>%
-  ungroup() %>%
-  select(Company,country_code,n) %>%
-  unique()
-
-violine <- df_distribution %>%
-  rename(Country = country_code) %>%
-  ggplot(aes(n, Country, fill = Country), alpha = 0.5) + 
-  geom_violin(show.legend = F) + 
-  scale_fill_colorblind() + 
-  theme_grey() +
-  coord_fixed(ratio = 60) +  # Adjust aspect ratio (reduce height)
-  labs(x = "", y = "")
-
-violine
-
-ggsave(filename = "H2_paper/figs_2025/violine.png", plot = violine, limitsize = FALSE, width = 6, height = 4)
-```
-
-Combine table and plot
-
-```{r}
-img <- png::readPNG("H2_paper/tables_2025/countries_jobs.png")
-
-# Create a rasterGrob
-table_grob <- grid::rasterGrob(img)
-
-# Create the table plot
-table_to_plot <- ggplot() +
-  theme_void() +
-  annotation_custom(table_grob,
-                    xmin = -Inf,
-                    xmax = Inf,
-                    ymin = -Inf,
-                    ymax = Inf)
-
-# Put the figure and table together:
-final_figure1 <- cowplot::plot_grid(violine,
-                                    table_to_plot,
-                                    nrow = 1,
-                                    ncol = 2,
-                                    rel_heights = c(1, 1))
-
-final_figure1
-ggsave(filename = "H2_paper/figs_2025/violine_table.png", width = 6, height = 4, dpi = 600)
-```
 
 ## 4.2 Sectors
 
@@ -272,32 +253,19 @@ sctr_tbl_info <- data.frame(
   left_join(sctr_count, by = 'sector')
 
 sctr_tbl <- sctr_tbl_info %>%
-  gt()  %>%
+  gt(rowname_col = "sector")  %>%
+  tab_stubhead(label = "Sector") %>%
   cols_label(
-    sector = "Sectors",
     description = "Description",
     n = "Number of jobs"
   ) %>%
-  tab_options(
-    table.font.size = px(12),
-    heading.align = "left",
-    table.border.left.style = "solid",
-    table.border.left.width = px(1),
-    table.border.left.color = "lightgrey",
-    table.border.right.style = "solid",
-    table.border.right.width = px(1),
-    table.border.right.color = "lightgrey"
+  grand_summary_rows(
+    columns = c(n),
+    fns = list(
+      Total ~ sum(.)
+      )
   ) %>%
-  tab_style(
-    style = cell_borders(
-      sides = "right",
-      color = "lightgrey",
-      weight = px(1)
-    ),
-    locations = cells_body(
-      columns = c(sector, description,n)
-    )
-  )
+  gt_theme_espn()
 
 sctr_tbl
 
@@ -344,32 +312,19 @@ jbrls_tbl_info <- data.frame(
   left_join(jbrls_count, by = 'jobroles')
 
 jbrls_tbl <- jbrls_tbl_info %>%
-  gt()  %>%
+  gt(rowname_col = "jobroles")  %>%
+  tab_stubhead(label = "Job roles") %>%
   cols_label(
-    jobroles = "Job roles",
     description = "Description",
     n = "Number of jobs"
   ) %>%
-  tab_options(
-    table.font.size = px(12),
-    heading.align = "left",
-    table.border.left.style = "solid",
-    table.border.left.width = px(1),
-    table.border.left.color = "lightgrey",
-    table.border.right.style = "solid",
-    table.border.right.width = px(1),
-    table.border.right.color = "lightgrey"
-  ) %>%
-  tab_style(
-    style = cell_borders(
-      sides = "right",
-      color = "lightgrey",
-      weight = px(1)
-    ),
-    locations = cells_body(
-      columns = c(jobroles, description,n)
-    )
-  )
+    grand_summary_rows(
+      columns = n, 
+      fns = list(
+        Total ~ sum(.))
+      ) %>% 
+    gt_theme_espn()
+
 
 jbrls_tbl
 jbrls_tbl %>% gtsave("H2_paper/tables_2025/jbrls_tbl.png")
@@ -913,7 +868,7 @@ mapdata_custom <- all_regions %>%
   mutate(group = as.integer(factor(paste(region, polygon_id))))
 ```
 
-Cluster 1
+Cluster 1 in data = Cluster 1 in paper
 
 ```{r}
 cluster1_data <- cluster_result_for_map %>%
@@ -932,8 +887,8 @@ map1_data <- mapdata_custom %>%
 
 map1 <- ggplot(map1_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Job concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
-  labs(tag = paste0("**Cluster 1: Energy engineering**<br>**on Norwegian coast**<br>",
+  scale_fill_gradient(name = 'Nr. of jobs', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 1: Offshore and**<br>**Energy engineering**",
                     "(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
                     '% of all jobs)')) +
@@ -954,7 +909,7 @@ ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
            plot = map1)
 ```
 
-Cluster 2
+Cluster 2 in data = Cluster 4 in Paper 
 
 ```{r}
 cluster2_data <- cluster_result_for_map %>%
@@ -970,10 +925,10 @@ share_cluster_tot <- round(cluster2_data$share_cluster_tot[1]*100,2)
 map2_data <- mapdata_custom %>%
   left_join(cluster2_data, by = 'region')
 
-map2 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
+map4 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Job concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
-  labs(tag = paste0("**Cluster 2: University research**<br> <br>","(n jobs = ",
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 4: Innovation and**<br>**Research** <br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot),
                     '% of all jobs)')) +
   theme(
@@ -986,14 +941,14 @@ map2 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
     axis.title.x = element_blank(),
     rect = element_blank()
     )
-map2
+map4
 
 ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
-                  as.character(7681),"_map2.png"),
-           plot = map2)
+                  as.character(7681),"_map4.png"),
+           plot = map4)
 ```
 
-Cluster 3
+Cluster 3 in Data, Cluster 3 in paper
 
 ```{r}
 cluster3_data <- cluster_result_for_map %>%
@@ -1012,8 +967,8 @@ map3_data <- mapdata_custom %>%
 
 map3 <- ggplot(map3_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Job concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
-  labs(tag = paste0("**Cluster 3: Utility in capitals**<br> <br>","(n jobs = ",
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
+  labs(tag = paste0("**Cluster 3: Energy Utilities**<br> <br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
@@ -1033,7 +988,7 @@ ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
            plot = map3)
 ```
 
-Cluster 4
+Cluster 4 in Data, Cluster 2 in paper
 
 ```{r}
 cluster4_data <- cluster_result_for_map %>%
@@ -1050,10 +1005,10 @@ share_cluster_tot <- round(cluster4_data$share_cluster_tot[1]*100,
 map4_data <- mapdata_custom %>%
   left_join(cluster4_data, by = 'region')
 
-map4 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
+map2 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Job concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
-  labs(tag = paste0("**Cluster 4: Energy engineering**<br> **in Oslo area**<br>","(n jobs = ",
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
+  labs(tag = paste0("**Cluster 4: Industrial Engineering** <br> **and Consulting","(n jobs = ",
                     as.character(round(n_cluster)),', ',
                     as.character(share_cluster_tot), '% of all jobs)')) +
   theme(
@@ -1066,14 +1021,14 @@ map4 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
     axis.title.x = element_blank(),
     rect = element_blank()
     )
-map4
+map2
 
 ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
-                  as.character(7681),"_map4.png"),
-           plot = map4)
+                  as.character(7681),"_map2.png"),
+           plot = map2)
 ```
 
-Cluster 5
+Cluster 5 in data, Cluster 6 in paper
 
 ```{r}
 cluster5_data <- cluster_result_for_map %>%
@@ -1090,54 +1045,10 @@ share_cluster_tot <- round(cluster5_data$share_cluster_tot[1]*100,
 map5_data <- mapdata_custom %>%
   left_join(cluster5_data, by = 'region')
 
-map5 <- ggplot(map5_data, aes(x = long, y = lat, group = group)) +
+map6 <- ggplot(map5_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Job concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
-  labs(tag = paste0("**Cluster 5: Other general**<br> <br>","(n jobs = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
-                    '% of all jobs)')) +
-  theme(
-    plot.tag.position = "bottom",
-    plot.tag = element_markdown(hjust = 0.3, size = 20),
-    axis.text.x = element_blank(),
-    axis.text.y = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title.y = element_blank(),
-    axis.title.x = element_blank(),
-    rect = element_blank()
-    )
-map5
-
-ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
-                  as.character(7681),"_map5.png"),
-           plot = map5)
-```
-
-Cluster 6
-
-```{r}
-cluster6_data <- cluster_result_for_map %>%
-  filter(cluster ==6) %>%
-  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
-  separate_rows(place, sep = " & ") %>%
-  unique() %>%
-  rename(region = place) 
-
-n_cluster <- cluster6_data$n_cluster[1]
-share_cluster_tot <- round(cluster6_data$share_cluster_tot[1]*100,
-                           2)
-
-map6_data <- mapdata_custom %>%
-  left_join(cluster6_data, by = 'region')
-
-map6 <- ggplot(map6_data, aes(x = long, y = lat, group = group)) +
-  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Job concentration of clusters', 
-                      low = 'yellow', 
-                      high = 'red',
-                      na.value = 'grey',
-                      limits = c(0, 500)) +
-  labs(tag = paste0("**Cluster 6: Other industry**<br> <br>","(n jobs = ",
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
+  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research**<br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
@@ -1155,6 +1066,50 @@ map6
 ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
                   as.character(7681),"_map6.png"),
            plot = map6)
+```
+
+Cluster 6 in data, figure 5 in paper
+
+```{r}
+cluster6_data <- cluster_result_for_map %>%
+  filter(cluster ==6) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster6_data$n_cluster[1]
+share_cluster_tot <- round(cluster6_data$share_cluster_tot[1]*100,
+                           2)
+
+map6_data <- mapdata_custom %>%
+  left_join(cluster6_data, by = 'region')
+
+map5 <- ggplot(map6_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Nr. of Jobs', 
+                      low = 'yellow', 
+                      high = 'red',
+                      na.value = 'grey',
+                      limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 5: Across Industries**<br> <br>","(n jobs = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map5
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map5.png"),
+           plot = map5)
 ```
 
 Combined map
