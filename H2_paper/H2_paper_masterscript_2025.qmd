@@ -1,0 +1,1780 @@
+---
+title: "Masterscript2"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Intro
+
+This script includes all code for analysis, calculations, plots and tables used in the H2 paper as of february 2025. The script is ordered as follows:
+
+1.  Libraries - All libraries needed for the script is imported at this step
+2.  Data - This is where the data from the Google sheet is imported - this only works for those who have access to the Google sheet which is not public. Note that during the analysis may results be stored, the use of these results are imported into the working environment at a later stage.
+3.  Wrangle - Here the raw data is set up to form the main data frame used for analysis. At this point is also data sorted out which is not to be part of the analysis. Oslo and Akershus is also combined here into one region as they are treated as one in the analysis.
+4.  Data overview - This section is for making simple figures used to get an overview of the data. At this section is also the tables used to describe and present the categories in the data set made.
+5.  General cluster analysis - Here the general cluster analysis of all jobs is performed. This section starts with an analysis of what number of clusters that should fit the data, followed by performing the analysis on multiple seeds, ended by creating maps to illustrate the preferred cluster configuration. Note that this section requires the user to go through one step at a time and make decisions of how to continue based on the results. Also note the feature for running analysis on only one k and seed, if one wishes to run the analysis of a specific configuration not saved.
+6.  Engineering cluster analysis - This section is much like section 5, only that the analysis is made only for engineering jobs.
+
+Section 4, 5 and 6 depend on that section 1,2 and 3 already have been run. While 4 and 5 are independent from one another. Section 6 depend on the wrangling in section 5. Section 1-4 can be run as a whole, while section 5 and 6 require decissionmaking after almost every step in the way regarding number of clusters and what preffered seeds to use.
+
+NOTE: During running of the script will some files be created, being csv, rds and png. Some of these should be saved to the git, some should not. In sections where files are being created which should not be pushed to the git this will be made clear. At those sections you will be asked to add a certain folder to your ".gitignore" document.
+
+ALSO NOTE: There are many tables and plots from previous scripts which are not included here regarding sectors, job roles, population size of cities which have been used in previous iterations of the paper as well as during the conferences in Helsinki and Luleå. The script behind these figures can be found in previous scripts.
+
+# 1. Libraries
+
+```{r}
+library(conflicted)
+library(tidyverse)
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+library(googlesheets4)
+library(gtExtras)
+library(ggthemes)
+library(cluster)
+library(mclust)
+library(ggtext)
+library(sf)
+library(patchwork)
+```
+
+# 2. Data
+
+## 2.1 Collect from Google sheet
+
+```{r}
+ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
+
+df_main_raw <- read_sheet(ss, sheet = "Main")
+2
+df_geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:M")
+
+df_companies_raw <- read_sheet(ss, sheet = "CompanyAnalysis")
+df_job_roles_raw <- read_sheet(ss, sheet = "Job_roles")
+```
+
+## 2.2 Other data
+
+The data here may need to be updated with more recent features
+
+```{r}
+# Labourforce 2023 in millions
+# https://data.worldbank.org/indicator/SL.TLF.TOTL.IN?locations=DK-NO-SE
+# GDP per capita 2023 in thousend USD
+# https://data.worldbank.org/indicator/NY.GDP.PCAP.CD?locations=DK-NO-SE
+# GDP total 2023 in billion USD
+# https://data.worldbank.org/indicator/NY.GDP.MKTP.CD?locations=DK-NO-SE
+workforce_gdp <- tribble(
+  ~Country, ~Workforce, ~GDP_per_capita_kUSD, ~GDP_total_billion_USD, 
+  "SE", 5.8, 56, 593,  
+  "NO", 3.0, 88, 486,
+  "DK", 3.2, 68, 404
+  )
+```
+
+# 3. Main wrangle
+
+First is data frames for actors, job roles and geographical information modified.
+
+```{r}
+geo <- df_geo_locations_raw %>% janitor::clean_names() %>%
+  select(new_name, longitude, latitude, loc_pop, country, country_code, region, reg_pop) %>%
+  unique()
+
+job_roles <- df_job_roles_raw %>%
+  select(ID, job_role = Job_role, Type, Type_2)
+
+companies <- df_companies_raw %>%
+  filter(!Name == 'UNKNOWN_COMOPANY') %>%
+  select(Name, Number_of_ads,Sector = Industry_Sector, 
+         Hydrogen_relevance_comp = Hydrogen_relevance)
+```
+
+Then we compile the jobs data frame - at the end of this step we have a data frame where Oslo and Akershus are combined into one region. Jobs are weighted so that job ads with jobs in multiple places are kept but get a weaker weight. Only jobs with a documented region, sector and job role are kept for the analysis.
+
+```{r}
+jobs <- df_main_raw %>% 
+  select(!Description) %>% select(!translatedText) %>%
+  mutate(publish_country = case_when(
+    str_detect(ID, pattern ="^1") ~ "SE", 
+    str_detect(ID, pattern ="^2") ~ "NO",
+    str_detect(ID, pattern ="^3") ~ "DK"
+  )) %>%
+  mutate(Scrape_date = lubridate::ymd(Scrape_date)) %>%
+  left_join(job_roles) %>%
+  filter(Scrape_date >= "2023-08-20") %>%  
+  filter(is.na(Hydrogen_relevance)) %>%
+  separate_rows(Location, sep = ", ") %>% # Divide multilocation jobs into seperate jobs
+  inner_join(geo, by = c("Location"="new_name")) %>%
+  filter(country %in% c("Denmark","Norway","Sweden")) %>%
+  filter(!Company == 'UNKNOWN_COMPANY') %>%
+  filter(!is.na(job_role)) %>%
+  group_by(ID) %>% # Set a weight to each job so that we keep the information
+  mutate(LocationCount = n(), 
+         Weight = 1 / LocationCount) %>%
+  ungroup() %>%
+  left_join(companies, by = c("Company" = "Name"))
+
+akershus_oslo <- jobs %>%
+  filter(region %in% c('Oslo','Akershus')) %>%
+  select(!region) %>%
+  mutate(region = 'Oslo & Akershus') 
+
+jobs <- jobs %>%
+  filter(!region %in% c('Oslo','Akershus')) %>%
+  bind_rows(akershus_oslo)
+```
+
+# 4. Data overview
+
+This section need modification so that the violin plot is in the table and not next to it.
+
+## 4.1 Table & violin
+
+Violin plot function - used in table
+
+```{r}
+df_distribution <- jobs %>% 
+  group_by(Company,country_code) %>%
+  mutate(n=sum(Weight)) %>%
+  ungroup() %>%
+  select(Company,country_code,n) %>%
+  unique()
+
+plot_violin <- function(country){
+  df_distribution %>% filter(country_code == country) %>%
+  rename(Country = country_code) %>%
+  ggplot(aes(n, Country, fill = Country), alpha = 0.5) + 
+  geom_violin(fill = "dodgerblue4", show.legend = F) + 
+  coord_cartesian((xlim = range(df_distribution$n)))+ 
+  theme_void()
+}
+plot_violin("NO")
+
+```
+
+Table with overview data
+```{r}
+comp <- jobs %>% 
+  select(country_code, Company) %>% 
+  unique() %>% 
+  group_by(country_code) %>% 
+  count(name="nr_comp")
+
+tbl_country_comp <- jobs %>% 
+  group_by(country_code) %>% 
+  mutate(Jobs = round(sum(Weight))) %>%
+  ungroup() %>%
+  select(country_code,Jobs) %>%
+  unique() %>%
+  mutate(perc = round(Jobs/sum(Jobs)*100,2)) %>%
+  left_join(comp) %>%
+  mutate(perc_c = round(nr_comp/sum(nr_comp)*100,2)) %>%
+  left_join(workforce_gdp, by = c("country_code"="Country")) 
+
+gt_tbl_country_comp <- tbl_country_comp %>% 
+  mutate(Distribution = country_code) %>%
+  relocate(Distribution, .after = "country_code") %>%
+  gt(rowname_col = "country_code") %>%
+  tab_stubhead(label = "Country") %>%
+  grand_summary_rows(
+    columns = c(Jobs, perc, nr_comp, perc_c, Workforce, GDP_total_billion_USD, GDP_per_capita_kUSD),
+    fns = list(
+      Total ~sum(.)
+    )
+  ) %>% 
+  fmt_number(decimals = 0) %>%
+  tab_spanner(
+    columns = c(Jobs, perc),
+    label = "New Jobs"
+  ) %>%
+  tab_spanner(columns = c(nr_comp, perc_c),
+              label = "Organisations") %>%
+  tab_spanner(columns = c(Workforce, GDP_total_billion_USD, GDP_per_capita_kUSD),
+              label = "Country Statistics") %>%
+  cols_label(
+    Distribution = "Distribution",
+    Jobs ~ "Nr.",
+    perc ~ "(%)",
+    nr_comp ~ "Nr.",
+    perc_c ~ "(%)",
+    Workforce ~ "Labour<br>(mil.)",
+    GDP_total_billion_USD ~ "GDP<br>(b$)",
+    GDP_per_capita_kUSD ~ "GDP/Cap.<br>(k$)",
+    .fn = md
+  ) %>% 
+  text_transform(
+    locations = cells_body(columns = 'Distribution'),
+    fn = function(column) {
+      purrr::map(column, plot_violin) %>%
+        ggplot_image(height = px(40), aspect_ratio = 2)
+    }) %>%
+  gt_theme_espn()
+gt_tbl_country_comp
+
+gtsave(gt_tbl_country_comp, filename = "H2_paper/tables_2025/countries_jobs.png")
+```
+
+
+## 4.2 Sectors
+
+This table is to describe the different sectors and also show the number of jobs there are in each sector.
+
+```{r}
+sctr_count <- jobs %>%
+  group_by(Sector) %>%
+  mutate(n = sum(Weight)) %>%
+  ungroup() %>%
+  select(sector = Sector,n) %>%
+  unique()
+
+sctr_tbl_info <- data.frame(
+  sector = c("Chemicals", "Consulting", "Energy technology manufacturer", 
+             "Energy utility", "Fossil fuel & Refinery", "Government & Public sector", 
+             "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining",
+             "Other", "Other manufacturing", "Research & Education", 
+             "Transport"),
+  description = c("Organisations working with producing and refining gases, fluids and solids used for fuel, manufacturing and other purposes.",
+                  "Consulting agencies operating and providing knowledge and services within a variety of subjects and industry.",
+                  "Organisations that manufacture components, modules or products used in other energy industries.",
+                  "Organisations which produce and provide energy.",
+                  "Organisations working with extracting or refining fossil fuels, such as oil and natural gas.",
+                  "Organisations which are financed and driven public instances, such as municipalities, regional autorities or other public authorities.",
+                  "Organisations working with producing components, modules and products specifically to be used for either production, distribution, storage or usage of hydrogen.",
+                  "Organisations working subjects related to law or economics, such as law firms, banks and insurance companies.",
+                  "Organisations working with extracting or refining metal ores and material.",
+                  "Organisations that do not fit within any of the other 12 categories.",
+                  "Organisations working within manufacturing of components, modules or products which do not fall in under either energy- or hydrogen technology manufacturer.",
+                  "Organisations whose primary business is performing research or providing education, such as universities and research institutes.",
+                  "Organisations either working with producing vehicles or transporting goods or people.")
+) %>%
+  left_join(sctr_count, by = 'sector')
+
+sctr_tbl <- sctr_tbl_info %>%
+  gt(rowname_col = "sector")  %>%
+  tab_stubhead(label = "Sector") %>%
+  cols_label(
+    description = "Description",
+    n = "Number of jobs"
+  ) %>%
+  grand_summary_rows(
+    columns = c(n),
+    fns = list(
+      Total ~ sum(.)
+      )
+  ) %>%
+  gt_theme_espn()
+
+sctr_tbl
+
+sctr_tbl %>% gtsave("H2_paper/tables_2025/sctr_tbl.png")
+```
+
+## 4.3 Job roles
+
+This table is to describe the different job roles and also show the number of jobs there are in each job role.
+
+```{r}
+jbrls_count <- jobs %>%
+  group_by(job_role) %>%
+  mutate(n = sum(Weight)) %>%
+  ungroup() %>%
+  select(jobroles = job_role,n) %>%
+  unique()
+
+jbrls_tbl_info <- data.frame(
+  jobroles = c("Administration", "Engineering", "Environmental",
+               "Finance & Business development", "HR", "IT & Data science",
+               "Law", "Management other", "Other", 
+               "PhD", "Procurement & Logistics", "Project management", 
+               "Public administration", "Quality assurance", "Researcher", 
+               "Sales & Customer service", "Technician & Maintenance"),
+  description = c("Includes jobs related to administrative or clerical work and secretaries.", 
+                  "Includes all jobs related to different engineering practices.", 
+                  "Includes jobs related to working with sustainability or environmental expert knowledge.",
+                  "Includes jobs within finance, accounting, economics as well as business development or analysis.", 
+                  "Includes jobs related to human resources and recruitment.", 
+                  "Includes jobs working with software, data management, IT and data analysis.", 
+                  "Includes jobs within law, such as lawyers and legal advisors.", 
+                  "Includes management jobs which are not explicitly Project management, such as CEOs, section manager, operations manager and so on.",
+                  "Includes all jobs which do not fall within any of the other 16 categories.",
+                  "Includes doctoral students.", 
+                  "Includes jobs in charge of procurement, logistics and supply chains.", 
+                  "Includes jobs for project planning and management.", 
+                  "Includes jobs working with administration within public sector.", 
+                  "Includes jobs related to inspecting, controling or assuring quality of products or services.", 
+                  "Includes jobs within research, such as professors, research assistants and other scientists.", 
+                  "Includes jobs working with selling or marketing products or services as well as offering support of different kinds to customers.",
+                  "Includes jobs related to manufacturing and repairing and in other ways keeping maintaining or enabling operations, such as technicians, industrial workers, mechanics, electricians, welders and so on.")
+) %>%
+  left_join(jbrls_count, by = 'jobroles')
+
+jbrls_tbl <- jbrls_tbl_info %>%
+  gt(rowname_col = "jobroles")  %>%
+  tab_stubhead(label = "Job roles") %>%
+  cols_label(
+    description = "Description",
+    n = "Number of jobs"
+  ) %>%
+    grand_summary_rows(
+      columns = n, 
+      fns = list(
+        Total ~ sum(.))
+      ) %>% 
+    gt_theme_espn()
+
+
+jbrls_tbl
+jbrls_tbl %>% gtsave("H2_paper/tables_2025/jbrls_tbl.png")
+```
+
+# 5. General cluster analysis
+
+This section should not be run all at once. Between almost every step should the results be investigated and decisions has to be made on how to continue onward.
+
+## 5.1 Wrangle
+
+Here we create the data frames and matrix that the clustering analysis is based on.
+
+```{r}
+df_for_cluster <- jobs %>%
+  select(ID,region,country_code,sector = Sector,competence = job_role,
+         organisation = Company,city = Location,country,engineer_type = Type,
+         engineer_generalType = Type_2, weight = Weight) %>%
+  filter(!organisation == 'Employment/staffing agency')
+
+df_factor_count <- df_for_cluster %>%
+  group_by(country_code, region, sector, competence) %>%
+  summarise(n = sum(weight), .groups = "drop")
+
+df_factor_count_WIDE <- df_factor_count %>% 
+  unite(place, c("region", "country_code"), sep = ", ") %>%
+  pivot_wider(names_from = "competence", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+
+mtrx_factor_count <- as.matrix(df_factor_count_WIDE %>% 
+                                 select(-place, -sector))
+```
+
+## 5.2 Investigate silhouette and WSS
+
+```{r}
+# Step 1: Compute Silhouette Scores (your original code)
+sil_width <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = mtrx_factor_count, k = k)
+  pam_k$silinfo$avg.width
+})
+
+df_sil <- tibble(k = 2:60, sil_width = sil_width)
+
+# Step 2: Compute WSS (your original k-means elbow method)
+wss <- map_dbl(2:60, function(k){
+  km <- kmeans(x= mtrx_factor_count, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_wss <- tibble(k = 2:60, wss = wss)
+
+# Step 3: Normalize both metrics using min-max scaling
+df_combined <- df_sil %>%
+  inner_join(df_wss, by = "k") %>%
+  mutate(
+    sil_scaled = (sil_width - min(sil_width)) / (max(sil_width) - min(sil_width)),
+    wss_scaled = (wss - min(wss)) / (max(wss) - min(wss))
+  )
+
+# Step 4: Plot both curves together
+sil_wss_plot <- ggplot(df_combined, aes(x = k)) +
+  geom_line(aes(y = sil_scaled, color = "Silhouette Score"), linewidth = 1) +
+  geom_point(aes(y = sil_scaled, color = "Silhouette Score")) +
+  geom_line(aes(y = wss_scaled, color = "WSS (Elbow Method)"), linewidth = 1, linetype = "dashed") +
+  geom_point(aes(y = wss_scaled, color = "WSS (Elbow Method)")) +
+  scale_x_continuous(breaks = seq(2, 60, by = 2)) +
+  labs(
+    x = "Number of Clusters (k)",
+    y = "Normalized Score (0-1)",
+    title = "Comparison of Silhouette Score & WSS for Clustering",
+    color = "Metric"
+  ) +
+  theme_minimal()
+
+sil_wss_plot
+
+ggsave(filename = "H2_paper/cluster_2025/sil_wss_plot.png", plot = sil_wss_plot, limitsize = FALSE, width = 6, height = 4)
+```
+
+From this plot we can see that the best silhouette score is around 3 to 4 clusters, with acceptable scores at 5 to 7 clusters. The WSS on the other hand indicates that the best number of clusters would be around 8 to 10 clusters.
+
+## 5.3 Perform clustering on multiple seeds and value for k
+
+As the silhouette score dropped so much after k = 7 will the clustering not be performed on any k greater than 7.
+
+For this section to work must one make some preparations in the local folder set-up. This is so that not all results have to be uploaded to the github. Make sure to have a folder in the "HydrogenValleys" project folder named "H2_paper_cluster_ignore". Also make sure that you include this folder in your ".gitignore" file. The results from this section will be stored in this folder which then should not be uploaded to the git.
+
+```{r}
+set.seed(123)  # Set an initial seed for reproducibility
+num_runs <- 1000  
+ks <- c(3,4,5,6,7)  
+
+for (j in 1:length(ks)) {
+  cluster_results <- list() 
+  seeds_used <- list()
+  sil_data <- list()
+  sil_sd <- list()
+  wss_data <- list()
+  k <- ks[j]
+  
+  folder_path <- paste0("H2_paper_cluster_ignore/k=", as.character(k), "/all_seeds")
+  if (!dir.exists(folder_path)) {
+    dir.create(folder_path, recursive = TRUE)  # Creates all missing parent directories
+    }
+  
+  for (i in 1:num_runs) {
+    seed_current <- sample(1:10000, 1)
+    set.seed(seed_current) 
+    km <- kmeans(mtrx_factor_count, centers = k, iter.max = 100, 
+                 nstart = 1000, algorithm = "Lloyd") 
+    cl <- km$cluster
+    cluster_results[[i]] <- cl
+    seeds_used[[i]] <- seed_current
+    
+    dist_matrix <- dist(mtrx_factor_count)
+    sil_scores <- silhouette(cl, dist_matrix)
+    avg_sil_by_cluster <- data.frame(cluster = 1:k,
+                                     sil_cl = tapply(sil_scores[, "sil_width"],cl, mean)
+                                     )
+    sil_data[[i]] <- mean(avg_sil_by_cluster[, 2])
+    sil_sd[[i]] <- sd(avg_sil_by_cluster[, 2])
+                          
+    wss_value <- km$tot.withinss
+    wss_by_cluster <- km$withinss  # This gives a vector of WSS per cluster
+    df_wss <- data.frame(cluster = 1:k, wss_cl = wss_by_cluster)
+    wss_data[[i]] <- wss_value
+
+    df_hcl <- df_factor_count_WIDE %>%
+      rowid_to_column("id") %>%
+      mutate(cl = cl) %>% 
+      mutate(sil_score = sil_scores[, "sil_width"]) %>%
+      relocate(cl, .after = "id") %>% 
+      select(cluster = cl, place, sector,sil_score) 
+    
+    df_to_save <- df_for_cluster %>%
+      select(ID, region, country_code, sector, competence) %>%
+      unite(place, c("region", "country_code"), sep = ", ") %>%
+      merge(df_hcl, by = c("place", "sector"), all.x = TRUE) %>%
+      merge(avg_sil_by_cluster, by = c('cluster')) %>%
+      merge(df_wss, by = c('cluster')) %>%
+      select(ID, place, sector, competence, cluster, sil_score, sil_cl, wss_cl)
+    
+    saveRDS(df_to_save,
+            file = paste0("H2_paper_cluster_ignore/k=",as.character(k),'/all_seeds/',
+                          as.character(seed_current),'_df.rds'))
+    
+    # Open a graphics device to save the plot as a PNG file
+    plot_file <- paste0("H2_paper_cluster_ignore/k=",as.character(k),
+                        '/all_seeds/',as.character(seed_current),
+                        "_silhouette.png")
+    png(plot_file, width = 900, height = 1200)  
+    plot(sil_scores, main = "Silhouette Plot for K-Means Clustering")
+    dev.off()
+    
+    wss_plot <- ggplot(df_wss, aes(x = cluster, y = wss_cl)) +
+      geom_bar(stat = "identity", fill = "steelblue") +
+      labs(title = "WSS per Cluster", x = "Cluster", y = "Within-Cluster Sum of Squares") +
+      theme_minimal()
+    ggsave(filename = paste0("H2_paper_cluster_ignore/k=",as.character(k),
+                  '/all_seeds/',as.character(seed_current),"_WSS.png"),
+           plot = wss_plot)
+    
+    print(paste0('run ',as.character(i),' done!'))
+  }
+  ## CONTINUE HERE  
+  
+  # Convert list to a dataframe for comparison
+  df_clusters <- as.data.frame(cluster_results)
+  df_clusters <- df_clusters %>% mutate(run_id = row_number())  # Add row index
+
+  # Convert each run's cluster assignment (column) into a string pattern
+  cluster_patterns <- apply(df_clusters[, 1:num_runs], 2, paste, collapse = "-")
+
+  # Count occurrences of each unique clustering result
+  cluster_counts <- as.data.frame(table(cluster_patterns)) %>%
+    arrange(desc(Freq)) %>%
+    rename(pattern = cluster_patterns)
+
+  # Compute pairwise Adjusted Rand Index (ARI) across runs
+  ari_values <- combn(1:num_runs, 2, function(idx) {
+    adjustedRandIndex(df_clusters[[idx[1]]], df_clusters[[idx[2]]])
+    })
+
+  mean_ari <- mean(ari_values)
+      ###
+  
+# Combine everything into a final data frame
+  df_patterns_seeds <- data.frame(
+    pattern = cluster_patterns,
+    seed = unlist(seeds_used),  
+    sil_score = unlist(sil_data),
+    sil_sd_cl = unlist(sil_sd),
+    wss_score = unlist(wss_data)
+    )
+
+# Keep only the first occurrence of each unique pattern
+  unique_patterns_seeds <- df_patterns_seeds %>%
+    distinct(pattern, .keep_all = TRUE) %>%
+    left_join(cluster_counts, by = "pattern")
+  
+  df_to_csv <- unique_patterns_seeds %>%
+    arrange(desc(Freq), desc(sil_score), wss_score) %>%
+    select(seed,Freq,sil_score,sil_sd_cl,wss_score,pattern)
+  
+  write.csv(df_to_csv,
+            paste0("H2_paper_cluster_ignore/k=",as.character(k),
+                   '/general_info_ARI=',as.character(mean_ari),
+                   '_df.csv'),
+            row.names = FALSE) 
+
+  print(paste0('k = ',as.character(k),' done!'))
+}
+```
+
+After this must the results be investigated in order to see what k and seed combination provided the best result. One should look at the ARI and aim for a value greater than 0.9. Similarly should the silhouette scores be compared and investigate if there is only a few datapoints that have bad silhouette score. After this should the seemingly best values for k be chosen and investigated closer. Primarily look at the csv files saved for each k.
+
+## 5.4 Getting overview of most interesting configurations
+
+This section is to get a better overview of the created clusters.
+
+The first function here is to visualize the result in a table highlighting the features that accounts for the largest share of the clusters. This will be stored not only locally, but should also be pushed to the git.
+
+```{r}
+bold_words <- function(text, words) {
+  for (word in words) {
+    #print(paste0("Bold word: ", word))  # Debug print
+    #print(paste0("Before: ", text))     # Debug print
+    text <- gsub(word, paste0("<b>", word, "</b>"), text, fixed = TRUE)
+    #print(paste0("After: ", text))      # Debug print
+  }
+  return(text)
+}
+
+make_table_function <- function(jobs_clustered,k,seed,top_percentage){
+  
+  jobs_clustered <- jobs_clustered %>%
+    group_by(ID) %>% # The part after here is to set a weight to each job so that we keep the information
+    mutate(LocationCount = n(), 
+           weight = 1 / LocationCount) %>%
+    ungroup()
+
+cluster_tbl_sectors <- jobs_clustered %>%
+  select(Cluster = cluster, Region = place, Sectors = sector) %>%
+  unique() %>%
+  pivot_wider(names_from = "Sectors",
+              values_from = Sectors) %>%
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_jobroles <- jobs_clustered %>%
+  select(Cluster = cluster, Region = place, Job_roles = competence) %>%
+  unique() %>%
+  pivot_wider(names_from = "Job_roles",
+              values_from = Job_roles) %>%
+  unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", 
+        "Management other",
+        "Other","PhD", "Procurement & Logistics", "Project management", 
+        "Public administration", "Quality assurance", "Researcher", 
+        "Sales & Customer service",  "Technician & Maintenance",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_data <- cluster_tbl_sectors %>%
+  merge(cluster_tbl_jobroles, by = c("Cluster", "Region"), all.x = TRUE)
+
+cluster_tbl_data_short <- merge(
+  cluster_tbl_data %>% select(Cluster, Regions = Region) %>% unique() %>%
+    mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
+    pivot_wider(names_from = "Regions", 
+                values_from = Regions) %>%
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", "Greenland (DK)", 
+          "Gävleborg (SE)", "Halland (SE)", "Hovedstaden (DK)", "Jämtland (SE)", 
+          "Kalmar (SE)",
+          "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
+          "Nordland (NO)", "Norrbotten (SE)", "Oslo & Akershus (NO)", "Rogaland (NO)", 
+          "Sjælland (DK)", 
+          "Skåne (SE)", "Stockholm (SE)", "Syddanmark (DK)", "Södermanland (SE)", 
+          "Troms (NO)","Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
+          "Vestfold (NO)","Telemark (NO)", "Vestland (NO)","Buskerud (NO)",
+          "Østfold (NO)", "Värmland (SE)", "Västerbotten (SE)", "Västernorrland (SE)", 
+          "Västmanland (SE)", "Västra Götaland (SE)", "Östergötland (SE)",
+          sep = ", ", na.rm = TRUE),
+  jobs_clustered %>%
+    select(Cluster = cluster, Sectors = sector) %>%
+    unique() %>%
+    pivot_wider(names_from = "Sectors",
+                values_from = Sectors) %>%
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility",
+          "Fossil fuel & Refinery", "Government & Public sector", 
+          "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining", "Other", 
+          "Other manufacturing","Research & Education", "Transport",
+          sep = ", ", na.rm = TRUE),
+  by = "Cluster", all.x = TRUE
+  ) %>%
+  merge(
+    jobs_clustered %>%
+    select(Cluster = cluster, Job_roles = competence) %>%
+    unique() %>%
+    pivot_wider(names_from = "Job_roles",
+                values_from = Job_roles) %>%
+    unite("Job_Roles", "Administration","Engineering", "Environmental",
+        "Finance & Business development","HR", "IT & Data science", "Law", "Management other", 
+        "Other","PhD", "Procurement & Logistics", "Project management", 
+        "Public administration", "Quality assurance", "Researcher", "Sales & Customer service",
+        "Technician & Maintenance",
+          sep = ", ", na.rm = TRUE),
+    by = "Cluster", all.x = TRUE
+  )
+
+cluster_tbl_data_short_WITH_bold <- data.frame(
+  Cluster = character(),
+  Regions = character(),
+  Sectors = character(),
+  Job_Roles = character(),
+  stringsAsFactors = FALSE
+)
+
+for (i in 1:k) {
+  
+  total_jobs <- jobs_clustered %>%
+    filter(cluster == i) %>% 
+    summarise(total_weight = sum(weight, na.rm = TRUE)) %>%
+    pull(total_weight)
+  
+  minimum_jobs <- total_jobs*top_percentage/100
+  
+  bold_regions <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(place) %>%
+    summarise(n = sum(weight)) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(place) %>%
+    mutate(place = gsub("(.*), (.*)", "\\1 (\\2)", place))
+  
+  bold_sectors <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(sector) %>%
+    summarise(n = sum(weight)) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(sector)
+  
+  bold_job_role <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(competence) %>%
+    summarise(n = sum(weight)) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(competence)
+  
+  cluster_row <-   cluster_tbl_data_short %>%
+    filter(Cluster == i) %>%
+    mutate(
+    Regions = bold_words(Regions, bold_regions$place),
+    Sectors = bold_words(Sectors, bold_sectors$sector),
+    Job_Roles = bold_words(Job_Roles, bold_job_role$competence)
+  )
+  # Add numbber of jobs to table
+  
+  cluster_row <- cluster_row %>% 
+    cbind(data.frame( "n_jobs" =
+      round(jobs_clustered %>%
+        filter(cluster == i) %>%
+        summarise(total_weight = sum(weight, na.rm = TRUE)) %>%
+        pull(total_weight)
+      ))
+    )
+  
+  cluster_tbl_data_short_WITH_bold <- cluster_tbl_data_short_WITH_bold %>%
+    rbind(cluster_row)
+  
+}
+
+# Create the gt table with HTML content
+cluster_tbl_short_WITH_BOLD <- cluster_tbl_data_short_WITH_bold %>%
+  gt() %>%
+  tab_header(
+    title = "Regions and Sectors by Cluster"
+  ) %>%
+  cols_label(
+    Cluster = "Cluster",
+    Regions = "Regions",
+    Sectors = "Sectors",
+    Job_Roles = "Job roles",
+    n_jobs = "Number of jobs"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Cluster, Regions, Sectors, Job_Roles, n_jobs)
+    )
+  ) %>%
+  # Enable HTML rendering in the cells
+  fmt_markdown(columns = c(Regions, Sectors, Job_Roles))
+
+# Print the table
+cluster_tbl_short_WITH_BOLD
+
+cluster_tbl_short_WITH_BOLD %>% gtsave(paste0("H2_paper/cluster_2025/k="
+                                              ,as.character(k),
+                                              "/cluster_tbl_WITH_BOLD_",
+                                              'top_',as.character(top_percentage),'%_',
+                                              as.character(seed),".png"),
+                                       vheight = 800, vwidth = 2000)
+}
+```
+
+This function is for running through the seeds chosen in order to create k-mean plot and call the function above
+
+```{r}
+run_seed <- function(seeds,k,top_percentage){ 
+  for (i in 1:length(seeds)){
+    seed <- seeds[i]
+    cluster_result <- readRDS(paste0('H2_paper_cluster_ignore/k=',as.character(k),
+                                     '/all_seeds/',as.character(seed),'_df.rds'))
+    
+    folder_path <- paste0("H2_paper/cluster_2025/k=",as.character(k))
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)  # Creates all missing parent directories
+      }
+    
+    set.seed(seed)
+    km <- kmeans(mtrx_factor_count, centers = k, iter.max = 100,nstart = 1000,
+               algorithm = "Lloyd") 
+    k_mean_plot <- autoplot(km,mtrx_factor_count,frame=TRUE)
+    k_mean_plot
+    ggsave(paste0("H2_paper/cluster_2025/k=",as.character(k),"/k-mean_plot_",
+                as.character(seed),".png"))
+    
+    make_table_function(cluster_result,k,seed,top_percentage)
+  }
+}
+```
+
+First choose which values for k that still are interesting. Then look at the seeds and pick out the seeds with best silhouette score/that showed highest frequency. One can at this step also notice that some seeds may be recognized as different (due to different labeling) while in reality they are the same only with switched labels.
+
+Currently we have chosen the best k to be 6. To run must one provide a list of seeds, a value for k and a value for top_percentage which instructs what regions/sectors/competences should be highlighted, where "20" would mean that regions/sectors/competences accounting for more than 20% of jobs within cluster should be highlighted.
+
+```{r}
+# Example for k=6
+seeds <- c(7681)
+run_seed(seeds,6,20) # run_seed((seeds,k,top_percentage))
+```
+
+## 5.5 Maps
+
+This section is for visualizing where the clusters are positioned geographically. Note that for this part is there a code-block for each cluster. This is due to that different changes may be needed depending on naming of cluster. This is now specifically done for k = 6.
+
+This first part is to compile the data from the clustering and geometric data used for the maps.
+
+```{r}
+cluster_result_for_map <- readRDS(paste0('H2_paper_cluster_ignore/k=6/all_seeds/',
+                                      as.character(7681),'_df.rds')) %>%
+  group_by(ID) %>% 
+  mutate(LocationCount = n(), 
+         weight = 1 / LocationCount) %>%
+  ungroup()
+
+cluster_result_for_map$place <- sub(",\\s*[A-Z]+$", "", cluster_result_for_map$place)
+
+cluster_result_for_map <- cluster_result_for_map %>%
+  mutate(n_tot = sum(cluster_result_for_map$weight)) %>%
+  group_by(cluster) %>%
+  mutate(n_cluster = sum(weight)) %>%
+  ungroup() %>%
+  mutate(share_cluster_tot = n_cluster/n_tot) %>%
+  group_by(place,cluster) %>%
+  mutate(n_place_cluster = sum(weight)) %>%
+  ungroup() %>%
+  mutate(share_place_cluster = n_place_cluster/n_cluster)
+
+swedish_regions <- read_sf("https://raw.githubusercontent.com/okfse/sweden-geojson/master/swedish_regions.geojson") %>%
+  janitor::clean_names() %>%
+  select(name)
+
+norwegian_regions <- read_sf("https://raw.githubusercontent.com/ivanhjel/counties_norway_2024/main/counties_norway_2024.geojson") %>%
+  janitor::clean_names() %>%
+  select(name = navn)
+
+danish_regions <- read_sf("https://raw.githubusercontent.com/ok-dk/dagi/master/geojson/regioner.geojson") %>%
+  janitor::clean_names() %>%
+  select(name = regionnavn)
+
+repair_geometries <- function(data) {
+  # Check validity
+  if (!all(st_is_valid(data))) {
+    # Repair invalid geometries
+    data <- st_make_valid(data)
+  }
+  return(data)
+}
+
+swedish_regions <- repair_geometries(swedish_regions)
+norwegian_regions <- repair_geometries(norwegian_regions)
+danish_regions <- repair_geometries(danish_regions)
+
+convert_to_2d <- function(data) {
+  st_transform(data, crs = st_crs(4326)) %>%  # Ensure CRS is WGS84
+    st_zm(drop = TRUE, what = "ZM")  # Remove Z-dimension
+}
+
+danish_regions_2d <- convert_to_2d(danish_regions) %>%
+  mutate(name = sub("^Region ", "", name))
+
+all_regions <- bind_rows(
+  swedish_regions %>% mutate(country = "Sweden"),
+  norwegian_regions %>% mutate(country = "Norway"),
+  danish_regions_2d %>% mutate(country = "Denmark"))
+  
+mapdata_custom <- all_regions %>%
+  st_transform(crs = 4326) %>%  
+  st_cast("MULTIPOLYGON") %>%  
+  st_cast("POLYGON", group_or_split = TRUE) %>%  # Ensures separate polygons
+  mutate(region = name) %>%  
+  mutate(polygon_id = row_number()) %>%  # Unique ID for each polygon
+  rowwise() %>%
+  mutate(coords = list(as.data.frame(st_coordinates(geometry)))) %>%  
+  unnest(coords) %>%  
+  select(long = X, lat = Y, region, polygon_id) %>%  
+  group_by(region, polygon_id) %>%  
+  mutate(order = row_number()) %>%
+  ungroup() %>%
+  mutate(group = as.integer(factor(paste(region, polygon_id))))
+```
+
+Cluster 1 in data = Cluster 1 in paper
+
+```{r}
+cluster1_data <- cluster_result_for_map %>%
+  filter(cluster ==1) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster1_data$n_cluster[1]
+share_cluster_tot <- round(cluster1_data$share_cluster_tot[1]*100,
+                           2)
+
+map1_data <- mapdata_custom %>%
+  left_join(cluster1_data, by = 'region')
+
+map1 <- ggplot(map1_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Nr. of jobs', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 1: Offshore and**<br>**Energy engineering**",
+                    "(n jobs = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map1
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map1.png"),
+           plot = map1)
+```
+
+Cluster 2 in data = Cluster 4 in Paper 
+
+```{r}
+cluster2_data <- cluster_result_for_map %>%
+  filter(cluster ==2) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster2_data$n_cluster[1]
+share_cluster_tot <- round(cluster2_data$share_cluster_tot[1]*100,2)
+
+map2_data <- mapdata_custom %>%
+  left_join(cluster2_data, by = 'region')
+
+map4 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 4: Innovation and**<br>**Research** <br>","(n jobs = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot),
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map4
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map4.png"),
+           plot = map4)
+```
+
+Cluster 3 in Data, Cluster 3 in paper
+
+```{r}
+cluster3_data <- cluster_result_for_map %>%
+  filter(cluster ==3) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster3_data$n_cluster[1]
+share_cluster_tot <- round(cluster3_data$share_cluster_tot[1]*100,
+                           2)
+
+map3_data <- mapdata_custom %>%
+  left_join(cluster3_data, by = 'region')
+
+map3 <- ggplot(map3_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
+  labs(tag = paste0("**Cluster 3: Energy Utilities**<br> <br>","(n jobs = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map3
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map3.png"),
+           plot = map3)
+```
+
+Cluster 4 in Data, Cluster 2 in paper
+
+```{r}
+cluster4_data <- cluster_result_for_map %>%
+  filter(cluster ==4) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster4_data$n_cluster[1]
+share_cluster_tot <- round(cluster4_data$share_cluster_tot[1]*100,
+                           2)
+
+map4_data <- mapdata_custom %>%
+  left_join(cluster4_data, by = 'region')
+
+map2 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
+  labs(tag = paste0("**Cluster 4: Industrial Engineering** <br> **and Consulting","(n jobs = ",
+                    as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map2
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map2.png"),
+           plot = map2)
+```
+
+Cluster 5 in data, Cluster 6 in paper
+
+```{r}
+cluster5_data <- cluster_result_for_map %>%
+  filter(cluster ==5) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster5_data$n_cluster[1]
+share_cluster_tot <- round(cluster5_data$share_cluster_tot[1]*100,
+                           2)
+
+map5_data <- mapdata_custom %>%
+  left_join(cluster5_data, by = 'region')
+
+map6 <- ggplot(map5_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
+  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research**<br>","(n jobs = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map6
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map6.png"),
+           plot = map6)
+```
+
+Cluster 6 in data, figure 5 in paper
+
+```{r}
+cluster6_data <- cluster_result_for_map %>%
+  filter(cluster ==6) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster6_data$n_cluster[1]
+share_cluster_tot <- round(cluster6_data$share_cluster_tot[1]*100,
+                           2)
+
+map6_data <- mapdata_custom %>%
+  left_join(cluster6_data, by = 'region')
+
+map5 <- ggplot(map6_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Nr. of Jobs', 
+                      low = 'yellow', 
+                      high = 'red',
+                      na.value = 'grey',
+                      limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 5: Across Industries**<br> <br>","(n jobs = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map5
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map5.png"),
+           plot = map5)
+```
+
+Combined map
+
+```{r}
+map_1 <- map1  # Keep legend only on map_1
+map_2 <- map2 + theme(legend.position = "none")
+map_3 <- map3 + theme(legend.position = "none")
+map_4 <- map4 + theme(legend.position = "none")
+map_5 <- map5 + theme(legend.position = "none")
+map_6 <- map6 + theme(legend.position = "none")
+
+combined_map <- (map_1 + map_2 + map_3 + map_4 + map_5 + map_6) + 
+  plot_layout(ncol = 2, guides = "collect") & 
+  theme(legend.position = "right", # Change to "right" if preferred
+        legend.key.size = unit(1.2, "cm"),  # Adjust legend size
+        legend.text = element_text(size = 18),  # Adjust text size
+        legend.title = element_text(size = 20, face = "bold")  # Adjust title size
+  )
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                         as.character(7681),"_map_combined.png"), 
+       plot = combined_map, width = 15, height = 20)
+```
+
+# 6. Engineering cluster analysis
+
+This section has the same structure as the previous section. The clustering analysis for engineering jobs is done exactly the same, only with a modified data frame.
+
+## 6.1 Wrangle
+
+```{r}
+df_for_cluster_engineers <- df_for_cluster %>%
+  filter(competence == 'Engineering')
+
+df_factor_count_engineers <- df_for_cluster_engineers %>%
+  group_by(country_code, region, sector, engineer_generalType) %>%
+  summarise(n = sum(weight), .groups = "drop") %>%
+  rename(type = engineer_generalType)
+
+df_factor_count_WIDE_engineers <- df_factor_count_engineers %>% 
+  unite(place, c("region", "country_code"), sep = ", ") %>%
+  pivot_wider(names_from = "type", 
+              values_from = "n", 
+              values_fill = 0) %>% 
+  ungroup()
+
+mtrx_factor_count_engineers <- as.matrix(df_factor_count_WIDE_engineers
+                                             %>% select(-place, -sector))
+```
+
+## 6.2 Investigate silhouette and WSS
+
+```{r}
+# Step 1: Compute Silhouette Scores (your original code)
+sil_width <- map_dbl(2:60, function(k){
+  pam_k <- pam(x = mtrx_factor_count_engineers, k = k)
+  pam_k$silinfo$avg.width
+})
+
+df_sil <- tibble(k = 2:60, sil_width = sil_width)
+
+# Step 2: Compute WSS (your original k-means elbow method)
+wss <- map_dbl(2:60, function(k){
+  km <- kmeans(x= mtrx_factor_count_engineers, centers = k, iter.max = 40, nstart = 30)
+  km$tot.withinss
+})
+
+df_wss <- tibble(k = 2:60, wss = wss)
+
+# Step 3: Normalize both metrics using min-max scaling
+df_combined <- df_sil %>%
+  inner_join(df_wss, by = "k") %>%
+  mutate(
+    sil_scaled = (sil_width - min(sil_width)) / (max(sil_width) - min(sil_width)),
+    wss_scaled = (wss - min(wss)) / (max(wss) - min(wss))
+  )
+
+# Step 4: Plot both curves together
+sil_wss_plot_engineer <- ggplot(df_combined, aes(x = k)) +
+  geom_line(aes(y = sil_scaled, color = "Silhouette Score"), linewidth = 1) +
+  geom_point(aes(y = sil_scaled, color = "Silhouette Score")) +
+  geom_line(aes(y = wss_scaled, color = "WSS (Elbow Method)"), linewidth = 1, linetype = "dashed") +
+  geom_point(aes(y = wss_scaled, color = "WSS (Elbow Method)")) +
+  scale_x_continuous(breaks = seq(2, 60, by = 2)) +
+  labs(
+    x = "Number of Clusters (k)",
+    y = "Normalized Score (0-1)",
+    title = "Comparison of Silhouette Score & WSS for Clustering",
+    color = "Metric"
+  ) +
+  theme_minimal()
+
+sil_wss_plot_engineer
+
+ggsave(filename = "H2_paper/cluster_2025/sil_wss_plot_engineer.png", plot = sil_wss_plot_engineer, limitsize = FALSE, width = 6, height = 4)
+```
+
+From this plot we see that there is a major drop in silhouette score after 5 clusters. Thus should we aim to have less than or equal to five clusters.
+
+## 6.3 Perform clustering on multiple seeds and value for k
+
+```{r}
+set.seed(123)  # Set an initial seed for reproducibility
+num_runs <- 1000  
+ks <- c(3,4,5)  
+
+for (j in 1:length(ks)) {
+  cluster_results <- list() 
+  seeds_used <- list()
+  sil_data <- list()
+  sil_sd <- list()
+  wss_data <- list()
+  k <- ks[j]
+  
+  folder_path <- paste0("H2_paper_cluster_ignore/engineers/k=", as.character(k), "/all_seeds")
+  if (!dir.exists(folder_path)) {
+    dir.create(folder_path, recursive = TRUE)  # Creates all missing parent directories
+    }
+  for (i in 1:num_runs) {
+    seed_current <- sample(1:10000, 1)
+    set.seed(seed_current) 
+    km <- kmeans(mtrx_factor_count_engineers, centers = k, iter.max = 100, 
+                 nstart = 1000, algorithm = "Lloyd") 
+    cl <- km$cluster
+    cluster_results[[i]] <- cl
+    seeds_used[[i]] <- seed_current
+    
+    dist_matrix <- dist(mtrx_factor_count_engineers)
+    sil_scores <- silhouette(cl, dist_matrix)
+    avg_sil_by_cluster <- data.frame(cluster = 1:k,
+                                     sil_cl = tapply(sil_scores[, "sil_width"],cl, mean)
+                                     )
+    sil_data[[i]] <- mean(avg_sil_by_cluster[, 2])
+    sil_sd[[i]] <- sd(avg_sil_by_cluster[, 2])
+                          
+    wss_value <- km$tot.withinss
+    wss_by_cluster <- km$withinss  # This gives a vector of WSS per cluster
+    df_wss <- data.frame(cluster = 1:k, wss_cl = wss_by_cluster)
+    wss_data[[i]] <- wss_value
+
+    df_hcl <- df_factor_count_WIDE_engineers %>%
+      rowid_to_column("id") %>%
+      mutate(cl = cl) %>% 
+      mutate(sil_score = sil_scores[, "sil_width"]) %>%
+      relocate(cl, .after = "id") %>% 
+      select(cluster = cl, place, sector,sil_score) 
+    
+    df_to_save <- df_for_cluster_engineers %>%
+      rename(type = engineer_generalType) %>%
+      select(ID, region, country_code, sector, type) %>%
+      unite(place, c("region", "country_code"), sep = ", ") %>%
+      merge(df_hcl, by = c("place", "sector"), all.x = TRUE) %>%
+      merge(avg_sil_by_cluster, by = c('cluster')) %>%
+      merge(df_wss, by = c('cluster')) %>%
+      select(ID, place, sector, type, cluster, sil_score, sil_cl, wss_cl)
+    
+    saveRDS(df_to_save,
+            file = paste0("H2_paper_cluster_ignore/engineers/k=",
+                          as.character(k),'/all_seeds/',
+                          as.character(seed_current),'_df.rds'))
+    
+    # Open a graphics device to save the plot as a PNG file
+    plot_file <- paste0("H2_paper_cluster_ignore/engineers/k=",as.character(k),
+                        '/all_seeds/',as.character(seed_current),
+                        "_silhouette.png")
+    png(plot_file, width = 900, height = 1200)  
+    plot(sil_scores, main = "Silhouette Plot for K-Means Clustering")
+    dev.off()
+    
+    wss_plot <- ggplot(df_wss, aes(x = cluster, y = wss_cl)) +
+      geom_bar(stat = "identity", fill = "steelblue") +
+      labs(title = "WSS per Cluster", x = "Cluster", y = "Within-Cluster Sum of Squares") +
+      theme_minimal()
+    ggsave(filename = paste0("H2_paper_cluster_ignore/engineers/k=",as.character(k),
+                  '/all_seeds/',as.character(seed_current),"_WSS.png"),
+           plot = wss_plot)
+    
+    print(paste0('run ',as.character(i),' done!'))
+  }
+  ## CONTINUE HERE  
+  
+  # Convert list to a dataframe for comparison
+  df_clusters <- as.data.frame(cluster_results)
+  df_clusters <- df_clusters %>% mutate(run_id = row_number())  # Add row index
+
+  # Convert each run's cluster assignment (column) into a string pattern
+  cluster_patterns <- apply(df_clusters[, 1:num_runs], 2, paste, collapse = "-")
+
+  # Count occurrences of each unique clustering result
+  cluster_counts <- as.data.frame(table(cluster_patterns)) %>%
+    arrange(desc(Freq)) %>%
+    rename(pattern = cluster_patterns)
+
+  # Compute pairwise Adjusted Rand Index (ARI) across runs
+  ari_values <- combn(1:num_runs, 2, function(idx) {
+    adjustedRandIndex(df_clusters[[idx[1]]], df_clusters[[idx[2]]])
+    })
+
+  mean_ari <- mean(ari_values)
+      ###
+  
+# Combine everything into a final data frame
+  df_patterns_seeds <- data.frame(
+    pattern = cluster_patterns,
+    seed = unlist(seeds_used),  
+    sil_score = unlist(sil_data),
+    sil_sd_cl = unlist(sil_sd),
+    wss_score = unlist(wss_data)
+    )
+
+# Keep only the first occurrence of each unique pattern
+  unique_patterns_seeds <- df_patterns_seeds %>%
+    distinct(pattern, .keep_all = TRUE) %>%
+    left_join(cluster_counts, by = "pattern")
+  
+  df_to_csv <- unique_patterns_seeds %>%
+    arrange(desc(Freq), desc(sil_score), wss_score) %>%
+    select(seed,Freq,sil_score,sil_sd_cl,wss_score,pattern)
+  
+  write.csv(df_to_csv,
+            paste0("H2_paper_cluster_ignore/engineers/k=",as.character(k),
+                   '/general_info_ARI=',as.character(mean_ari),
+                   '_df.csv'),
+            row.names = FALSE) 
+
+  print(paste0('k = ',as.character(k),' done!'))
+}
+```
+
+## 6.4 Getting overview of most interesting configurations
+
+```{r}
+bold_words <- function(text, words) {
+  for (word in words) {
+    #print(paste0("Bold word: ", word))  # Debug print
+    #print(paste0("Before: ", text))     # Debug print
+    text <- gsub(word, paste0("<b>", word, "</b>"), text, fixed = TRUE)
+    #print(paste0("After: ", text))      # Debug print
+  }
+  return(text)
+}
+
+make_table_function_engineers <- function(jobs_clustered,k,seed,top_percentage){
+  
+  jobs_clustered <- jobs_clustered %>%
+    group_by(ID) %>% # The part after here is to set a weight to each job so that we keep the information
+    mutate(LocationCount = n(), 
+           weight = 1 / LocationCount) %>%
+    ungroup()
+
+cluster_tbl_sectors <- jobs_clustered %>%
+  select(Cluster = cluster, Region = place, Sectors = sector) %>%
+  unique() %>%
+  pivot_wider(names_from = "Sectors",
+              values_from = Sectors) %>%
+  unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility", "Fossil fuel & Refinery", "Government & Public sector", "Hydrogen technology manufacturer", "Metals & Mining", "Other", "Other manufacturing","Research & Education", "Transport",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_engineertypes <- jobs_clustered %>%
+  select(Cluster = cluster, Region = place, Engineer_type = type) %>%
+  unique() %>%
+  pivot_wider(names_from = "Engineer_type",
+              values_from = Engineer_type) %>%
+  unite("Engineer_type", "Automation", "Chemical", "Civil", "Electrical", 
+        "Energy", "Environmental", "IT/Software", "Marine", "Materials", 
+        "Mechanical", "Risk & Safety", "Generic", "Other",
+        sep = ", ", na.rm = TRUE)
+
+cluster_tbl_data <- cluster_tbl_sectors %>%
+  merge(cluster_tbl_engineertypes, by = c("Cluster", "Region"), all.x = TRUE)
+
+cluster_tbl_data_short <- merge(
+  cluster_tbl_data %>% select(Cluster, Regions = Region) %>% unique() %>%
+    mutate(Regions = gsub("(.*), (.*)", "\\1 (\\2)", Regions)) %>%
+    pivot_wider(names_from = "Regions", 
+                values_from = Regions) %>%
+    unite("Regions", "Agder (NO)", "Dalarna (SE)", "Gotland (SE)", 
+          "Gävleborg (SE)", "Hovedstaden (DK)", 
+          "Kalmar (SE)",
+          "Kronoberg (SE)", "Midtjylland (DK)", "Møre og Romsdal (NO)", "Nordjylland (DK)", 
+          "Nordland (NO)", "Norrbotten (SE)", "Oslo & Akershus (NO)", "Rogaland (NO)", 
+          "Sjælland (DK)", 
+          "Skåne (SE)", "Stockholm (SE)", "Syddanmark (DK)", "Södermanland (SE)", 
+          "Troms (NO)","Finnmark (NO)", "Trøndelag (NO)", "Uppsala (SE)", 
+          "Vestfold (NO)","Telemark (NO)", "Vestland (NO)","Buskerud (NO)",
+          "Østfold (NO)", "Värmland (SE)", "Västerbotten (SE)", "Västernorrland (SE)", 
+          "Västmanland (SE)", "Västra Götaland (SE)", "Östergötland (SE)",
+          sep = ", ", na.rm = TRUE),
+  jobs_clustered %>%
+    select(Cluster = cluster, Sectors = sector) %>%
+    unique() %>%
+    pivot_wider(names_from = "Sectors",
+                values_from = Sectors) %>%
+    unite("Sectors", Chemicals, "Consulting","Energy technology manufacturer","Energy utility",
+          "Fossil fuel & Refinery", "Government & Public sector", 
+          "Hydrogen technology manufacturer", "Metals & Mining", "Other", 
+          "Other manufacturing","Research & Education", "Transport",
+          sep = ", ", na.rm = TRUE),
+  by = "Cluster", all.x = TRUE
+  ) %>%
+  merge(
+    jobs_clustered %>%
+    select(Cluster = cluster, Engineer_type = type) %>%
+    unique() %>%
+    pivot_wider(names_from = "Engineer_type",
+                values_from = Engineer_type) %>%
+    unite("Engineer_type", "Automation", "Chemical", "Civil", "Electrical", 
+        "Energy", "Environmental", "IT/Software", "Marine", "Materials", 
+        "Mechanical", "Risk & Safety", "Generic", "Other",
+          sep = ", ", na.rm = TRUE),
+    by = "Cluster", all.x = TRUE
+  )
+
+cluster_tbl_data_short_WITH_bold <- data.frame(
+  Cluster = character(),
+  Regions = character(),
+  Sectors = character(),
+  Engineer_type = character(),
+  stringsAsFactors = FALSE
+)
+
+for (i in 1:k) {
+  
+  total_jobs <- jobs_clustered %>%
+    filter(cluster == i) %>% 
+    summarise(total_weight = sum(weight, na.rm = TRUE)) %>%
+    pull(total_weight)
+  
+  minimum_jobs <- total_jobs*top_percentage/100
+  
+  bold_regions <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(place) %>%
+    summarise(n = sum(weight)) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(place) %>%
+    mutate(place = gsub("(.*), (.*)", "\\1 (\\2)", place))
+  
+  bold_sectors <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(sector) %>%
+    summarise(n = sum(weight)) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(sector)
+  
+  bold_engineer_type <- jobs_clustered %>% 
+    filter(cluster == i) %>%
+    group_by(type) %>%
+    summarise(n = sum(weight)) %>%
+    ungroup() %>%
+    filter(n >= minimum_jobs) %>%
+    select(type)
+  
+  cluster_row <-   cluster_tbl_data_short %>%
+    filter(Cluster == i) %>%
+    mutate(
+    Regions = bold_words(Regions, bold_regions$place),
+    Sectors = bold_words(Sectors, bold_sectors$sector),
+    Engineer_type = bold_words(Engineer_type, bold_engineer_type$type)
+  )
+  # Add numbber of jobs to table
+  
+  cluster_row <- cluster_row %>% 
+    cbind(data.frame( "n_jobs" =
+      round(jobs_clustered %>%
+        filter(cluster == i) %>%
+        summarise(total_weight = sum(weight, na.rm = TRUE)) %>%
+        pull(total_weight)
+      ))
+    )
+  
+  cluster_tbl_data_short_WITH_bold <- cluster_tbl_data_short_WITH_bold %>%
+    rbind(cluster_row)
+  
+}
+
+# Create the gt table with HTML content
+cluster_tbl_short_WITH_BOLD <- cluster_tbl_data_short_WITH_bold %>%
+  gt() %>%
+  tab_header(
+    title = "Regions and Sectors by Cluster"
+  ) %>%
+  cols_label(
+    Cluster = "Cluster",
+    Regions = "Regions",
+    Sectors = "Sectors",
+    Engineer_type = "Engineer types",
+    n_jobs = "Number of jobs"
+  ) %>%
+  tab_options(
+    table.font.size = px(12),
+    heading.align = "left",
+    table.border.left.style = "solid",
+    table.border.left.width = px(1),
+    table.border.left.color = "lightgrey",
+    table.border.right.style = "solid",
+    table.border.right.width = px(1),
+    table.border.right.color = "lightgrey"
+  ) %>%
+  tab_style(
+    style = cell_borders(
+      sides = "right",
+      color = "lightgrey",
+      weight = px(1)
+    ),
+    locations = cells_body(
+      columns = c(Cluster, Regions, Sectors, Engineer_type, n_jobs)
+    )
+  ) %>%
+  # Enable HTML rendering in the cells
+  fmt_markdown(columns = c(Regions, Sectors, Engineer_type))
+
+# Print the table
+cluster_tbl_short_WITH_BOLD
+
+cluster_tbl_short_WITH_BOLD %>% gtsave(paste0("H2_paper/cluster_2025/engineers/k="
+                                              ,as.character(k),
+                                              "/cluster_tbl_WITH_BOLD_",
+                                              'top_',as.character(top_percentage),'%_',
+                                              as.character(seed),".png"),
+                                       vheight = 800, vwidth = 2000)
+}
+```
+
+```{r}
+run_seed_engineer <- function(seeds,k,top_percentage){ 
+  for (i in 1:length(seeds)){
+    seed <- seeds[i]
+    cluster_result <- readRDS(paste0('H2_paper_cluster_ignore/engineers/k=',as.character(k),
+                                     '/all_seeds/',as.character(seed),'_df.rds'))
+    
+    folder_path <- paste0("H2_paper/cluster_2025/engineers/k=",as.character(k))
+    if (!dir.exists(folder_path)) {
+      dir.create(folder_path, recursive = TRUE)  # Creates all missing parent directories
+      }
+    
+    set.seed(seed)
+    km <- kmeans(mtrx_factor_count, centers = k, iter.max = 100,nstart = 1000,
+               algorithm = "Lloyd") 
+    k_mean_plot <- autoplot(km,mtrx_factor_count,frame=TRUE)
+    k_mean_plot
+    ggsave(paste0("H2_paper/cluster_2025/engineers/k=",as.character(k),"/k-mean_plot_",
+                as.character(seed),".png"))
+    
+    make_table_function_engineers(cluster_result,k,seed,top_percentage)
+  }
+}
+```
+
+Currently we have chosen the best k to be 4. To run must one provide a list of seeds, a value for k and a value for top_percentage which instructs what regions/sectors/competences should be highlighted, where "20" would mean that regions/sectors/competences accounting for more than 20% of jobs within cluster should be highlighted.
+
+```{r}
+# Example for k=4
+seeds <- c(5855)
+run_seed_engineer(seeds,4,20) # run_seed((seeds,k,top_percentage))
+```
+
+## 6.5 Maps
+
+```{r}
+cluster_result_for_map_engineering <- readRDS(paste0('H2_paper_cluster_ignore/engineers/k=4/all_seeds/',as.character(5855),'_df.rds')) %>%
+    group_by(ID) %>% 
+    mutate(LocationCount = n(), 
+           weight = 1 / LocationCount) %>%
+    ungroup()
+
+cluster_result_for_map_engineering$place <- sub(",\\s*[A-Z]+$", "",
+                                                cluster_result_for_map_engineering$place)
+
+cluster_result_for_map_engineering <- cluster_result_for_map_engineering %>%
+  mutate(n_tot = sum(cluster_result_for_map_engineering$weight)) %>%
+  group_by(cluster) %>%
+  mutate(n_cluster = sum(weight)) %>%
+  ungroup() %>%
+  mutate(share_cluster_tot = n_cluster/n_tot) %>%
+  group_by(place,cluster) %>%
+  mutate(n_place_cluster = sum(weight)) %>%
+  ungroup() %>%
+  mutate(share_place_cluster = n_place_cluster/n_cluster)
+```
+
+Cluster 1
+
+```{r}
+cluster1_engineer <- cluster_result_for_map_engineering %>%
+  filter(cluster ==1) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster1_engineer$n_cluster[1]
+share_cluster_tot <- round(cluster1_engineer$share_cluster_tot[1]*100,
+                           2)
+
+map1_engineer <- mapdata_custom %>%
+  left_join(cluster1_engineer, by = 'region')
+
+map1 <- ggplot(map1_engineer, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Engineer concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 1: Other engineering**<br> <br>",
+                    "(n engineers = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all engineers)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map1
+
+ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
+                  '/',as.character(5855),"_map1.png"),
+           plot = map1)
+```
+
+Cluster 2
+
+```{r}
+cluster2_engineer <- cluster_result_for_map_engineering %>%
+  filter(cluster ==2) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster2_engineer$n_cluster[1]
+share_cluster_tot <- round(cluster2_engineer$share_cluster_tot[1]*100,
+                           2)
+
+map2_engineer <- mapdata_custom %>%
+  left_join(cluster2_engineer, by = 'region')
+
+map2 <- ggplot(map2_engineer, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Engineer concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 2: Swedish energy utility**<br> <br>",
+                    "(n engineers = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all engineers)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map2
+
+ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
+                  '/',as.character(5855),"_map2.png"),
+           plot = map2)
+```
+
+Cluster 3
+
+```{r}
+cluster3_engineer <- cluster_result_for_map_engineering %>%
+  filter(cluster ==3) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster3_engineer$n_cluster[1]
+share_cluster_tot <- round(cluster3_engineer$share_cluster_tot[1]*100,
+                           2)
+
+map3_engineer <- mapdata_custom %>%
+  left_join(cluster3_engineer, by = 'region')
+
+map3 <- ggplot(map3_engineer, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Engineer concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 3: Oslo**<br> **focused engineering** <br>",
+                    "(n engineers = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all engineers)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map3
+
+ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
+                  '/',as.character(5855),"_map3.png"),
+           plot = map3)
+```
+
+Cluster 4
+
+```{r}
+cluster4_engineer <- cluster_result_for_map_engineering %>%
+  filter(cluster ==4) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster4_engineer$n_cluster[1]
+share_cluster_tot <- round(cluster4_engineer$share_cluster_tot[1]*100,
+                           2)
+
+map4_engineer <- mapdata_custom %>%
+  left_join(cluster4_engineer, by = 'region')
+
+map4 <- ggplot(map4_engineer, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  scale_fill_gradient(name = 'Engineer concentration of clusters', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
+  labs(tag = paste0("**Cluster 4: Norwegian coast**<br> **focused engineering** <br>",
+                    "(n engineers = ",
+                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    '% of all engineers)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map4
+
+ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
+                  '/',as.character(5855),"_map4.png"),
+           plot = map4)
+```
+
+Combined map
+
+```{r}
+map_1 <- map1  # Keep legend only on map_1
+map_2 <- map2 + theme(legend.position = "none")
+map_3 <- map3 + theme(legend.position = "none")
+map_4 <- map4 + theme(legend.position = "none")
+
+combined_map <- (map_1 + map_2 + map_3 + map_4) + 
+  plot_layout(ncol = 2, guides = "collect") & 
+  theme(legend.position = "right", # Change to "right" if preferred
+        legend.key.size = unit(1.2, "cm"),  # Adjust legend size
+        legend.text = element_text(size = 18),  # Adjust text size
+        legend.title = element_text(size = 20, face = "bold")  # Adjust title size
+  )
+
+ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4/",
+                         as.character(5855),"_map_combined.png"), 
+       plot = combined_map, width = 20, height = 20)
+```

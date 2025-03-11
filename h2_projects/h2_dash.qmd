@@ -1,0 +1,80 @@
+---
+title: "NordicH2ubs"
+format:
+  dashboard:
+    theme: spacelab
+server: shiny
+---
+
+```{r}
+#| context: setup
+library(tidyverse)
+library(googlesheets4)
+library(shiny)
+library(leaflet)
+
+sp <-"https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=251101314#gid=251101314"
+
+df_projects_loc <- read_sheet(sp, sheet = "locations")
+
+```
+
+
+# Projects
+
+## {.sidebar}
+
+```{r}
+
+```
+
+## {.tabset}
+
+### Row
+```{r}
+#| title: Map
+
+```
+
+### Row
+```{r}
+#| title: Cross-Nordic
+
+```
+
+### Row
+```{r}
+#| title: Data
+```
+
+
+# Reqruitment
+## {.sidebar}
+
+```{r}
+
+```
+
+## {.tabset}
+
+### Map
+```{r}
+
+```
+
+### Plot_1
+```{r}
+
+
+```
+
+### Data
+```{r}
+
+```
+
+
+```{r}
+#| context: server
+```
+
