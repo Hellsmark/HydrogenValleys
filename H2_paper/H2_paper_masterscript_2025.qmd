@@ -156,6 +156,7 @@ plot_violin("NO")
 ```
 
 Table with overview data
+
 ```{r}
 comp <- jobs %>% 
   select(country_code, Company) %>% 
@@ -216,7 +217,6 @@ gt_tbl_country_comp
 
 gtsave(gt_tbl_country_comp, filename = "H2_paper/tables_2025/countries_jobs.png")
 ```
-
 
 ## 4.2 Sectors
 
@@ -409,7 +409,9 @@ ggsave(filename = "H2_paper/cluster_2025/sil_wss_plot.png", plot = sil_wss_plot,
 
 From this plot we can see that the best silhouette score is around 3 to 4 clusters, with acceptable scores at 5 to 7 clusters. The WSS on the other hand indicates that the best number of clusters would be around 8 to 10 clusters.
 
-## 5.3 Perform clustering on multiple seeds and value for k
+## 5.3 Perform clustering 
+
+### 5.3.1 Perform clustering on multiple seeds and value for k
 
 As the silhouette score dropped so much after k = 7 will the clustering not be performed on any k greater than 7.
 
@@ -543,6 +545,47 @@ for (j in 1:length(ks)) {
 ```
 
 After this must the results be investigated in order to see what k and seed combination provided the best result. One should look at the ARI and aim for a value greater than 0.9. Similarly should the silhouette scores be compared and investigate if there is only a few datapoints that have bad silhouette score. After this should the seemingly best values for k be chosen and investigated closer. Primarily look at the csv files saved for each k.
+
+### 5.3.2 Perform clustering for one k and seed
+
+This section is when one want to perform just one set of clustering. This is saved locally. Currently the preferred configuration is k = 6 with seed = 7681.
+
+```{r}
+seed <- 7681
+k <- 6
+
+set.seed(seed) 
+km <- kmeans(mtrx_factor_count,centers = k, iter.max = 100,nstart = 1000, algorithm = "Lloyd")
+cl <- km$cluster
+
+dist_matrix <- dist(mtrx_factor_count)
+sil_scores <- silhouette(cl, dist_matrix)
+avg_sil_by_cluster <- data.frame(cluster = 1:k,
+                                 sil_cl = tapply(sil_scores[, "sil_width"],cl, mean)
+                                 )
+wss_value <- km$tot.withinss
+wss_by_cluster <- km$withinss
+df_wss <- data.frame(cluster = 1:k, wss_cl = wss_by_cluster)
+
+df_hcl <- df_factor_count_WIDE %>%
+  rowid_to_column("id") %>%
+  mutate(cl = cl) %>% 
+  mutate(sil_score = sil_scores[, "sil_width"]) %>%
+  relocate(cl, .after = "id") %>% 
+  select(cluster = cl, place, sector,sil_score) 
+
+df_to_save <- df_for_cluster %>%
+  select(ID, region, country_code, sector, competence) %>%
+  unite(place, c("region", "country_code"), sep = ", ") %>%
+  merge(df_hcl, by = c("place", "sector"), all.x = TRUE) %>%
+  merge(avg_sil_by_cluster, by = c('cluster')) %>%
+  merge(df_wss, by = c('cluster')) %>%
+  select(ID, place, sector, competence, cluster, sil_score, sil_cl, wss_cl)
+
+saveRDS(df_to_save,
+        file = paste0("H2_paper_cluster_ignore/k=",as.character(k),'/all_seeds/',
+                      as.character(seed),'_df.rds'))
+```
 
 ## 5.4 Getting overview of most interesting configurations
 
@@ -909,7 +952,7 @@ ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
            plot = map1)
 ```
 
-Cluster 2 in data = Cluster 4 in Paper 
+Cluster 2 in data = Cluster 4 in Paper
 
 ```{r}
 cluster2_data <- cluster_result_for_map %>%
@@ -1210,7 +1253,9 @@ ggsave(filename = "H2_paper/cluster_2025/sil_wss_plot_engineer.png", plot = sil_
 
 From this plot we see that there is a major drop in silhouette score after 5 clusters. Thus should we aim to have less than or equal to five clusters.
 
-## 6.3 Perform clustering on multiple seeds and value for k
+## 6.3 Perform clustering 
+
+### 6.3.1 Perform clustering on multiple seeds and value for k
 
 ```{r}
 set.seed(123)  # Set an initial seed for reproducibility
@@ -1338,6 +1383,47 @@ for (j in 1:length(ks)) {
 
   print(paste0('k = ',as.character(k),' done!'))
 }
+```
+
+### 6.3.2 Perform clustering on one configuration
+
+```{r}
+seed <- 5855
+k <- 5
+
+set.seed(seed) 
+km <- kmeans(mtrx_factor_count_engineers,centers = k, iter.max = 100,nstart = 1000, algorithm = "Lloyd")
+cl <- km$cluster
+
+dist_matrix <- dist(mtrx_factor_count_engineers)
+sil_scores <- silhouette(cl, dist_matrix)
+avg_sil_by_cluster <- data.frame(cluster = 1:k,
+                                 sil_cl = tapply(sil_scores[, "sil_width"],cl, mean)
+                                 )
+wss_value <- km$tot.withinss
+wss_by_cluster <- km$withinss
+df_wss <- data.frame(cluster = 1:k, wss_cl = wss_by_cluster)
+
+df_hcl <- df_factor_count_WIDE_engineers %>%
+      rowid_to_column("id") %>%
+      mutate(cl = cl) %>% 
+      mutate(sil_score = sil_scores[, "sil_width"]) %>%
+      relocate(cl, .after = "id") %>% 
+      select(cluster = cl, place, sector,sil_score) 
+    
+    df_to_save <- df_for_cluster_engineers %>%
+      rename(type = engineer_generalType) %>%
+      select(ID, region, country_code, sector, type) %>%
+      unite(place, c("region", "country_code"), sep = ", ") %>%
+      merge(df_hcl, by = c("place", "sector"), all.x = TRUE) %>%
+      merge(avg_sil_by_cluster, by = c('cluster')) %>%
+      merge(df_wss, by = c('cluster')) %>%
+      select(ID, place, sector, type, cluster, sil_score, sil_cl, wss_cl)
+    
+    saveRDS(df_to_save,
+            file = paste0("H2_paper_cluster_ignore/engineers/k=",
+                          as.character(k),'/all_seeds/',
+                          as.character(seed),'_df.rds'))
 ```
 
 ## 6.4 Getting overview of most interesting configurations
