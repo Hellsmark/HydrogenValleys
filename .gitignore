@@ -17,7 +17,7 @@ dk_short.rds
 testing-AIAPI.ipynb
 dk_AI-cleaner.ipynb
 .DS_Store
-/H2_paper_cluster_ignore
+H2_paper_cluster_ignore
 
 h2_projects/actors_projects.qmd
 h2_projects/figs/test_plot.png
