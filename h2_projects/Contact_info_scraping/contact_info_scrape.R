@@ -4,6 +4,8 @@ library(tidyverse)
 library(googlesheets4)
 library(dplyr)
 library(ggplot2)
+library(stringr)
+
 
 OPENAI_API_KEY <- Sys.getenv("OPENAI_API_KEY")
 
@@ -13,6 +15,7 @@ ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx
 df_raw <- read_sheet(ss, sheet = "Main")
 df <- df_raw %>% janitor::clean_names()
 small_df <- df%>% select(company,description)
+
 
 #prompt
 chat<- chat_openai(
@@ -39,10 +42,14 @@ for (i in 1:20){
   results[[i]]<- extracted_data
 }
 
-#Combine all the results into a final df.
-#remove some duplicates and uninteresting titles.
-final_df<- bind_rows(results) %>% 
-  distinct(name, .keep_all = TRUE) %>%
-  filter(!str_detect(tolower(title),"recruiter|rekryterande chef|rekryterare|recruitment contact"))
+clean_contacts <- function(results, df) {
+  final_df <- bind_rows(results) %>%  #Combine all the results into a final df.
+    filter(!name %in% df$company)%>%  # Remove name if it's a company name
+    filter(!str_detect(tolower(title), "recruiter|rekryterande chef|rekryterare|recruitment contact")) %>%  # Filter some titles
+    mutate(name = str_remove(name, "^(Prof\\.|Docent)\\s+")) %>%  # Remove titles from names
+    distinct(name, .keep_all = TRUE) %>%  # Remove duplicates
+    
+  return(final_df)
+}
 
-
+clean<- clean_contacts(results, df)
