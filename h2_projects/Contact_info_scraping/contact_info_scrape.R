@@ -33,13 +33,14 @@ output_structure <- type_array(
 results<- list()
 
 #insert every text in chat_gpt and store results as lists in "results"
-for (i in 20:40){
-  extracted_data <- chat$extract_data(
-    small_df$description[i],
-    type=output_structure)
+for (i in 15:25){
+  if (nchar(small_df$description[i]) <= 12000){ #Don't read adds if they are too long
+    extracted_data <- chat$extract_data(
+      small_df$description[i],
+      type=output_structure)
   extracted_data$company<- small_df$company[i]
   results[[i]]<- extracted_data
-}
+}}
 
 clean_contacts <- function(results, df) {
   final_df <- bind_rows(results) %>%  #Combine all the results into a final df.
