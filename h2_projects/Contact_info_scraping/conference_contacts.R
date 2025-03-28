@@ -18,7 +18,6 @@ df$new <- apply(df, 1, paste, collapse = ",")
 OPENAI_API_KEY<- Sys.getenv("OPENAI_API_KEY")
 
 
-chat <- chat_openai(system_prompt = "For each person, find their work contact information")
 
 output_structure <- type_array(
   items = type_object(
@@ -26,37 +25,33 @@ output_structure <- type_array(
     phone = type_string("The person's phone number")))
 
 
-########### This part will run 2 times, the end will to fill out data gaps ###############################################
+######################################## GATHER DATA ###############################################
 
 #This part gathers all the information, might take around 5 minutes to run
 results <- list()
 for (i in 1:213){
+  chat <- chat_openai(system_prompt = "For each person, find their work contact information")
+  Sys.sleep(3)
+  
   extracted_data <- chat$extract_data(
     df$new[i],
     type=output_structure)
   results[[i]]<-extracted_data
+  print(i)
 }
-
 
 final<- bind_rows(results)
 base<- (df[1:213,1:3])   #Creates a df with names and roles to merge with the information
 
 #Merging the names/title/company with contact details
-total<-cbind(base,final) #Fill this one with results from first round
-total2<-cbind(base,final) # Fill this with results from second round
+total<-cbind(base,finall) #Fill this one with results from first round
 
+write_sheet(total, ss, sheet="Final_conf")
 
-############################### Fill out the gaps #########################################33
-# When a spot is empty in one, use the data from the other.
+############################### USE THIS CODE IF THE LENGTH OF "FINAL" IS NOT AS LONG AS "BASE"####################
 
-for (i in 1:nrow(total2)){
-  if (total2$email[i]==""){
-    total2$email[i]<-total$email[i]
-  }
-  if(total2$phone[i]=="" || total2$phone[i]=="N/A" || total2$phone[i]=="Not available"){
-    total2$phone[i]<-total$phone[i]
-  }
-}
-
-print(total2$phone)
+#Because of some rows in the result being 2x2 data instead of 1x2, i use this code to make a row for each person
+finall <- map_dfr(results, function(x) {
+  as_tibble(matrix(unlist(x), nrow = 1, byrow = TRUE))
+})
 
