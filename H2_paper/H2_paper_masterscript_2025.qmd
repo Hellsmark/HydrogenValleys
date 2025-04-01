@@ -48,7 +48,7 @@ library(patchwork)
 ss <- "https://docs.google.com/spreadsheets/d/1xzpre5Ej_7OEGRU4EA7KZuMQnSz5YCyTx5Sdbml6bQE/edit#gid=0"
 
 df_main_raw <- read_sheet(ss, sheet = "Main")
-2
+
 df_geo_locations_raw <- read_sheet(ss, sheet = "locations_coord", range = "B:M")
 
 df_companies_raw <- read_sheet(ss, sheet = "CompanyAnalysis")
@@ -328,6 +328,58 @@ jbrls_tbl <- jbrls_tbl_info %>%
 
 jbrls_tbl
 jbrls_tbl %>% gtsave("H2_paper/tables_2025/jbrls_tbl.png")
+```
+
+## 4.4 Engineers
+
+This table is to describe the different engineering categories and also show the number of jobs there are in each such category.
+
+```{r}
+engnrs_count <- jobs %>%
+  group_by(Type_2) %>%
+  mutate(n = sum(Weight)) %>%
+  ungroup() %>%
+  select(engineers = Type_2,n) %>%
+  unique() %>%
+  drop_na()
+
+engnrs_tbl_info <- data.frame(
+  engineers = c("Automation", "Chemical", "Civil", "Electrical", "Energy",
+                "Environmental", "Generic", "IT/Software", "Marine", "Materials", 
+                "Mechanical", "Other", "Risk & Safety"),
+  description = c("Working with automated solutions for industry and other activites.", 
+                  "Specialised within chemistry and chemical process in industry.", 
+                  "Traditional construction engineers, working with for example infrastructure.",
+                  "Specialised within electricity, power grid, power electronics and other electrical instruments.", 
+                  "Working within the field of energy and not suitably categorised within any other specific field.", 
+                  "Specialised in environmental analysis and affect on environment of industry and construction.", 
+                  "Engineering jobs with either unspecified sought for engineering competence or where a vast number of engineering competences are fit for the role.", 
+                  "Specialised within information technology and working with software or computer hardware.",
+                  "Specialised in working with and constructing marine applications.",
+                  "Working within studying, researching or producing materials for construction, amnufacturing and other purposes.", 
+                  "Specialised within mechanical engineering, working with construction or manufacturing of machines or industrial sites and components.", 
+                  "Engineers not applicable to any other category withtoo few jobs to justify having their own specific category.", 
+                  "Specialised within risk management and safety regulation, working with investigating risks and safety hazards.")
+) %>%
+  left_join(engnrs_count, by = 'engineers')
+
+engnrs_tbl <- engnrs_tbl_info %>%
+  gt(rowname_col = "engineers")  %>%
+  tab_stubhead(label = "Engineering types") %>%
+  cols_label(
+    description = "Description",
+    n = "Number of jobs"
+  ) %>%
+    grand_summary_rows(
+      columns = n, 
+      fns = list(
+        Total ~ sum(.))
+      ) %>% 
+    gt_theme_espn()
+
+
+engnrs_tbl
+engnrs_tbl %>% gtsave("H2_paper/tables_2025/engnrs_tbl.png")
 ```
 
 # 5. General cluster analysis
