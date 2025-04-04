@@ -129,8 +129,6 @@ jobs <- jobs %>%
 
 # 4. Data overview
 
-This section need modification so that the violin plot is in the table and not next to it.
-
 ## 4.1 Table & violin
 
 Violin plot function - used in table
@@ -218,7 +216,9 @@ gt_tbl_country_comp
 gtsave(gt_tbl_country_comp, filename = "H2_paper/tables_2025/countries_jobs.png")
 ```
 
-## 4.2 Sectors
+## 4.2 Descriptive tables
+
+### 4.2.1 Sectors
 
 This table is to describe the different sectors and also show the number of jobs there are in each sector.
 
@@ -252,6 +252,14 @@ sctr_tbl_info <- data.frame(
 ) %>%
   left_join(sctr_count, by = 'sector')
 
+sctr_other <- sctr_tbl_info %>% 
+  filter(sector == 'Other')
+
+sctr_tbl_info <- sctr_tbl_info %>%
+  filter(!sector == 'Other') %>%
+  arrange(desc(n)) %>%
+  rbind(sctr_other)
+
 sctr_tbl <- sctr_tbl_info %>%
   gt(rowname_col = "sector")  %>%
   tab_stubhead(label = "Sector") %>%
@@ -272,7 +280,7 @@ sctr_tbl
 sctr_tbl %>% gtsave("H2_paper/tables_2025/sctr_tbl.png")
 ```
 
-## 4.3 Job roles
+### 4.2.2 Job roles
 
 This table is to describe the different job roles and also show the number of jobs there are in each job role.
 
@@ -330,7 +338,7 @@ jbrls_tbl
 jbrls_tbl %>% gtsave("H2_paper/tables_2025/jbrls_tbl.png")
 ```
 
-## 4.4 Engineers
+### 4.2.3 Engineers
 
 This table is to describe the different engineering categories and also show the number of jobs there are in each such category.
 
