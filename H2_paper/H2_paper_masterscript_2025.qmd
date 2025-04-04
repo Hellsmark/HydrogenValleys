@@ -961,6 +961,14 @@ mapdata_custom <- all_regions %>%
   mutate(order = row_number()) %>%
   ungroup() %>%
   mutate(group = as.integer(factor(paste(region, polygon_id))))
+
+shared_fill_scale <- scale_fill_gradient(
+  name = 'Nr. of jobs',
+  low = 'yellow',
+  high = 'red',
+  na.value = 'grey',
+  limits = c(0, 500)
+)
 ```
 
 Cluster 1 in data = Cluster 1 in paper
@@ -982,8 +990,8 @@ map1_data <- mapdata_custom %>%
 
 map1 <- ggplot(map1_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Nr. of jobs', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
-  labs(tag = paste0("**Cluster 1: Offshore and**<br>**Energy engineering**",
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 1: Offshore and Energy**<br>**engineering - Norwegian south-west**<br>",
                     "(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
                     '% of all jobs)')) +
@@ -1022,8 +1030,8 @@ map2_data <- mapdata_custom %>%
 
 map4 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey' ,limits = c(0, 500)) +
-  labs(tag = paste0("**Cluster 4: Innovation and**<br>**Research** <br>","(n jobs = ",
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 4: Innovation and Research -**<br>**Denmark and Norway** <br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot),
                     '% of all jobs)')) +
   theme(
@@ -1062,8 +1070,8 @@ map3_data <- mapdata_custom %>%
 
 map3 <- ggplot(map3_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
-  labs(tag = paste0("**Cluster 3: Energy Utilities**<br> <br>","(n jobs = ",
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 3: Energy Utilities -**<br> **Capital Cities** <br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
@@ -1102,8 +1110,8 @@ map4_data <- mapdata_custom %>%
 
 map2 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
-  labs(tag = paste0("**Cluster 4: Industrial Engineering** <br> **and Consulting","(n jobs = ",
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 4: Industrial Engineering** <br> **and Consulting - Oslo area** <br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',
                     as.character(share_cluster_tot), '% of all jobs)')) +
   theme(
@@ -1142,8 +1150,8 @@ map5_data <- mapdata_custom %>%
 
 map6 <- ggplot(map5_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Nr. of Jobs', low = 'yellow', high = 'red', na.value = 'grey',limits = c(0, 500) ) +
-  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research**<br>","(n jobs = ",
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research - All countries**<br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
@@ -1182,12 +1190,8 @@ map6_data <- mapdata_custom %>%
 
 map5 <- ggplot(map6_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  scale_fill_gradient(name = 'Nr. of Jobs', 
-                      low = 'yellow', 
-                      high = 'red',
-                      na.value = 'grey',
-                      limits = c(0, 500)) +
-  labs(tag = paste0("**Cluster 5: Across Industries**<br> <br>","(n jobs = ",
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 5: Across Industries -**<br> **Urban Areas** <br>","(n jobs = ",
                     as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
