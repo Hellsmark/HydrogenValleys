@@ -319,6 +319,15 @@ jbrls_tbl_info <- data.frame(
 ) %>%
   left_join(jbrls_count, by = 'jobroles')
 
+jbrls_other <- jbrls_tbl_info %>% 
+  filter(jobroles == 'Other')
+
+jbrls_tbl_info <- jbrls_tbl_info %>%
+  filter(!jobroles == 'Other') %>%
+  arrange(desc(n)) %>%
+  rbind(jbrls_other)
+
+
 jbrls_tbl <- jbrls_tbl_info %>%
   gt(rowname_col = "jobroles")  %>%
   tab_stubhead(label = "Job roles") %>%
@@ -370,6 +379,14 @@ engnrs_tbl_info <- data.frame(
                   "Specialised within risk management and safety regulation, working with investigating risks and safety hazards.")
 ) %>%
   left_join(engnrs_count, by = 'engineers')
+
+engnrs_other <- engnrs_tbl_info %>% 
+  filter(engineers == 'Other')
+
+engnrs_tbl_info <- engnrs_tbl_info %>%
+  filter(!engineers == 'Other') %>%
+  arrange(desc(n)) %>%
+  rbind(engnrs_other)
 
 engnrs_tbl <- engnrs_tbl_info %>%
   gt(rowname_col = "engineers")  %>%
@@ -1000,8 +1017,9 @@ map1 <- ggplot(map1_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
   labs(tag = paste0("**Cluster 1: Offshore and Energy**<br>**engineering - Norwegian south-west**<br>",
-                    "(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1039,8 +1057,10 @@ map2_data <- mapdata_custom %>%
 map4 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
-  labs(tag = paste0("**Cluster 4: Innovation and Research -**<br>**Denmark and Norway** <br>","(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot),
+  labs(tag = paste0("**Cluster 4: Innovation and Research -**<br>**Denmark and Norway** <br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1079,8 +1099,10 @@ map3_data <- mapdata_custom %>%
 map3 <- ggplot(map3_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
-  labs(tag = paste0("**Cluster 3: Energy Utilities -**<br> **Capital Cities** <br>","(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+  labs(tag = paste0("**Cluster 3: Energy Utilities -**<br> **Capital Cities** <br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1119,9 +1141,11 @@ map4_data <- mapdata_custom %>%
 map2 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
-  labs(tag = paste0("**Cluster 2: Industrial Engineering** <br> **and Consulting - Oslo area** <br>","(n = ",
-                    as.character(round(n_cluster)),', ',
-                    as.character(share_cluster_tot), '% of all jobs)')) +
+  labs(tag = paste0("**Cluster 2: Industrial Engineering** <br> **and Consulting - Oslo area** <br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
   theme(
     plot.tag.position = "bottom",
     plot.tag = element_markdown(hjust = 0.3, size = 20),
@@ -1159,8 +1183,10 @@ map5_data <- mapdata_custom %>%
 map6 <- ggplot(map5_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
-  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research - All countries**<br>","(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research - All countries**<br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1199,8 +1225,10 @@ map6_data <- mapdata_custom %>%
 map5 <- ggplot(map6_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
-  labs(tag = paste0("**Cluster 5: Across Industries -**<br> **Urban Areas** <br>","(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+  labs(tag = paste0("**Cluster 5: Across Industries -**<br> **Urban Areas** <br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all jobs)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1773,8 +1801,9 @@ map1e <- ggplot(map1_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
   labs(tag = paste0("**Cluster 1: Offshore & Energy**<br> **Technology - Norwegian south-west** <br>",
-                    "(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all engineers)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1814,8 +1843,9 @@ map2e <- ggplot(map2_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
   labs(tag = paste0("**Cluster 2: Energy Technology -**<br> **Oslo & Rogaland** <br>",
-                    "(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all engineers)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1855,8 +1885,9 @@ map4e <- ggplot(map3_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
   labs(tag = paste0("**Cluster 4: Technical Expertise -**<br> **Across Sectors & Regions** <br>",
-                    "(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all engineers)')) +
   theme(
     plot.tag.position = "bottom",
@@ -1896,8 +1927,9 @@ map3e <- ggplot(map4_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
   labs(tag = paste0("**Cluster 3: Energy Infrastructure**<br> **and Systems - Sweden** <br>",
-                    "(n = ",
-                    as.character(round(n_cluster)),', ',as.character(share_cluster_tot), 
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
                     '% of all engineers)')) +
   theme(
     plot.tag.position = "bottom",
