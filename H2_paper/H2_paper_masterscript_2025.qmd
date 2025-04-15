@@ -486,7 +486,7 @@ ggsave(filename = "H2_paper/cluster_2025/sil_wss_plot.png", plot = sil_wss_plot,
 
 From this plot we can see that the best silhouette score is around 3 to 4 clusters, with acceptable scores at 5 to 7 clusters. The WSS on the other hand indicates that the best number of clusters would be around 8 to 10 clusters.
 
-## 5.3 Perform clustering 
+## 5.3 Perform clustering
 
 ### 5.3.1 Perform clustering on multiple seeds and value for k
 
@@ -1346,7 +1346,7 @@ ggsave(filename = "H2_paper/cluster_2025/sil_wss_plot_engineer.png", plot = sil_
 
 From this plot we see that there is a major drop in silhouette score after 5 clusters. Thus should we aim to have less than or equal to five clusters.
 
-## 6.3 Perform clustering 
+## 6.3 Perform clustering
 
 ### 6.3.1 Perform clustering on multiple seeds and value for k
 
