@@ -496,7 +496,7 @@ For this section to work must one make some preparations in the local folder set
 
 ```{r}
 set.seed(123)  # Set an initial seed for reproducibility
-num_runs <- 1000  
+num_runs <- 100  
 ks <- c(3,4,5,6,7)  
 
 for (j in 1:length(ks)) {
@@ -1481,7 +1481,7 @@ for (j in 1:length(ks)) {
 
 ```{r}
 seed <- 5855
-k <- 5
+k <- 4
 
 set.seed(seed) 
 km <- kmeans(mtrx_factor_count_engineers,centers = k, iter.max = 100,nstart = 1000, algorithm = "Lloyd")
