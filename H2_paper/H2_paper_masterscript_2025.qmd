@@ -1038,7 +1038,7 @@ ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
            plot = map1)
 ```
 
-Cluster 2 in data = Cluster 4 in Paper
+Cluster 2 in data = Cluster 6 in Paper
 
 ```{r}
 cluster2_data <- cluster_result_for_map %>%
@@ -1054,7 +1054,50 @@ share_cluster_tot <- round(cluster2_data$share_cluster_tot[1]*100,2)
 map2_data <- mapdata_custom %>%
   left_join(cluster2_data, by = 'region')
 
-map4 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
+map6 <- ggplot(map2_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research - All countries**<br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map6
+
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map6.png"),
+           plot = map6)
+```
+
+Cluster 3 in Data, Cluster 4 in paper
+
+```{r}
+cluster3_data <- cluster_result_for_map %>%
+  filter(cluster ==3) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster3_data$n_cluster[1]
+share_cluster_tot <- round(cluster3_data$share_cluster_tot[1]*100,
+                           2)
+
+map3_data <- mapdata_custom %>%
+  left_join(cluster3_data, by = 'region')
+
+map4 <- ggplot(map3_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
   labs(tag = paste0("**Cluster 4: Innovation and Research -**<br>**Denmark and Norway** <br>",
@@ -1079,24 +1122,24 @@ ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
            plot = map4)
 ```
 
-Cluster 3 in Data, Cluster 3 in paper
+Cluster 4 in Data, Cluster 3 in paper
 
 ```{r}
-cluster3_data <- cluster_result_for_map %>%
-  filter(cluster ==3) %>%
+cluster4_data <- cluster_result_for_map %>%
+  filter(cluster ==4) %>%
   select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
   separate_rows(place, sep = " & ") %>%
   unique() %>%
   rename(region = place) 
 
-n_cluster <- cluster3_data$n_cluster[1]
-share_cluster_tot <- round(cluster3_data$share_cluster_tot[1]*100,
+n_cluster <- cluster4_data$n_cluster[1]
+share_cluster_tot <- round(cluster4_data$share_cluster_tot[1]*100,
                            2)
 
-map3_data <- mapdata_custom %>%
-  left_join(cluster3_data, by = 'region')
+map4_data <- mapdata_custom %>%
+  left_join(cluster4_data, by = 'region')
 
-map3 <- ggplot(map3_data, aes(x = long, y = lat, group = group)) +
+map3 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
   labs(tag = paste0("**Cluster 3: Energy Utilities -**<br> **Capital Cities** <br>",
@@ -1121,49 +1164,7 @@ ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
            plot = map3)
 ```
 
-Cluster 4 in Data, Cluster 2 in paper
-
-```{r}
-cluster4_data <- cluster_result_for_map %>%
-  filter(cluster ==4) %>%
-  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
-  separate_rows(place, sep = " & ") %>%
-  unique() %>%
-  rename(region = place) 
-
-n_cluster <- cluster4_data$n_cluster[1]
-share_cluster_tot <- round(cluster4_data$share_cluster_tot[1]*100,
-                           2)
-
-map4_data <- mapdata_custom %>%
-  left_join(cluster4_data, by = 'region')
-
-map2 <- ggplot(map4_data, aes(x = long, y = lat, group = group)) +
-  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  shared_fill_scale +
-  labs(tag = paste0("**Cluster 2: Industrial Engineering** <br> **and Consulting - Oslo area** <br>",
-                    "(",#"n = ", #commented out n_jobs
-                    #as.character(round(n_cluster)),', ',
-                    as.character(share_cluster_tot), 
-                    '% of all jobs)')) +
-  theme(
-    plot.tag.position = "bottom",
-    plot.tag = element_markdown(hjust = 0.3, size = 20),
-    axis.text.x = element_blank(),
-    axis.text.y = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title.y = element_blank(),
-    axis.title.x = element_blank(),
-    rect = element_blank()
-    )
-map2
-
-ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
-                  as.character(7681),"_map2.png"),
-           plot = map2)
-```
-
-Cluster 5 in data, Cluster 6 in paper
+Cluster 5 in data, Cluster 5 in paper
 
 ```{r}
 cluster5_data <- cluster_result_for_map %>%
@@ -1180,49 +1181,7 @@ share_cluster_tot <- round(cluster5_data$share_cluster_tot[1]*100,
 map5_data <- mapdata_custom %>%
   left_join(cluster5_data, by = 'region')
 
-map6 <- ggplot(map5_data, aes(x = long, y = lat, group = group)) +
-  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  shared_fill_scale +
-  labs(tag = paste0("**Cluster 6: Generic Engineering**<br> **and Research - All countries**<br>",
-                    "(",#"n = ", #commented out n_jobs
-                    #as.character(round(n_cluster)),', ',
-                    as.character(share_cluster_tot), 
-                    '% of all jobs)')) +
-  theme(
-    plot.tag.position = "bottom",
-    plot.tag = element_markdown(hjust = 0.3, size = 20),
-    axis.text.x = element_blank(),
-    axis.text.y = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title.y = element_blank(),
-    axis.title.x = element_blank(),
-    rect = element_blank()
-    )
-map6
-
-ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
-                  as.character(7681),"_map6.png"),
-           plot = map6)
-```
-
-Cluster 6 in data, figure 5 in paper
-
-```{r}
-cluster6_data <- cluster_result_for_map %>%
-  filter(cluster ==6) %>%
-  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
-  separate_rows(place, sep = " & ") %>%
-  unique() %>%
-  rename(region = place) 
-
-n_cluster <- cluster6_data$n_cluster[1]
-share_cluster_tot <- round(cluster6_data$share_cluster_tot[1]*100,
-                           2)
-
-map6_data <- mapdata_custom %>%
-  left_join(cluster6_data, by = 'region')
-
-map5 <- ggplot(map6_data, aes(x = long, y = lat, group = group)) +
+map5 <- ggplot(map5_data, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale +
   labs(tag = paste0("**Cluster 5: Across Industries -**<br> **Urban Areas** <br>",
@@ -1245,6 +1204,48 @@ map5
 ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
                   as.character(7681),"_map5.png"),
            plot = map5)
+```
+
+Cluster 6 in data, figure 2 in paper
+
+```{r}
+cluster6_data <- cluster_result_for_map %>%
+  filter(cluster ==6) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster6_data$n_cluster[1]
+share_cluster_tot <- round(cluster6_data$share_cluster_tot[1]*100,
+                           2)
+
+map6_data <- mapdata_custom %>%
+  left_join(cluster6_data, by = 'region')
+
+map2 <- ggplot(map6_data, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  shared_fill_scale +
+  labs(tag = paste0("**Cluster 2: Industrial Engineering** <br> **and Consulting - Oslo area** <br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
+                    '% of all jobs)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map2
+
+ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
+                  as.character(7681),"_map2.png"),
+           plot = map2)
 ```
 
 Combined map
