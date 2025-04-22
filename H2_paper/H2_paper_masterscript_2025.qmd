@@ -38,6 +38,9 @@ library(mclust)
 library(ggtext)
 library(sf)
 library(patchwork)
+library(flextable)
+library(officer)
+library(ggfortify)
 ```
 
 # 2. Data
@@ -174,8 +177,8 @@ tbl_country_comp <- jobs %>%
   left_join(workforce_gdp, by = c("country_code"="Country")) 
 
 gt_tbl_country_comp <- tbl_country_comp %>% 
-  mutate(Distribution = country_code) %>%
-  relocate(Distribution, .after = "country_code") %>%
+  #mutate(Distribution = country_code) %>%
+  #relocate(Distribution, .after = "country_code") %>%
   gt(rowname_col = "country_code") %>%
   tab_stubhead(label = "Country") %>%
   grand_summary_rows(
@@ -194,7 +197,7 @@ gt_tbl_country_comp <- tbl_country_comp %>%
   tab_spanner(columns = c(Workforce, GDP_total_billion_USD, GDP_per_capita_kUSD),
               label = "Country Statistics") %>%
   cols_label(
-    Distribution = "Distribution",
+    #Distribution = "Distribution",
     Jobs ~ "Nr.",
     perc ~ "(%)",
     nr_comp ~ "Nr.",
@@ -204,16 +207,65 @@ gt_tbl_country_comp <- tbl_country_comp %>%
     GDP_per_capita_kUSD ~ "GDP/Cap.<br>(k$)",
     .fn = md
   ) %>% 
-  text_transform(
-    locations = cells_body(columns = 'Distribution'),
-    fn = function(column) {
-      purrr::map(column, plot_violin) %>%
-        ggplot_image(height = px(40), aspect_ratio = 2)
-    }) %>%
+  #text_transform(
+  #  locations = cells_body(columns = 'Distribution'),
+   # fn = function(column) {
+    #  purrr::map(column, plot_violin) %>%
+  #      ggplot_image(height = px(40), aspect_ratio = 2)
+    #}) %>%
   gt_theme_espn()
 gt_tbl_country_comp
 
 gtsave(gt_tbl_country_comp, filename = "H2_paper/tables_2025/countries_jobs.png")
+```
+
+Word-table
+
+```{r}
+tbl_with_total <- tbl_country_comp %>%
+  bind_rows(
+    tbl_country_comp %>%
+      summarise(
+        across(where(is.numeric), ~ sum(.x, na.rm = TRUE)),
+        country_code = "Total"
+      )
+  )
+
+# Step 1: Rename columns for display
+tbl_country_comp_pretty <- tbl_country_comp %>%
+  rename(
+    `Country` = country_code,
+    `Nr.` = Jobs,
+    `%` = perc,
+    `Nr. (Orgs)` = nr_comp,
+    `% (Orgs)` = perc_c,
+    `Labour (mil.)` = Workforce,
+    `GDP (b$)` = GDP_total_billion_USD,
+    `GDP/Cap. (k$)` = GDP_per_capita_kUSD
+  )
+
+total_row <- nrow(tbl_country_comp_pretty)
+
+# Make the table
+ft <- flextable(tbl_country_comp_pretty) %>%
+  add_header_row(
+    values = c("Country", "New Jobs", "New Jobs", "Organisations", "Organisations", "Country Statistics", "", ""),
+    colwidths = c(1, 1, 1, 1, 1, 1, 1, 1)
+  ) %>%
+  theme_box() %>%
+  bold(part = "header") %>%
+  fontsize(size = 10) %>%
+  align(align = "center", part = "all") %>%
+  padding(padding = 4) %>%
+  autofit() %>%
+  set_table_properties(layout = "autofit") %>%
+  bg(i = seq(1, total_row - 1, by = 2), bg = "#F5F5F5", part = "body") %>%
+  bg(part = "header", bg = "#E3E3E3") %>%
+  # 🎯 Highlight the total row
+  bold(i = total_row, part = "body") %>%
+  bg(i = total_row, bg = "#D9E1F2", part = "body")
+
+print(doc, target = "H2_paper/tables_2025/countries_jobs.docx")
 ```
 
 ## 4.2 Descriptive tables
@@ -280,6 +332,76 @@ sctr_tbl
 sctr_tbl %>% gtsave("H2_paper/tables_2025/sctr_tbl.png")
 ```
 
+Word-table
+
+```{r}
+# Step 1: Aggregate + merge
+sctr_count <- jobs %>%
+  group_by(Sector) %>%
+  summarise(n = sum(Weight), .groups = "drop") %>%
+  rename(sector = Sector)
+
+sctr_tbl_info <- data.frame(
+  sector = c("Chemicals", "Consulting", "Energy technology manufacturer", 
+             "Energy utility", "Fossil fuel & Refinery", "Government & Public sector", 
+             "Hydrogen technology manufacturer", "Legal & Economics", "Metals & Mining",
+             "Other", "Other manufacturing", "Research & Education", 
+             "Transport"),
+  description = c("Organisations working with producing and refining gases, fluids and solids used for fuel, manufacturing and other purposes.",
+                  "Consulting agencies operating and providing knowledge and services within a variety of subjects and industry.",
+                  "Organisations that manufacture components, modules or products used in other energy industries.",
+                  "Organisations which produce and provide energy.",
+                  "Organisations working with extracting or refining fossil fuels, such as oil and natural gas.",
+                  "Organisations which are financed and driven public instances, such as municipalities, regional authorities or other public authorities.",
+                  "Organisations working with producing components, modules and products specifically to be used for either production, distribution, storage or usage of hydrogen.",
+                  "Organisations working subjects related to law or economics, such as law firms, banks and insurance companies.",
+                  "Organisations working with extracting or refining metal ores and material.",
+                  "Organisations that do not fit within any of the other 12 categories.",
+                  "Organisations working within manufacturing of components, modules or products which do not fall under either energy- or hydrogen technology manufacturer.",
+                  "Organisations whose primary business is performing research or providing education, such as universities and research institutes.",
+                  "Organisations either working with producing vehicles or transporting goods or people.")
+) %>%
+  left_join(sctr_count, by = 'sector')
+
+# Step 2: Reorder and add total row
+sctr_tbl_info <- sctr_tbl_info %>%
+  arrange(desc(n)) %>%
+  bind_rows(
+    sctr_tbl_info %>%
+      summarise(
+        sector = "Total",
+        description = "Total number of jobs across all sectors",
+        n = sum(n, na.rm = TRUE)
+      )
+  )
+
+# Step 3: Build flextable
+ft_sector <- flextable(sctr_tbl_info) %>%
+  set_header_labels(
+    sector = "Sector",
+    description = "Description",
+    n = "Number of jobs"
+  ) %>%
+  theme_box() %>%
+  fontsize(size = 10) %>%
+  align(align = "left", part = "all") %>%
+  autofit() %>%
+  padding(padding = 4) %>%
+  set_table_properties(layout = "autofit") %>%
+  # Zebra stripes
+  bg(i = seq(1, nrow(sctr_tbl_info)-1, by = 2), bg = "#F5F5F5", part = "body") %>%
+  # Highlight total row
+  bold(i = nrow(sctr_tbl_info), part = "body") %>%
+  bg(i = nrow(sctr_tbl_info), bg = "#D9E1F2", part = "body")
+
+# Step 4: Export to Word
+doc <- read_docx() %>%
+  body_add_par("Table: Sector descriptions and job counts", style = "heading 2") %>%
+  body_add_flextable(ft_sector)
+
+print(doc, target = "H2_paper/tables_2025/sctr_tbl.docx")
+```
+
 ### 4.2.2 Job roles
 
 This table is to describe the different job roles and also show the number of jobs there are in each job role.
@@ -342,9 +464,87 @@ jbrls_tbl <- jbrls_tbl_info %>%
       ) %>% 
     gt_theme_espn()
 
-
 jbrls_tbl
 jbrls_tbl %>% gtsave("H2_paper/tables_2025/jbrls_tbl.png")
+```
+
+Word-table
+
+```{r}
+# Step 1: Summarise job roles
+jbrls_count <- jobs %>%
+  group_by(job_role) %>%
+  summarise(n = sum(Weight), .groups = "drop") %>%
+  rename(jobroles = job_role)
+
+# Step 2: Join with descriptions
+jbrls_tbl_info <- data.frame(
+  jobroles = c("Administration", "Engineering", "Environmental",
+               "Finance & Business development", "HR", "IT & Data science",
+               "Law", "Management other", "Other", 
+               "PhD", "Procurement & Logistics", "Project management", 
+               "Public administration", "Quality assurance", "Researcher", 
+               "Sales & Customer service", "Technician & Maintenance"),
+  description = c("Includes jobs related to administrative or clerical work and secretaries.", 
+                  "Includes all jobs related to different engineering practices.", 
+                  "Includes jobs related to working with sustainability or environmental expert knowledge.",
+                  "Includes jobs within finance, accounting, economics as well as business development or analysis.", 
+                  "Includes jobs related to human resources and recruitment.", 
+                  "Includes jobs working with software, data management, IT and data analysis.", 
+                  "Includes jobs within law, such as lawyers and legal advisors.", 
+                  "Includes management jobs which are not explicitly Project management, such as CEOs, section manager, operations manager and so on.",
+                  "Includes all jobs which do not fall within any of the other 16 categories.",
+                  "Includes doctoral students.", 
+                  "Includes jobs in charge of procurement, logistics and supply chains.", 
+                  "Includes jobs for project planning and management.", 
+                  "Includes jobs working with administration within public sector.", 
+                  "Includes jobs related to inspecting, controlling or assuring quality of products or services.", 
+                  "Includes jobs within research, such as professors, research assistants and other scientists.", 
+                  "Includes jobs working with selling or marketing products or services as well as offering support of different kinds to customers.",
+                  "Includes jobs related to manufacturing and repairing and in other ways keeping maintaining or enabling operations, such as technicians, industrial workers, mechanics, electricians, welders and so on.")
+) %>%
+  left_join(jbrls_count, by = 'jobroles')
+
+# Step 3: Reorder and add total row
+jbrls_tbl_info <- jbrls_tbl_info %>%
+  filter(jobroles != "Other") %>%
+  arrange(desc(n)) %>%
+  bind_rows(
+    jbrls_tbl_info %>% filter(jobroles == "Other"),
+    jbrls_tbl_info %>%
+      summarise(
+        jobroles = "Total",
+        description = "Total number of jobs across all job roles",
+        n = sum(n, na.rm = TRUE)
+      )
+  )
+
+# Step 4: Create flextable
+ft_jbrls <- flextable(jbrls_tbl_info) %>%
+  set_header_labels(
+    jobroles = "Job roles",
+    description = "Description",
+    n = "Number of jobs"
+  ) %>%
+  theme_box() %>%
+  fontsize(size = 10, part = "all") %>%
+  font(fontname = "Calibri", part = "all") %>%
+  align(align = "left", part = "all") %>%
+  autofit() %>%
+  padding(padding = 4) %>%
+  set_table_properties(layout = "autofit") %>%
+  # Zebra stripes
+  bg(i = seq(1, nrow(jbrls_tbl_info)-2, by = 2), bg = "#F5F5F5", part = "body") %>%
+  # Highlight total row
+  bold(i = nrow(jbrls_tbl_info), part = "body") %>%
+  bg(i = nrow(jbrls_tbl_info), bg = "#D9E1F2", part = "body")
+
+# Step 5: Save to Word document
+doc <- read_docx() %>%
+  body_add_par("Table: Job roles and job counts", style = "heading 2") %>%
+  body_add_flextable(ft_jbrls)
+
+print(doc, target = "H2_paper/tables_2025/jbrls_tbl.docx")
 ```
 
 ### 4.2.3 Engineers
@@ -402,9 +602,82 @@ engnrs_tbl <- engnrs_tbl_info %>%
       ) %>% 
     gt_theme_espn()
 
-
 engnrs_tbl
 engnrs_tbl %>% gtsave("H2_paper/tables_2025/engnrs_tbl.png")
+```
+
+Word-table
+
+```{r}
+# Step 1: Summarize job counts by engineering type
+engnrs_count <- jobs %>%
+  group_by(Type_2) %>%
+  summarise(n = sum(Weight), .groups = "drop") %>%
+  rename(engineers = Type_2) %>%
+  drop_na()
+
+# Step 2: Join with descriptions
+engnrs_tbl_info <- data.frame(
+  engineers = c("Automation", "Chemical", "Civil", "Electrical", "Energy",
+                "Environmental", "Generic", "IT/Software", "Marine", "Materials", 
+                "Mechanical", "Other", "Risk & Safety"),
+  description = c("Working with automated solutions for industry and other activities.", 
+                  "Specialised within chemistry and chemical process in industry.", 
+                  "Traditional construction engineers, working with for example infrastructure.",
+                  "Specialised within electricity, power grid, power electronics and other electrical instruments.", 
+                  "Working within the field of energy and not suitably categorised within any other specific field.", 
+                  "Specialised in environmental analysis and affect on environment of industry and construction.", 
+                  "Engineering jobs with either unspecified sought for engineering competence or where a vast number of engineering competences are fit for the role.", 
+                  "Specialised within information technology and working with software or computer hardware.",
+                  "Specialised in working with and constructing marine applications.",
+                  "Working within studying, researching or producing materials for construction, manufacturing and other purposes.", 
+                  "Specialised within mechanical engineering, working with construction or manufacturing of machines or industrial sites and components.", 
+                  "Engineers not applicable to any other category with too few jobs to justify having their own specific category.", 
+                  "Specialised within risk management and safety regulation, working with investigating risks and safety hazards.")
+) %>%
+  left_join(engnrs_count, by = 'engineers')
+
+# Step 3: Reorder and add total row
+engnrs_tbl_info <- engnrs_tbl_info %>%
+  filter(engineers != "Other") %>%
+  arrange(desc(n)) %>%
+  bind_rows(
+    engnrs_tbl_info %>%
+      filter(engineers == "Other"),
+    engnrs_tbl_info %>%
+      summarise(
+        engineers = "Total",
+        description = "Total number of jobs across all engineering types",
+        n = sum(n, na.rm = TRUE)
+      )
+  )
+
+# Step 4: Create flextable with Calibri font
+ft_engnrs <- flextable(engnrs_tbl_info) %>%
+  set_header_labels(
+    engineers = "Engineering types",
+    description = "Description",
+    n = "Number of jobs"
+  ) %>%
+  theme_box() %>%
+  fontsize(size = 10, part = "all") %>%
+  font(fontname = "Calibri", part = "all") %>%
+  align(align = "left", part = "all") %>%
+  autofit() %>%
+  padding(padding = 4) %>%
+  set_table_properties(layout = "autofit") %>%
+  # Zebra stripes
+  bg(i = seq(1, nrow(engnrs_tbl_info)-2, by = 2), bg = "#F5F5F5", part = "body") %>%
+  # Highlight total row
+  bold(i = nrow(engnrs_tbl_info), part = "body") %>%
+  bg(i = nrow(engnrs_tbl_info), bg = "#D9E1F2", part = "body")
+
+# Step 5: Export to Word
+doc <- read_docx() %>%
+  body_add_par("Table: Engineering types and job counts", style = "heading 2") %>%
+  body_add_flextable(ft_engnrs)
+
+print(doc, target = "H2_paper/tables_2025/engnrs_tbl.docx")
 ```
 
 # 5. General cluster analysis
@@ -1263,12 +1536,13 @@ combined_map <- (map_1 + map_2 + map_3 + map_4 + map_5 + map_6) +
   theme(legend.position = "right", # Change to "right" if preferred
         legend.key.size = unit(1.2, "cm"),  # Adjust legend size
         legend.text = element_text(size = 18),  # Adjust text size
-        legend.title = element_text(size = 20, face = "bold")  # Adjust title size
+        legend.title = element_text(size = 20, face = "bold", 
+                                margin = margin(b = 15))  # Adjust title size
   )
 
 ggsave(filename = paste0("H2_paper/cluster_2025/k=6/",
                          as.character(7681),"_map_combined.png"), 
-       plot = combined_map, width = 15, height = 20)
+       plot = combined_map, width = 15, height = 20, dpi = 600)
 ```
 
 # 6. Engineering cluster analysis
@@ -1781,7 +2055,7 @@ shared_fill_scale_engineering <- scale_fill_gradient(
 )
 ```
 
-Cluster 1 = Cluster 1 in paper
+Cluster 1 = Cluster 2 in paper
 
 ```{r}
 cluster1_engineer <- cluster_result_for_map_engineering %>%
@@ -1798,49 +2072,7 @@ share_cluster_tot <- round(cluster1_engineer$share_cluster_tot[1]*100,
 map1_engineer <- mapdata_custom %>%
   left_join(cluster1_engineer, by = 'region')
 
-map1e <- ggplot(map1_engineer, aes(x = long, y = lat, group = group)) +
-  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
-  shared_fill_scale_engineering +
-  labs(tag = paste0("**Cluster 1: Offshore & Energy**<br> **Technology - Norwegian south-west** <br>",
-                    "(",#"n = ", #commented out n_jobs
-                    #as.character(round(n_cluster)),', ',
-                    as.character(share_cluster_tot), 
-                    '% of all engineers)')) +
-  theme(
-    plot.tag.position = "bottom",
-    plot.tag = element_markdown(hjust = 0.3, size = 20),
-    axis.text.x = element_blank(),
-    axis.text.y = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title.y = element_blank(),
-    axis.title.x = element_blank(),
-    rect = element_blank()
-    )
-map1e
-
-ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
-                  '/',as.character(5855),"_map1.png"),
-           plot = map1e)
-```
-
-Cluster 2 = Cluster 2 in paper
-
-```{r}
-cluster2_engineer <- cluster_result_for_map_engineering %>%
-  filter(cluster ==2) %>%
-  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
-  separate_rows(place, sep = " & ") %>%
-  unique() %>%
-  rename(region = place) 
-
-n_cluster <- cluster2_engineer$n_cluster[1]
-share_cluster_tot <- round(cluster2_engineer$share_cluster_tot[1]*100,
-                           2)
-
-map2_engineer <- mapdata_custom %>%
-  left_join(cluster2_engineer, by = 'region')
-
-map2e <- ggplot(map2_engineer, aes(x = long, y = lat, group = group)) +
+map2e <- ggplot(map1_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
   labs(tag = paste0("**Cluster 2: Energy Technology -**<br> **Oslo & Rogaland** <br>",
@@ -1863,6 +2095,48 @@ map2e
 ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
                   '/',as.character(5855),"_map2.png"),
            plot = map2e)
+```
+
+Cluster 2 = Cluster 3 in paper
+
+```{r}
+cluster2_engineer <- cluster_result_for_map_engineering %>%
+  filter(cluster ==2) %>%
+  select(place, n_tot,n_cluster,n_place_cluster,share_cluster_tot,share_place_cluster) %>%
+  separate_rows(place, sep = " & ") %>%
+  unique() %>%
+  rename(region = place) 
+
+n_cluster <- cluster2_engineer$n_cluster[1]
+share_cluster_tot <- round(cluster2_engineer$share_cluster_tot[1]*100,
+                           2)
+
+map2_engineer <- mapdata_custom %>%
+  left_join(cluster2_engineer, by = 'region')
+
+map3e <- ggplot(map2_engineer, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = n_place_cluster), color = 'black') +
+  shared_fill_scale_engineering +
+  labs(tag = paste0("**Cluster 3: Energy Infrastructure**<br> **and Systems - Sweden** <br>",
+                    "(",#"n = ", #commented out n_jobs
+                    #as.character(round(n_cluster)),', ',
+                    as.character(share_cluster_tot), 
+                    '% of all engineers)')) +
+  theme(
+    plot.tag.position = "bottom",
+    plot.tag = element_markdown(hjust = 0.3, size = 20),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.y = element_blank(),
+    axis.title.x = element_blank(),
+    rect = element_blank()
+    )
+map3e
+
+ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
+                  '/',as.character(5855),"_map3.png"),
+           plot = map3e)
 ```
 
 Cluster 3 = Cluster 4 in paper
@@ -1907,7 +2181,7 @@ ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
            plot = map4e)
 ```
 
-Cluster 4 = Cluster 3 in paper
+Cluster 4 = Cluster 1 in paper
 
 ```{r}
 cluster4_engineer <- cluster_result_for_map_engineering %>%
@@ -1924,10 +2198,10 @@ share_cluster_tot <- round(cluster4_engineer$share_cluster_tot[1]*100,
 map4_engineer <- mapdata_custom %>%
   left_join(cluster4_engineer, by = 'region')
 
-map3e <- ggplot(map4_engineer, aes(x = long, y = lat, group = group)) +
+map1e <- ggplot(map4_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
-  labs(tag = paste0("**Cluster 3: Energy Infrastructure**<br> **and Systems - Sweden** <br>",
+  labs(tag = paste0("**Cluster 1: Offshore & Energy**<br> **Technology - Norwegian south-west** <br>",
                     "(",#"n = ", #commented out n_jobs
                     #as.character(round(n_cluster)),', ',
                     as.character(share_cluster_tot), 
@@ -1942,11 +2216,11 @@ map3e <- ggplot(map4_engineer, aes(x = long, y = lat, group = group)) +
     axis.title.x = element_blank(),
     rect = element_blank()
     )
-map3e
+map1e
 
 ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
-                  '/',as.character(5855),"_map3.png"),
-           plot = map3e)
+                  '/',as.character(5855),"_map1.png"),
+           plot = map1e)
 ```
 
 Combined map
@@ -1962,10 +2236,11 @@ combined_map_e <- (map_1e + map_2e + map_3e + map_4e) +
   theme(legend.position = "right", # Change to "right" if preferred
         legend.key.size = unit(1.2, "cm"),  # Adjust legend size
         legend.text = element_text(size = 18),  # Adjust text size
-        legend.title = element_text(size = 20, face = "bold")  # Adjust title size
+        legend.title = element_text(size = 20, face = "bold", 
+                                margin = margin(b = 15))  # Adjust title size
   )
 
 ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4/",
                          as.character(5855),"_map_combined.png"), 
-       plot = combined_map_e, width = 20, height = 20)
+       plot = combined_map_e, width = 20, height = 20, dpi = 600)
 ```
