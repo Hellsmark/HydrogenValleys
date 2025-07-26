@@ -35,6 +35,7 @@ for (i in 3530:3533){
   texts i show you. Create a row for each person mentioned in the text.")
   Sys.sleep(3)
   
+  
   if (!is.na(small_df$description[i]) && nchar(small_df$description[i]) <= 12000){ #Don't read adds if they are too long
     extracted_data <- chat$extract_data(
       small_df$description[i],

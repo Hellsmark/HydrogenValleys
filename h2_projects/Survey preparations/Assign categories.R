@@ -21,7 +21,7 @@ results <- list()
 
 N <- 459  # Byt till nrow(df) när du vill köra hela listan
 
-for (i in 280:N) {
+for (i in 1:N) {
   chat <- chat_openai(
     system_prompt = "You are assisting in classifying organizations involved in hydrogen projects in the Nordic countries.
     Each organization should be assigned **one primary category** based on its role in the hydrogen economy. Choose the best fitting category based on their activities, offerings, or purpose. If the fit is unclear or if the organization spans multiple categories, choose the **most relevant one** and mark it with an asterisk (*).
@@ -69,13 +69,58 @@ final_df <- bind_rows(results)
 write_sheet(final_df, ss, sheet="company_category")
 
 
-#Print the number that each category occurs
-category_keywords <- c("Producer", "User", "Infrastructure", "Technology", "Research", "Authority", "Financier")
 
-summary_counts <- tibble(category = category_keywords) %>%
-  mutate(count = map_int(category, ~ sum(str_detect(final_df$category, .x), na.rm = TRUE)))
 
-print(summary_counts)
+# The following code is to try out different types of categorisations of the actors
+
+df_raw <- read_sheet(ss, sheet = "company_category")
+df <- df_raw %>% janitor::clean_names()
+
+five_cat <- df %>% mutate(five_categories= if_else(category=="Financier / Investor","Support & Capital actors",
+                                            if_else(category=="Industry Association / Cluster", "Support & Capital actors",
+                                            if_else(category=="Technology & System Supplier", "Technology & Infrastructure",
+                                            if_else(category=="Infrastructure / Network Operator", "Technology & Infrastructure",
+                                            if_else(category=="Producer", "Producer & User",
+                                            if_else(category=="User / End user", "Producer & User",category)))))))
+
+four_cat <- five_cat %>% mutate(four_categories =if_else(category=="Research & Academia", "Knowledge actors & Coordination",
+                                                  if_else(category=="Industry Association / Cluster", "Knowledge actors & Coordination",
+                                                  if_else(category=="Financier / Investor", "Market Actors",
+                                                  if_else(category=="Infrastructure / Network Operator", "Technology & Infrastructure",
+                                                  if_else(category=="Technology & System Supplier", "Technology & Infrastructure",
+                                                  if_else(category=="Producer", "Market Actors",
+                                                  if_else(category=="User / End user", "Market Actors",category))))))))
+
+# Edit and then count the actors in our data
+
+
+categories <- four_cat %>%
+  rename(eight_categories = category, actor=new_name)
+
+categories%>%
+  count(four_categories, sort=TRUE)
+
+categories%>%
+  count(five_categories, sort=TRUE)
+
+categories%>%
+  count(eight_categories, sort=TRUE)
+
+write_sheet(categories, ss, sheet="company_category")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
