@@ -89,3 +89,11 @@ df_cleaned <- fin_df %>%
 new_df<- df %>% left_join(df_cleaned,by="org") %>%
   mutate(eight_categories = if_else(is.na(eight_categories),category,eight_categories))%>%
   select(-category)
+
+write_sheet(new_df,ss,sheet="contacts_categories")
+
+
+df<- read_sheet(ss,sheet = "contacts_categories")
+
+df%>%
+  count(eight_categories, sort=TRUE)
