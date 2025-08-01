@@ -1,0 +1,147 @@
+---
+title: "Boxplots_barriers"
+format: html
+editor: visual
+---
+
+## Results from survey (Ranking barriers
+
+Load results data
+
+```{r}
+library(dplyr)
+library(googlesheets4)
+library(tidyverse)
+library(ggplot2)
+
+# The following code will tell us how many observations per group that we need in order to get a statistically significant result. (k is number of gruops that we study)
+
+pwr_result <- pwr.anova.test(k = 6, f = 0.25, sig.level = 0.05, power = 0.8) 
+pwr_result
+
+
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit#gid=1219310046"
+
+df <- read_sheet(ss, sheet = "ANOVA") #This is fake for now
+
+```
+
+Select and tidy the data
+
+SKIP THIS STEP, GO WITH FAKE DATA FOR NOW !!
+
+```{r}
+
+# Select the ranking data
+
+rank <- df %>% select(id,org_type,rank_barriers)
+  
+# Tidy the data
+df1<- rank %>%
+  separate_rows(rank_barriers,sep = ";")%>%  filter(rank_barriers != "") %>%
+  mutate(rank_barriers = case_when(
+             rank_barriers == "Experimentation and development by entrepreneurs - Developing business models and new pilot projects to lead the development further." ~ "Experiment",
+             rank_barriers == "Guiding the direction of the search - Political and societal visions and goals of the technology." ~ "Guiding direction",
+             rank_barriers == "Market formation - Creating a market for niche and early actors" ~ "Market formation",
+             rank_barriers == "Knowledge development - Creation of new technology and knowledge within hydrogen." ~ "Knowledge development",
+             rank_barriers == "Resource mobilisation - Access to competent work labour, material and capital." ~ "Resource mobilisation",
+             rank_barriers == "Legitimization - Public and political acceptance and trust in the technology" ~ "Legitimization",
+             rank_barriers == "Knowledge diffusion -Delning och kommunikation av kunskap mellan aktörer" ~ "Knowledge diffusion",
+             TRUE ~ rank_barriers),counter=rep(7:1, length.out=n()))  # Counter in the end assigns a value to the barrier based on how high it was ranked
+```
+
+Plot a boxplot to be able to analyze the results, starting with the experimentation barrier for the 4 categories of respondents.
+
+```{r}
+exp <- df %>% filter(rank_barriers=="Experiment")
+
+
+ggplot(exp, aes(x=org_type, y=counter)) +
+  geom_boxplot(fill="skyblue", color = "black")+
+  labs(title = "Experiment Barrier",
+       x= "Group",
+       y= "Value of barrier") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+
+# To see if there is a statistically ignificant difference, run the code below and look at Pr(>F) if its below 0.05"*" is 95% sure that there is a significant difference to the respondants choise
+
+#This means that some groups actually think that Experimentation is a more significant barrier than other groups. To know more about hte details, Post-hoc analysis/test is needed.
+
+result <- aov(counter ~ org_type, data = exp)
+summary(result)
+
+
+```
+
+Market formation barrier. Is there a difference between how they answer?
+
+```{r}
+mark <- df %>% filter(rank_barriers=="Market formation")
+
+
+ggplot(mark, aes(x=org_type, y=counter)) +
+  geom_boxplot(fill="skyblue", color = "black")+
+  labs(title = "Experiment Barrier",
+       x= "Group",
+       y= "Value of barrier") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+result <- aov(counter ~ org_type, data = mark)
+summary(result)
+```
+
+Now we look at how each group have voted for the different barriers
+
+```{r} # Just copy this code and change the org_type}
+res <- df %>% filter(org_type=="Research")
+
+
+ggplot(res, aes(x=rank_barriers, y=counter)) +
+  geom_boxplot(fill="skyblue", color = "black")+
+  labs(title = "Researchers view on different barriers",
+       x= "Barrier",
+       y= "Value of barrier") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+result <- aov(counter ~ rank_barriers, data = res)
+summary(result)
+```
+
+Extra code:
+
+```{r}
+
+
+ggplot(df1, aes(x=rank_barriers, y=counter)) +
+  geom_boxplot(fill="skyblue", color = "black")+
+  labs(title = "Ranking boxplot",
+       x= "Category",
+       y= "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+ggplot(boxplot())
+
+write_sheet(df1,ss, sheet = "ANOVA")
+
+result <- aov(counter ~ rank_barriers, data = df1)
+summary(result)
+
+#Såå vad vi har här är en kod som bryter upp rankningen av barriärer
+# till ett tidy data format, ger dom siffror efter vilken ordning de
+#ligger i den kategoriserade ordningen. Detta blir som en värdering 
+# av hur viktiga barriärerna är för varje svarande.
+
+#frågan är nu då hur vi ska kategorisera för att hitta samband.
+# Vi kan ju hitta om det är någonskillnad på hur de har röstat på en
+# Specifik barriär. T:ex genom att plotta org.type på x axeln och 
+# göra en plot per barriär
+
+mean <- exp %>% group_by(org_type,rank_barriers)%>%
+  summarise(mean_rank=mean(counter),.groups = "drop")%>%
+  arrange(org_type,desc(mean_rank))
+```

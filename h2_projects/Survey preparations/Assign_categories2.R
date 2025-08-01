@@ -93,7 +93,10 @@ new_df<- df %>% left_join(df_cleaned,by="org") %>%
 write_sheet(new_df,ss,sheet="contacts_categories")
 
 
-df<- read_sheet(ss,sheet = "contacts_categories")
+df1<- read_sheet(ss,sheet = "contacts_categories")
 
 df%>%
   count(eight_categories, sort=TRUE)
+
+df<- df%>% distinct(full_name,.keep_all=TRUE)
+
