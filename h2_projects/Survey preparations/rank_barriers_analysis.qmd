@@ -13,9 +13,17 @@ library(dplyr)
 library(googlesheets4)
 library(tidyverse)
 library(ggplot2)
+library(ellmer)
+library(tidyverse)
+library(stringr)
+library(pwr)
+library(dunn.test)
+library(FSA)
+library(PMCMRplus)
+
 
 # The following code will tell us how many observations per group that we need in order to get a statistically significant result. (k is number of gruops that we study)
-
+pwr
 pwr_result <- pwr.anova.test(k = 6, f = 0.25, sig.level = 0.05, power = 0.8) 
 pwr_result
 
@@ -26,8 +34,7 @@ df <- read_sheet(ss, sheet = "ANOVA") #This is fake for now
 
 ```
 
-Select and tidy the data
-
+Select, clean and tidy the data
 SKIP THIS STEP, GO WITH FAKE DATA FOR NOW !!
 
 ```{r}
@@ -65,15 +72,19 @@ ggplot(exp, aes(x=org_type, y=counter)) +
   theme(axis.text.x = element_text(angle = 45, hjust=1))
 
 
-# To see if there is a statistically ignificant difference, run the code below and look at Pr(>F) if its below 0.05"*" is 95% sure that there is a significant difference to the respondants choise
-
 #This means that some groups actually think that Experimentation is a more significant barrier than other groups. To know more about hte details, Post-hoc analysis/test is needed.
 
-result <- aov(counter ~ org_type, data = exp)
-summary(result)
+result = kruskal.test(counter ~ org_type, data = exp)
+print(result)
 
+# if p< 0.05, there is a difference between groups! 
+# Continue with post hoc Dunn test
 
-```
+ras<- dunnTest(counter ~ org_type, data=exp, method = "bonferroni")
+ras
+print(ras)
+
+``` 
 
 Market formation barrier. Is there a difference between how they answer?
 
@@ -88,14 +99,34 @@ ggplot(mark, aes(x=org_type, y=counter)) +
        y= "Value of barrier") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust=1))
-
-result <- aov(counter ~ org_type, data = mark)
-summary(result)
 ```
+etc etc 
+
+The following code makes a friedman test on the full data to see if the rankings are made randomly or if there is a significant difference in how people vote. 
+After this a Nemenyi post-hoc test is done to analyze one pair at a time.
+
+With this we can say "There is a statistically significant difference between how these two barriers were rated"
+
+```{r}
+
+result =friedman.test(counter ~ rank_barriers | id, data = df)
+print(result)
+
+install.packages("PMCMRplus")
+result=frdAllPairsNemenyiTest(counter ~ rank_barriers | id, data = df)
+print(result)
+
+df %>%
+  group_by(rank_barriers) %>%
+  summarise(medelrank = mean(counter)) %>%
+  arrange(medelrank)
+
+```
+
 
 Now we look at how each group have voted for the different barriers
 
-```{r} # Just copy this code and change the org_type}
+```{r} # Just copy this code for and change the org_type}
 res <- df %>% filter(org_type=="Research")
 
 
@@ -110,6 +141,102 @@ ggplot(res, aes(x=rank_barriers, y=counter)) +
 result <- aov(counter ~ rank_barriers, data = res)
 summary(result)
 ```
+
+
+Denna koden ska göra använda API för att kategorisera allas fria svar.
+Därefter ska den göra en tabell där frekvensen av varje persongrupp+barriä
+r visas. 
+
+This data is to be used for descriptive analysis. If we want to make a statistical analysis, a Chi2 test is possible IF we only choose ONE barrier per person AND IF there are more than 5 answers per box (hard to achieve, less fun)
+
+```{r}
+
+OPENAI_API_KEY <- Sys.getenv("OPENAI_API_KEY")
+
+ss <- "https://docs.google.com/spreadsheets/d/1RefL2DMmCoOjCcIiaYgSnuDF34ORQFAZKu3nkaoS6o8/edit?gid=129252691#gid=129252691"
+
+# Read project sheet and clean
+df_raw <- read_sheet(ss, sheet = "Stat1")
+df <- df_raw %>% janitor::clean_names()
+small_df <- df%>% select(id,free_text_barrier)
+
+
+# Outputstruktur: 1 kolumn "Company category"
+output_structure <- type_array(
+  items = type_object(
+    category = type_string("TIS-barriers")  # Ändrat från "name" till "category" för tydlighet
+  )
+)
+
+results <- list()
+
+for (i in 1:18) {
+  chat <- chat_openai(
+    system_prompt = "You are assisting in classifying short paragraphs into one or more of the seven functions of the TIS framework. If more than one function is related to the text, just separate them with commas.
+      
+      Use the following TIS functions:
+
+**Entrepreneurial Activities** – Concrete actions by firms or individuals to turn new knowledge or technologies into business opportunities. Includes starting new ventures, pilot projects, or commercialization efforts.
+
+**Knowledge Development** – Creation of new technological, scientific, or practical knowledge relevant to the innovation system. Can include R&D, pilot projects, and field testing.
+
+**Knowledge Diffusion** – The spread and exchange of knowledge between actors via conferences, collaborations, partnerships, or informal interactions.
+
+**Guidance of the Search** – Activities that influence the direction and priority of development in the field. Includes visions, roadmaps, targets, public debates, and media coverage that signal which technologies are desirable or promising.
+
+**Market Formation** – Efforts to create or expand markets for new technologies. Includes temporary niche markets, subsidies, procurement programs, or early adopter incentives that reduce risk and stimulate demand.
+
+**Resource Mobilization** – Provision of financial, human, or physical resources to support innovation activities. Can include public or private investment, skilled labor, infrastructure, or land.
+
+**Creating Legitimacy** – Actions that improve acceptance and support for the new technology among stakeholders, policymakers, or the public. Includes lobbying, advocacy, standardization, and addressing opposition.
+
+    Output the result in a structured JSON format like this:
+      ```json
+    {
+      'name': 'Company name',
+      'category': 'Producer'
+    }
+    ")
+    
+    Sys.sleep(1)
+    
+    extracted_data <- chat$extract_data(
+      small_df$free_text_barrier[i],
+      type = output_structure
+    )
+    
+    result <- tibble(
+      free_text = small_df$free_text_barrier[i],
+      category = extracted_data$category[1]
+    )
+    
+    results[[i]] <- result
+    print(paste("Processed", i, "-", small_df$free_text_barrier[i]))
+}
+
+# Slutlig resultat-tabell
+fin_df <- bind_rows(results) 
+
+fin_df<- fin_df %>%mutate(id= df$id, text=NULL)%>%
+  relocate(id, .before=1)
+
+#The following code is to create a contingent table to study and ensure that every box has at least 5 recorded observations. Then we run the Chi^2 test and check if p>0.05. If yes, there is a correlation
+
+sep <- fin_df %>% separate_rows(category,sep= ",\\s") #separating barriers
+
+org<- df %>% select(id,field=sector) # connect to the respective organization type
+mix<- sep %>% left_join(org,join_by(id))
+
+stu_data = table(mix$category,mix$field)
+print(stu_data)
+
+chisq.test(table(chi$field, chi$category))
+
+```
+
+
+
+
 
 Extra code:
 
