@@ -69,8 +69,6 @@ final_df <- bind_rows(results)
 write_sheet(final_df, ss, sheet="company_category")
 
 
-
-
 # The following code is to try out different types of categorisations of the actors
 
 df_raw <- read_sheet(ss, sheet = "company_category")
@@ -92,8 +90,6 @@ four_cat <- five_cat %>% mutate(four_categories =if_else(category=="Research & A
                                                   if_else(category=="User / End user", "Market Actors",category))))))))
 
 # Edit and then count the actors in our data
-
-
 categories <- four_cat %>%
   rename(eight_categories = category, actor=new_name)
 
@@ -108,32 +104,5 @@ categories%>%
 
 write_sheet(categories, ss, sheet="company_category")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#The following can be used to extract the contacts that we have in our contact file
-
-
-#df_a <- read_sheet(ss,sheet="missing_actors")
-#df_a<- df_a%>%janitor::clean_names() 
-#flt<- df_a %>% filter(str_detect(tolower(match),"yes"))
-
-#df_raw <- read_sheet(ss, sheet = "actors")
-#df <- df_raw %>% clean_names()
-
-#df<- df %>% filter(new_name %in% flt$company)
+#If this is already done
+df %>% count(four_categories, sort=TRUE)

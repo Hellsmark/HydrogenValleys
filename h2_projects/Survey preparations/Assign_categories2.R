@@ -17,8 +17,7 @@ small_df <- df%>% select(org,eight_categories)
 
 # Kod för att assigna kategorier till företag som inte har fått en kategori i contacts formuläret
 
-#Jag vill att koden ska gå igenom alla kontakter OM categorin är tom
-# OM den är det, använd API för att assigna en kategori basseard på företagsnamnet
+#Jag vill att koden ska gå igenom alla kontakter OM categorin är tom och assigna en kategori
 
 # Outputstruktur: 1 kolumn "Company category"
 output_structure <- type_array(
