@@ -22,9 +22,8 @@ library(FSA)
 library(PMCMRplus)
 
 
-# The following code will tell us how many observations per group that we need in order to get a statistically significant result. (k is number of gruops that we study)
-pwr
-pwr_result <- pwr.anova.test(k = 6, f = 0.25, sig.level = 0.05, power = 0.8) 
+# The following code will tell us how many observations per group that we need in order to get a statistically significant result. (k is number of gruops that we study) This is not a 100 percent accurate since we dont do ANOVA
+pwr_result <- pwr.anova.test(k = 2, f = 0.25, sig.level = 0.05, power = 0.8)
 pwr_result
 
 
@@ -40,7 +39,7 @@ SKIP THIS STEP, GO WITH FAKE DATA FOR NOW !!
 ```{r}
 
 # Select the ranking data
-
+# Try different org types here, for example job role or sector
 rank <- df %>% select(id,org_type,rank_barriers)
   
 # Tidy the data
@@ -100,9 +99,11 @@ ggplot(mark, aes(x=org_type, y=counter)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust=1))
 ```
-etc etc 
+...etc etc for all barriers
 
-The following code makes a friedman test on the full data to see if the rankings are made randomly or if there is a significant difference in how people vote. 
+
+
+The following code makes a friedman test on the full data of the ranking to see if they are made randomly or if there is a significant difference in how people vote. 
 After this a Nemenyi post-hoc test is done to analyze one pair at a time.
 
 With this we can say "There is a statistically significant difference between how these two barriers were rated"
