@@ -8,7 +8,7 @@ editor_options:
 
 # Intro
 
-This script includes all code for analysis, calculations, plots and tables used in the H2 paper as of february 2025. The script is ordered as follows:
+This script includes all code for analysis, calculations, plots and tables used in the H2 paper as of February 2025, with minor changes made for renaming of figures during August 2025. The script is ordered as follows:
 
 1.  Libraries - All libraries needed for the script is imported at this step
 2.  Data - This is where the data from the Google sheet is imported - this only works for those who have access to the Google sheet which is not public. Note that during the analysis may results be stored, the use of these results are imported into the working environment at a later stage.
@@ -2055,7 +2055,7 @@ shared_fill_scale_engineering <- scale_fill_gradient(
 )
 ```
 
-Cluster 1 = Cluster 2 in paper
+Cluster 1 = Cluster B in paper
 
 ```{r}
 cluster1_engineer <- cluster_result_for_map_engineering %>%
@@ -2075,7 +2075,7 @@ map1_engineer <- mapdata_custom %>%
 map2e <- ggplot(map1_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
-  labs(tag = paste0("**Cluster 2: Energy Technology -**<br> **Oslo & Rogaland** <br>",
+  labs(tag = paste0("**Cluster B: Energy Technology -**<br> **Oslo & Rogaland** <br>",
                     "(",#"n = ", #commented out n_jobs
                     #as.character(round(n_cluster)),', ',
                     as.character(share_cluster_tot), 
@@ -2093,11 +2093,11 @@ map2e <- ggplot(map1_engineer, aes(x = long, y = lat, group = group)) +
 map2e
 
 ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
-                  '/',as.character(5855),"_map2.png"),
+                  '/',as.character(5855),"_mapB.png"),
            plot = map2e)
 ```
 
-Cluster 2 = Cluster 3 in paper
+Cluster 2 = Cluster C in paper
 
 ```{r}
 cluster2_engineer <- cluster_result_for_map_engineering %>%
@@ -2117,7 +2117,7 @@ map2_engineer <- mapdata_custom %>%
 map3e <- ggplot(map2_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
-  labs(tag = paste0("**Cluster 3: Energy Infrastructure**<br> **and Systems - Sweden** <br>",
+  labs(tag = paste0("**Cluster C: Energy Infrastructure**<br> **and Systems - Sweden** <br>",
                     "(",#"n = ", #commented out n_jobs
                     #as.character(round(n_cluster)),', ',
                     as.character(share_cluster_tot), 
@@ -2135,11 +2135,11 @@ map3e <- ggplot(map2_engineer, aes(x = long, y = lat, group = group)) +
 map3e
 
 ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
-                  '/',as.character(5855),"_map3.png"),
+                  '/',as.character(5855),"_mapC.png"),
            plot = map3e)
 ```
 
-Cluster 3 = Cluster 4 in paper
+Cluster 3 = Cluster D in paper
 
 ```{r}
 cluster3_engineer <- cluster_result_for_map_engineering %>%
@@ -2159,7 +2159,7 @@ map3_engineer <- mapdata_custom %>%
 map4e <- ggplot(map3_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
-  labs(tag = paste0("**Cluster 4: Technical Expertise -**<br> **Across Sectors & Regions** <br>",
+  labs(tag = paste0("**Cluster D: Technical Expertise -**<br> **Across Sectors & Regions** <br>",
                     "(",#"n = ", #commented out n_jobs
                     #as.character(round(n_cluster)),', ',
                     as.character(share_cluster_tot), 
@@ -2177,11 +2177,11 @@ map4e <- ggplot(map3_engineer, aes(x = long, y = lat, group = group)) +
 map4e
 
 ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
-                  '/',as.character(5855),"_map4.png"),
+                  '/',as.character(5855),"_mapD.png"),
            plot = map4e)
 ```
 
-Cluster 4 = Cluster 1 in paper
+Cluster 4 = Cluster A in paper
 
 ```{r}
 cluster4_engineer <- cluster_result_for_map_engineering %>%
@@ -2201,7 +2201,7 @@ map4_engineer <- mapdata_custom %>%
 map1e <- ggplot(map4_engineer, aes(x = long, y = lat, group = group)) +
   geom_polygon(aes(fill = n_place_cluster), color = 'black') +
   shared_fill_scale_engineering +
-  labs(tag = paste0("**Cluster 1: Offshore & Energy**<br> **Technology - Norwegian south-west** <br>",
+  labs(tag = paste0("**Cluster A: Offshore & Energy**<br> **Technology - Norwegian south-west** <br>",
                     "(",#"n = ", #commented out n_jobs
                     #as.character(round(n_cluster)),', ',
                     as.character(share_cluster_tot), 
@@ -2219,7 +2219,7 @@ map1e <- ggplot(map4_engineer, aes(x = long, y = lat, group = group)) +
 map1e
 
 ggsave(filename = paste0("H2_paper/cluster_2025/engineers/k=4",
-                  '/',as.character(5855),"_map1.png"),
+                  '/',as.character(5855),"_mapA.png"),
            plot = map1e)
 ```
 
